@@ -3,6 +3,7 @@
 import React from "react";
 import useSWR from "swr";
 import Link from "next/link";
+import { useAdminSession } from "@/hooks/use-admin-session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -211,7 +212,11 @@ export default function ForwardingPnLPage() {
   const [execFilter, setExecFilter] = React.useState<string>("all");
   const [invFilter, setInvFilter] = React.useState<string>("all");
 
-  const url = `/api/admin/finance/reports/forwarding-pnl?from=${from}&to=${to}`;
+  const { session } = useAdminSession();
+  const adminId = session?.id;
+  const url = adminId
+    ? `/api/admin/finance/reports/forwarding-pnl?admin_id=${adminId}&from=${from}&to=${to}`
+    : null;
   const { data, isLoading, error } = useSWR<{ items: Row[] }>(url, fetcher);
 
   const rows = React.useMemo(() => {

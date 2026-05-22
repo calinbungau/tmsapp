@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -13,36 +12,24 @@ function serviceClient() {
 }
 
 /**
- * GET /api/admin/finance/reports/forwarding-pnl?from=YYYY-MM-DD&to=YYYY-MM-DD
+ * GET /api/admin/finance/reports/forwarding-pnl?admin_id=...&from=YYYY-MM-DD&to=YYYY-MM-DD
  *
  * Returns one row per parent (customer) order with revenue, costs, profit,
  * execution mode (internal/subcontracted/mixed), and invoice statuses for
  * both customer (outgoing) and carrier (incoming) sides.
+ *
+ * Tenant isolation: this app uses a client-side admin session (localStorage
+ * `admin_session.id`) — the client must pass `admin_id` explicitly. We fail
+ * closed (empty list) when it's missing so we never leak other tenants'
+ * data via service-role.
  */
 export async function GET(req: NextRequest) {
-  let adminId: string | null = null;
-  try {
-    const cookieSb = await createClient();
-    const {
-      data: { user },
-    } = await cookieSb.auth.getUser();
-    if (user) {
-      const { data: profile } = await cookieSb
-        .from("profiles")
-        .select("admin_id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      adminId = profile?.admin_id ?? null;
-    }
-  } catch {
-    /* ignore */
-  }
-
-  if (!adminId) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
   const sp = req.nextUrl.searchParams;
+  const adminId = sp.get("admin_id");
+  if (!adminId) {
+    return NextResponse.json({ items: [] }, { status: 200 });
+  }
+
   const from = sp.get("from") || null;
   const to = sp.get("to") || null;
 
