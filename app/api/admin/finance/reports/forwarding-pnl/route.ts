@@ -11,13 +11,36 @@ function serviceClient() {
   );
 }
 
+type SubcontractStop = {
+  type: string | null;
+  city: string | null;
+  country: string | null;
+  planned_date: string | null;
+  planned_time_from: string | null;
+  planned_time_to: string | null;
+};
+
 type SubcontractInfo = {
   id: string;
   reference_number: string | null;
+  status: string | null;
   carrier_id: string | null;
   carrier_name: string | null;
+  customer_name: string | null;
+  customer_reference: string | null;
   cost_amount: number;
   cost_currency: string | null;
+  cargo_description: string | null;
+  weight_kg: number | null;
+  pallet_count: number | null;
+  loading_meters: number | null;
+  pickup: SubcontractStop | null;
+  delivery: SubcontractStop | null;
+  route_label: string | null;
+  transport_from: string | null;
+  transport_to: string | null;
+  added_at: string | null;
+  added_by: string | null;
   pod_count: number;
   pod_last_uploaded_at: string | null;
   pod_status: "received" | "missing";
@@ -62,7 +85,7 @@ export async function GET(req: NextRequest) {
   const { data: subs, error: subErr } = await sb
     .from("orders")
     .select(
-      "id, reference_number, parent_order_id, customer_id, customer_price, customer_currency",
+      "id, reference_number, parent_order_id, customer_id, customer_reference, customer_price, customer_currency, status, cargo_description, weight_kg, pallet_count, loading_meters, created_at, created_by",
     )
     .eq("admin_id", adminId)
     .eq("commercial_role", "carrier_subcontract")
@@ -93,6 +116,73 @@ export async function GET(req: NextRequest) {
 
   // POD documents for the subcontract child orders.
   const subIds = subList.map(s => s.id as string);
+
+  // Stops for each subcontract — used for route + transport dates.
+  type StopRow = {
+    order_id: string;
+    sequence_order: number | null;
+    stop_type: string | null;
+    city: string | null;
+    country: string | null;
+    planned_date: string | null;
+    planned_time_from: string | null;
+    planned_time_to: string | null;
+  };
+  const stopsByOrder = new Map<string, StopRow[]>();
+  if (subIds.length) {
+    const { data: stops } = await sb
+      .from("order_stops")
+      .select(
+        "order_id, sequence_order, stop_type, city, country, planned_date, planned_time_from, planned_time_to",
+      )
+      .in("order_id", subIds)
+      .order("sequence_order", { ascending: true });
+    for (const s of (stops ?? []) as StopRow[]) {
+      const arr = stopsByOrder.get(s.order_id) || [];
+      arr.push(s);
+      stopsByOrder.set(s.order_id, arr);
+    }
+  }
+
+  // Resolve "added by" — orders.created_by → users.employee_id → employees.first_name/last_name
+  const creatorIds = Array.from(
+    new Set(
+      subList
+        .map(s => (s as any).created_by as string | null)
+        .filter(Boolean) as string[],
+    ),
+  );
+  const creatorMap = new Map<string, string>();
+  if (creatorIds.length) {
+    const { data: usersRows } = await sb
+      .from("users")
+      .select("id, employee_id, email")
+      .in("id", creatorIds);
+    const empIds = ((usersRows ?? [])
+      .map(u => (u as any).employee_id)
+      .filter(Boolean)) as string[];
+    const empNameMap = new Map<string, string>();
+    if (empIds.length) {
+      const { data: emps } = await sb
+        .from("employees")
+        .select("id, first_name, last_name")
+        .in("id", empIds);
+      for (const e of emps ?? []) {
+        const fn = (e as any).first_name || "";
+        const ln = (e as any).last_name || "";
+        const name = `${fn} ${ln}`.trim();
+        if (name) empNameMap.set((e as any).id as string, name);
+      }
+    }
+    for (const u of usersRows ?? []) {
+      const uid = (u as any).id as string;
+      const eid = (u as any).employee_id as string | null;
+      const fallback = ((u as any).email as string | null) || null;
+      const name = (eid && empNameMap.get(eid)) || fallback || null;
+      if (name) creatorMap.set(uid, name);
+    }
+  }
+
   const podMap = new Map<string, { count: number; last: string | null }>();
   if (subIds.length) {
     const { data: docs } = await sb
@@ -111,18 +201,82 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Index of parent customer name by parent order id (from RPC items).
+  const parentCustomerName = new Map<string, string | null>();
+  for (const r of items) {
+    parentCustomerName.set(
+      r.order_id,
+      (r as any).customer_name ?? null,
+    );
+  }
+
   const subsByParent = new Map<string, SubcontractInfo[]>();
   for (const s of subList) {
     const pid = (s as any).parent_order_id as string;
     const carrierId = ((s as any).customer_id as string) || null;
-    const pod = podMap.get((s as any).id as string);
+    const sid = (s as any).id as string;
+    const pod = podMap.get(sid);
+
+    const stops = stopsByOrder.get(sid) || [];
+    const pickup = stops.find(x => (x.stop_type || "").toLowerCase() === "pickup") || stops[0] || null;
+    const delivery =
+      [...stops].reverse().find(x => (x.stop_type || "").toLowerCase() === "delivery") ||
+      stops[stops.length - 1] ||
+      null;
+
+    const toStop = (st: StopRow | null): SubcontractStop | null =>
+      st
+        ? {
+            type: st.stop_type,
+            city: st.city,
+            country: st.country,
+            planned_date: st.planned_date,
+            planned_time_from: st.planned_time_from,
+            planned_time_to: st.planned_time_to,
+          }
+        : null;
+
+    const routeLabel =
+      pickup && delivery
+        ? `${[pickup.city, pickup.country].filter(Boolean).join(", ")} → ${[delivery.city, delivery.country].filter(Boolean).join(", ")}`
+        : pickup
+          ? `${pickup.city ?? ""}`.trim()
+          : null;
+
+    const dates = stops
+      .map(x => x.planned_date)
+      .filter(Boolean) as string[];
+    const transport_from = dates.length ? dates.reduce((a, b) => (a < b ? a : b)) : null;
+    const transport_to = dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : null;
+
+    const createdBy = (s as any).created_by as string | null;
+
     const info: SubcontractInfo = {
-      id: (s as any).id as string,
+      id: sid,
       reference_number: ((s as any).reference_number as string) || null,
+      status: ((s as any).status as string) || null,
       carrier_id: carrierId,
       carrier_name: carrierId ? carrierMap.get(carrierId) || null : null,
+      customer_name: parentCustomerName.get(pid) ?? null,
+      customer_reference: ((s as any).customer_reference as string) || null,
       cost_amount: Number((s as any).customer_price ?? 0),
       cost_currency: ((s as any).customer_currency as string) || null,
+      cargo_description: ((s as any).cargo_description as string) || null,
+      weight_kg:
+        (s as any).weight_kg == null ? null : Number((s as any).weight_kg),
+      pallet_count:
+        (s as any).pallet_count == null ? null : Number((s as any).pallet_count),
+      loading_meters:
+        (s as any).loading_meters == null
+          ? null
+          : Number((s as any).loading_meters),
+      pickup: toStop(pickup),
+      delivery: toStop(delivery),
+      route_label: routeLabel,
+      transport_from,
+      transport_to,
+      added_at: ((s as any).created_at as string) || null,
+      added_by: createdBy ? creatorMap.get(createdBy) || null : null,
       pod_count: pod?.count ?? 0,
       pod_last_uploaded_at: pod?.last ?? null,
       pod_status: (pod?.count ?? 0) > 0 ? "received" : "missing",

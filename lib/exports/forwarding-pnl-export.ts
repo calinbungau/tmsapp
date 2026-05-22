@@ -52,16 +52,53 @@ export type PnlRow = {
   subcontracts?: SubcontractInfo[]
 }
 
+export type SubcontractStop = {
+  type: string | null
+  city: string | null
+  country: string | null
+  planned_date: string | null
+  planned_time_from: string | null
+  planned_time_to: string | null
+}
+
 export type SubcontractInfo = {
   id: string
   reference_number: string | null
+  status: string | null
   carrier_id: string | null
   carrier_name: string | null
+  customer_name: string | null
+  customer_reference: string | null
   cost_amount: number
   cost_currency: string | null
+  cargo_description: string | null
+  weight_kg: number | null
+  pallet_count: number | null
+  loading_meters: number | null
+  pickup: SubcontractStop | null
+  delivery: SubcontractStop | null
+  route_label: string | null
+  transport_from: string | null
+  transport_to: string | null
+  added_at: string | null
+  added_by: string | null
   pod_count: number
   pod_last_uploaded_at: string | null
   pod_status: "received" | "missing"
+}
+
+function fmtCargo(s: SubcontractInfo) {
+  const parts: string[] = []
+  if (s.pallet_count) parts.push(`${s.pallet_count}p`)
+  if (s.loading_meters) parts.push(`${Number(s.loading_meters).toFixed(1)}ldm`)
+  if (s.weight_kg) parts.push(`${(Number(s.weight_kg) / 1000).toFixed(1)}t`)
+  return parts.join(" ")
+}
+
+function fmtTransportRange(s: SubcontractInfo) {
+  if (!s.transport_from && !s.transport_to) return ""
+  if (s.transport_from === s.transport_to) return s.transport_from ?? ""
+  return `${s.transport_from ?? "?"} → ${s.transport_to ?? "?"}`
 }
 
 function podSummary(subs: SubcontractInfo[] | undefined) {
@@ -361,65 +398,88 @@ export async function exportPnlExcel(ctx: ExportContext) {
     to: { row: 1, column: COLUMNS.length },
   }
 
-  // ---- Sheet 3: Subcontracts (VLR-*)
+  // ---- Sheet 3: Subcontracts (VLR-*) — rich, "Forwarder Board"-style sheet
   const allSubs = ctx.rows.flatMap(r =>
     (r.subcontracts ?? []).map(s => ({ parent: r, sub: s })),
   )
   if (allSubs.length > 0) {
     const subsSheet = wb.addWorksheet("Subcontracts", {
-      views: [{ state: "frozen", ySplit: 1, showGridLines: false }],
+      views: [{ state: "frozen", ySplit: 2, showGridLines: false }],
+      pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
     })
+
+    // Title band (row 1)
+    subsSheet.mergeCells("A1:N1")
+    const tcell = subsSheet.getCell("A1")
+    tcell.value = `Subcontract Orders (VLR)  ·  ${allSubs.length} legs  ·  ${ctx.from} → ${ctx.to}`
+    tcell.font = { bold: true, size: 13, color: { argb: "FFFFFFFF" } }
+    tcell.alignment = { vertical: "middle", horizontal: "left", indent: 1 }
+    tcell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF0F172A" },
+    }
+    subsSheet.getRow(1).height = 30
+
     const SUB_COLS = [
-      { header: "Parent Order", key: "parent", width: 18 },
-      { header: "Subcontract Ref", key: "sub_ref", width: 18 },
-      { header: "Customer", key: "customer", width: 28 },
-      { header: "Carrier", key: "carrier", width: 28 },
+      { header: "Reference", key: "ref", width: 16 },
+      { header: "Parent", key: "parent", width: 18 },
+      { header: "Status", key: "status", width: 16 },
+      { header: "Customer", key: "customer", width: 26 },
+      { header: "Cust. Ref", key: "cust_ref", width: 16 },
+      { header: "Route", key: "route", width: 32 },
+      { header: "Carrier", key: "carrier", width: 26 },
       { header: "Cost", key: "cost", width: 12, numFmt: "#,##0.00" },
       { header: "Curr", key: "cur", width: 7 },
-      { header: "POD Status", key: "pod", width: 14 },
-      { header: "POD Files", key: "pod_count", width: 10, numFmt: "0" },
-      { header: "POD Last Upload", key: "pod_last", width: 22 },
+      { header: "Cargo", key: "cargo", width: 16 },
+      { header: "Transport Dates", key: "tdates", width: 22 },
+      { header: "POD", key: "pod", width: 14 },
+      { header: "Added On", key: "added_on", width: 12 },
+      { header: "Added By", key: "added_by", width: 20 },
     ] as const
 
-    subsSheet.columns = SUB_COLS.map(c => ({
-      header: c.header,
-      key: c.key,
-      width: c.width,
-      style: (c as any).numFmt ? { numFmt: (c as any).numFmt } : {},
-    }))
-
-    const subHeader = subsSheet.getRow(1)
-    subHeader.height = 30
+    // Header row (row 2)
+    const headerRowIdx = 2
+    SUB_COLS.forEach((c, i) => {
+      const col = subsSheet.getColumn(i + 1)
+      col.width = c.width
+      if ((c as any).numFmt) col.numFmt = (c as any).numFmt
+      const cell = subsSheet.getCell(headerRowIdx, i + 1)
+      cell.value = c.header
+    })
+    const subHeader = subsSheet.getRow(headerRowIdx)
+    subHeader.height = 28
     subHeader.eachCell(cell => {
-      cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 }
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10.5 }
       cell.fill = {
         type: "pattern",
         pattern: "solid",
-        fgColor: { argb: "FF0F172A" },
+        fgColor: { argb: "FF1E293B" },
       }
-      cell.alignment = { vertical: "middle", horizontal: "left", indent: 1 }
+      cell.alignment = { vertical: "middle", horizontal: "left", indent: 1, wrapText: true }
       cell.border = {
         bottom: { style: "medium", color: { argb: "FF8B5CF6" } },
       }
     })
 
+    // Data rows
     allSubs.forEach(({ parent, sub }, idx) => {
-      const r = subsSheet.addRow({
-        parent: parent.reference_number ?? parent.order_id.slice(0, 8),
-        sub_ref: sub.reference_number ?? sub.id.slice(0, 8),
-        customer: parent.customer_name ?? "-",
-        carrier: sub.carrier_name ?? "-",
-        cost: sub.cost_amount,
-        cur: sub.cost_currency ?? "",
-        pod: sub.pod_status === "received" ? "Received" : "Missing",
-        pod_count: sub.pod_count,
-        pod_last: sub.pod_last_uploaded_at
-          ? new Date(sub.pod_last_uploaded_at).toISOString().replace("T", " ").slice(0, 19)
-          : "",
-      })
-      r.height = 20
+      const r = subsSheet.addRow({})
+      r.height = 22
       const zebra = idx % 2 === 0 ? "FFFFFFFF" : "FFF8FAFC"
-      r.eachCell(cell => {
+
+      const setCell = (
+        colIdx: number,
+        value: any,
+        opts: {
+          align?: "left" | "right" | "center"
+          bold?: boolean
+          colorArgb?: string
+          numFmt?: string
+        } = {},
+      ) => {
+        const cell = r.getCell(colIdx)
+        cell.value = value
         cell.fill = {
           type: "pattern",
           pattern: "solid",
@@ -428,19 +488,94 @@ export async function exportPnlExcel(ctx: ExportContext) {
         cell.border = {
           bottom: { style: "hair", color: { argb: "FFE2E8F0" } },
         }
-      })
-      const podCell = r.getCell(7)
-      podCell.font = {
-        bold: true,
-        color: {
-          argb: sub.pod_status === "received" ? "FF059669" : "FFDC2626",
-        },
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: opts.align ?? "left",
+          indent: opts.align === "right" ? 0 : 1,
+          wrapText: false,
+        }
+        if (opts.numFmt) cell.numFmt = opts.numFmt
+        cell.font = {
+          bold: !!opts.bold,
+          size: 10,
+          color: { argb: opts.colorArgb ?? "FF0F172A" },
+        }
       }
+
+      // 1 Reference
+      setCell(1, sub.reference_number ?? sub.id.slice(0, 8), {
+        bold: true,
+        colorArgb: "FF0EA5E9",
+      })
+      // 2 Parent
+      setCell(2, parent.reference_number ?? parent.order_id.slice(0, 8), {
+        colorArgb: "FF64748B",
+      })
+      // 3 Status
+      const statusColors: Record<string, string> = {
+        delivered: "FF059669",
+        in_progress: "FFF59E0B",
+        carrier_confirmed: "FF0EA5E9",
+        assigned_to_carrier: "FF8B5CF6",
+        cancelled: "FFDC2626",
+      }
+      const stKey = (sub.status || "").toLowerCase()
+      setCell(3, sub.status ?? "-", {
+        bold: true,
+        colorArgb: statusColors[stKey] ?? "FF334155",
+      })
+      // 4 Customer
+      setCell(4, sub.customer_name ?? parent.customer_name ?? "-")
+      // 5 Cust ref
+      setCell(5, sub.customer_reference ?? "")
+      // 6 Route
+      setCell(6, sub.route_label ?? "-", { colorArgb: "FF334155" })
+      // 7 Carrier
+      setCell(7, sub.carrier_name ?? "-", { bold: true })
+      // 8 Cost
+      setCell(8, sub.cost_amount, {
+        align: "right",
+        bold: true,
+        numFmt: "#,##0.00",
+        colorArgb: "FFF97316",
+      })
+      // 9 Currency
+      setCell(9, sub.cost_currency ?? "", {
+        align: "center",
+        colorArgb: "FF64748B",
+      })
+      // 10 Cargo
+      setCell(10, fmtCargo(sub), { colorArgb: "FF475569" })
+      // 11 Transport dates
+      setCell(11, fmtTransportRange(sub), { colorArgb: "FF475569" })
+      // 12 POD
+      const podLabel =
+        sub.pod_status === "received"
+          ? sub.pod_count > 1
+            ? `Received (${sub.pod_count})`
+            : "Received"
+          : "Missing"
+      setCell(12, podLabel, {
+        bold: true,
+        colorArgb: sub.pod_status === "received" ? "FF059669" : "FFDC2626",
+      })
+      // 13 Added on
+      setCell(
+        13,
+        sub.added_at
+          ? new Date(sub.added_at).toISOString().slice(0, 10)
+          : "",
+        { colorArgb: "FF64748B" },
+      )
+      // 14 Added by
+      setCell(14, sub.added_by ?? "system", {
+        colorArgb: "FF334155",
+      })
     })
 
     subsSheet.autoFilter = {
-      from: { row: 1, column: 1 },
-      to: { row: 1, column: SUB_COLS.length },
+      from: { row: headerRowIdx, column: 1 },
+      to: { row: headerRowIdx, column: SUB_COLS.length },
     }
   }
 
