@@ -102,19 +102,12 @@ export async function PATCH(
 
   const nowIso = new Date().toISOString()
 
-  // Read current status so we don't downgrade a finished trip.
-  const { data: existing, error: existingErr } = await supabase
-    .from("trips")
-    .select("id, status")
-    .eq("id", tripId)
-    .maybeSingle()
-  if (existingErr) {
-    console.error("[v0] analysis-window load error:", existingErr)
-    return NextResponse.json(
-      { error: "Failed to load trip", detail: existingErr.message },
-      { status: 500 }
-    )
-  }
+  // NOTE: we deliberately do NOT touch `trips.status` here. The DB's
+  // `trips_status_check` allows only
+  //   planned | dispatched | accepted | in_progress | completed | cancelled
+  // — there is no `confirmed` value in the trip lifecycle. Route confirmation
+  // is a separate concept tracked via `route_confirmed_at` /
+  // `route_confirmed_by`, which the UI uses to render the "Confirmed" badge.
 
   const update: Record<string, unknown> = {
     analysis_window_from: from.toISOString(),
@@ -123,12 +116,6 @@ export async function PATCH(
     route_confirmed_by: confirmedBy,
   }
   if (distanceKm != null) update.distance_km = distanceKm
-
-  // Only promote to "confirmed" when trip is still in a pre-confirmed state.
-  const promotable = new Set([null, "draft", "planned", "scheduled"])
-  if (promotable.has(existing?.status ?? null)) {
-    update.status = "confirmed"
-  }
 
   const { error } = await supabase.from("trips").update(update).eq("id", tripId)
   if (error) {
