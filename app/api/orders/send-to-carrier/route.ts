@@ -1,0 +1,361 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { decrypt } from "@/lib/encryption";
+import nodemailer from "nodemailer";
+import { randomUUID } from "crypto";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function POST(request: NextRequest) {
+  try {
+    const adminId = request.headers.get("x-admin-id");
+    if (!adminId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const {
+      orderId,
+      carrierEmail,
+      carrierEmails,
+      carrierName,
+      subject,
+      message,
+      orderHtml,
+      // New: client-rendered PDF, base64-encoded. Preferred over orderHtml.
+      orderPdfBase64,
+      orderPdfFilename,
+      lang,
+    } = await request.json();
+
+    // Accept either a single `carrierEmail` (legacy) or an array
+    // `carrierEmails` (new chip-input UI). We normalize to a deduped
+    // array of trimmed addresses, then keep the first one as the
+    // primary recipient stored on the upload token (the token is
+    // scoped to one carrier identity, but the SMTP `to:` field is sent
+    // to all recipients in parallel).
+    const rawList: string[] = Array.isArray(carrierEmails) && carrierEmails.length > 0
+      ? carrierEmails
+      : (carrierEmail ? [carrierEmail] : []);
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const recipients = Array.from(
+      new Set(
+        rawList
+          .map((e: string) => (typeof e === "string" ? e.trim() : ""))
+          .filter((e: string) => e.length > 0 && emailRe.test(e))
+          .map((e: string) => e.toLowerCase()),
+      ),
+    );
+
+    if (!orderId || recipients.length === 0) {
+      return NextResponse.json({ error: "Order ID and at least one valid email address are required" }, { status: 400 });
+    }
+    const primaryEmail = recipients[0];
+
+    // Get the order to verify it exists and get reference number
+    const { data: order, error: orderErr } = await supabase
+      .from("orders")
+      .select("id, reference_number, status, admin_id")
+      .eq("id", orderId)
+      .single();
+
+    if (orderErr || !order) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    // Get SMTP settings for this admin
+    const { data: settings } = await supabase
+      .from("user_email_settings")
+      .select("*")
+      .eq("admin_id", adminId)
+      .single();
+
+    if (!settings || !settings.smtp_password_encrypted) {
+      return NextResponse.json({ error: "SMTP not configured. Please set up email settings first." }, { status: 400 });
+    }
+
+    // Create a unique upload token for the carrier
+    const token = randomUUID();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days expiry
+
+    const { error: tokenErr } = await supabase
+      .from("carrier_upload_tokens")
+      .insert({
+        token,
+        order_id: orderId,
+        // The upload token is keyed to a single carrier identity. When
+        // multiple recipients are addressed (e.g. carrier dispatcher +
+        // backup coordinator), we store the primary address but share
+        // the same link with everyone via the SMTP `to:` field.
+        carrier_email: primaryEmail,
+        carrier_name: carrierName || null,
+        admin_id: adminId,
+        expires_at: expiresAt.toISOString(),
+      });
+
+    if (tokenErr) {
+      return NextResponse.json({ error: "Failed to create upload token" }, { status: 500 });
+    }
+
+    // Build the upload link. We pin the production domain
+    // (app.bngtracking.ro) unconditionally — the previous logic honored
+    // NEXT_PUBLIC_APP_URL, but in practice that env var was set to the
+    // auto-generated Vercel preview URL (e.g. v0-camerabng.vercel.app),
+    // which leaked into carrier-facing emails. Carriers see an unstable,
+    // throwaway-looking domain → trust drops. The only override we still
+    // accept is NEXT_PUBLIC_APP_URL when it does NOT look like a v0/Vercel
+    // preview (so local dev with `http://localhost:3000` still works).
+    const envUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    const isPreviewUrl = /vercel\.app|v0-|\.vusercontent\./.test(envUrl);
+    const baseUrl = envUrl && !isPreviewUrl ? envUrl : "https://app.bngtracking.ro";
+    const uploadLink = `${baseUrl}/carrier/confirm/${token}`;
+
+    // Build email body with the upload link
+    const refNumber = order.reference_number || orderId.slice(0, 8);
+    const emailHtml = buildCarrierEmailHtml({
+      carrierName: carrierName || "Carrier",
+      refNumber,
+      message: message || "",
+      uploadLink,
+      companyName: settings.display_name || "Our Company",
+      lang,
+    });
+
+    // Set up SMTP transport
+    const smtpPass = decrypt(settings.smtp_password_encrypted);
+    const transporter = nodemailer.createTransport({
+      host: settings.smtp_host,
+      port: settings.smtp_port,
+      secure: settings.smtp_secure,
+      auth: { user: settings.smtp_user, pass: smtpPass },
+      connectionTimeout: 15000,
+      socketTimeout: 15000,
+    });
+
+    const fromAddress = settings.display_name
+      ? `"${settings.display_name}" <${settings.email_address}>`
+      : settings.email_address;
+
+    // Build full HTML with signature
+    const fullHtml = settings.signature_html
+      ? `${emailHtml}<br/>${settings.signature_html}`
+      : emailHtml;
+
+    // Build attachments. Preference order:
+    //   1. Client-rendered PDF (base64) → attach as Order_<ref>.pdf
+    //   2. Raw HTML → fall back to .html attachment (legacy clients)
+    // Carriers consistently expect a real PDF, so the client now always
+    // tries to send orderPdfBase64; the orderHtml branch only kicks in
+    // when client-side PDF generation crashed (rare, but kept so the
+    // email still ships rather than failing the whole request).
+    const attachments: any[] = [];
+    if (orderPdfBase64 && typeof orderPdfBase64 === "string") {
+      const cleanBase64 = orderPdfBase64.replace(/^data:application\/pdf;base64,/, "");
+      const safeFilename = (typeof orderPdfFilename === "string" && orderPdfFilename.trim())
+        ? orderPdfFilename.trim()
+        : `Order_${refNumber}.pdf`;
+      attachments.push({
+        filename: safeFilename,
+        content: Buffer.from(cleanBase64, "base64"),
+        contentType: "application/pdf",
+      });
+    } else if (orderHtml) {
+      // Wrap in a self-contained printable HTML document
+      const printableHtml = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Order ${refNumber}</title>
+<style>
+  @page { margin: 10mm; size: A4; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  body { margin: 0; padding: 0; background: white; }
+</style>
+</head><body>${orderHtml}</body></html>`;
+      attachments.push({
+        filename: `Order_${refNumber}.html`,
+        content: Buffer.from(printableHtml, "utf-8"),
+        contentType: "text/html",
+      });
+    }
+
+    // Localized fallback subject. Only used when the operator left the
+    // Subject field blank — typed subjects pass through untouched so the
+    // user can write whatever they want without us second-guessing it.
+    const SUBJECT_I18N: Record<string, string> = {
+      en: `Order ${refNumber} - Confirmation Required`,
+      ro: `Comanda ${refNumber} - Confirmare necesară`,
+      de: `Auftrag ${refNumber} - Bestätigung erforderlich`,
+      hu: `Megrendelés ${refNumber} - Visszaigazolás szükséges`,
+    };
+    const subjectKey = (lang && SUBJECT_I18N[lang as string]) ? (lang as string) : "en";
+    const mailSubject = subject || SUBJECT_I18N[subjectKey];
+
+    await transporter.sendMail({
+      from: fromAddress,
+      // nodemailer accepts a comma-joined string OR an array — using an
+      // array keeps each address as a distinct RFC-5322 mailbox so they
+      // all appear in the carrier's inbox `To:` header.
+      to: recipients,
+      subject: mailSubject,
+      html: fullHtml,
+      attachments,
+    });
+
+    // Update order status — Send-to-Carrier only applies to forwarder
+    // (subcontract) child orders. The parent's "in_execution" status is
+    // managed by the recompute trigger on child status changes; we never
+    // write parent status from here. For internal orders, dispatch lives
+    // on trip_legs, not on orders.status — so we skip the flip entirely.
+    const fromStatus = order.status;
+    let toStatus: string | null = null;
+    if (fromStatus?.startsWith("fwd_")) {
+      toStatus = "fwd_carrier_confirmation_required";
+      await supabase.from("orders").update({
+        status: toStatus,
+        carrier_sent_at: new Date().toISOString(),
+      }).eq("id", orderId);
+
+      await supabase.from("order_status_history").insert({
+        order_id: orderId,
+        from_status: fromStatus,
+        to_status: toStatus,
+        changed_by_type: "admin",
+        changed_by: adminId,
+        notes: `Order sent to carrier: ${carrierName || primaryEmail} (${recipients.length} recipient${recipients.length > 1 ? "s" : ""}). Upload link: ${uploadLink}`,
+      });
+    } else {
+      // Internal order — just record the email send timestamp.
+      await supabase.from("orders").update({
+        carrier_sent_at: new Date().toISOString(),
+      }).eq("id", orderId);
+      console.log("[v0] send-to-carrier on internal order — no status flip", { orderId, fromStatus });
+    }
+
+    // Log activity
+    await supabase.from("order_activity_log").insert({
+      order_id: orderId,
+      action: "order_sent_to_carrier",
+      details: {
+        carrier_name: carrierName,
+        carrier_email: primaryEmail,
+        // Keep the full recipient list so the activity log shows
+        // every address the email was actually delivered to.
+        carrier_emails: recipients,
+        recipient_count: recipients.length,
+        upload_link: uploadLink,
+        upload_token: token,
+        language: lang || "en",
+        sent_at: new Date().toISOString(),
+      },
+      performed_by_type: "admin",
+      performed_by_id: adminId,
+    });
+
+    return NextResponse.json({
+      success: true,
+      uploadLink,
+      token,
+      newStatus: toStatus,
+    });
+  } catch (err: any) {
+    console.error("[send-to-carrier] Error:", err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+// Translation strings for the carrier-notification email body. Keyed
+// off the same `lang` value the operator picked in the Send-to-Carrier
+// dialog — Romanian is the most common since this app is operated by a
+// Romanian forwarder, but we keep EN/DE/HU on hand for foreign carriers.
+const EMAIL_I18N = {
+  en: {
+    headerTitle: "Order Confirmation Required",
+    refLabel: "Reference",
+    greeting: (name: string) => `Dear <strong>${name}</strong>,`,
+    intro: "Please find the order document attached. To confirm this order, please sign the document and upload it using the secure link below:",
+    button: "Upload Signed Document",
+    copyLink: "Or copy this link:",
+    expiry: "This link expires in 30 days. If you have any questions, please reply to this email.",
+    sentBy: (company: string) => `Sent by ${company} via BNG Tracking`,
+  },
+  ro: {
+    headerTitle: "Confirmare comandă necesară",
+    refLabel: "Referință",
+    greeting: (name: string) => `Bună ziua <strong>${name}</strong>,`,
+    intro: "Vă atașăm documentul de comandă. Pentru a confirma această comandă, vă rugăm să semnați documentul și să îl încărcați folosind link-ul securizat de mai jos:",
+    button: "Încarcă documentul semnat",
+    copyLink: "Sau copiați acest link:",
+    expiry: "Acest link expiră în 30 de zile. Dacă aveți întrebări, vă rugăm să răspundeți la acest e-mail.",
+    sentBy: (company: string) => `Trimis de ${company} prin BNG Tracking`,
+  },
+  de: {
+    headerTitle: "Auftragsbestätigung erforderlich",
+    refLabel: "Referenz",
+    greeting: (name: string) => `Sehr geehrte Damen und Herren von <strong>${name}</strong>,`,
+    intro: "Im Anhang finden Sie das Auftragsdokument. Um diesen Auftrag zu bestätigen, unterschreiben Sie das Dokument bitte und laden Sie es über den unten stehenden sicheren Link hoch:",
+    button: "Unterzeichnetes Dokument hochladen",
+    copyLink: "Oder kopieren Sie diesen Link:",
+    expiry: "Dieser Link läuft in 30 Tagen ab. Bei Fragen antworten Sie bitte auf diese E-Mail.",
+    sentBy: (company: string) => `Gesendet von ${company} über BNG Tracking`,
+  },
+  hu: {
+    headerTitle: "Megrendelés visszaigazolása szükséges",
+    refLabel: "Hivatkozás",
+    greeting: (name: string) => `Tisztelt <strong>${name}</strong>!`,
+    intro: "Mellékelten megtalálja a megrendelési dokumentumot. A megrendelés megerősítéséhez kérjük, írja alá a dokumentumot, és töltse fel az alábbi biztonságos linken:",
+    button: "Aláírt dokumentum feltöltése",
+    copyLink: "Vagy másolja ezt a linket:",
+    expiry: "A link 30 napon belül lejár. Ha kérdése van, kérjük, válaszoljon erre az e-mailre.",
+    sentBy: (company: string) => `Küldte: ${company} – BNG Tracking`,
+  },
+} as const;
+type EmailLang = keyof typeof EMAIL_I18N;
+
+function buildCarrierEmailHtml(opts: {
+  carrierName: string;
+  refNumber: string;
+  message: string;
+  uploadLink: string;
+  companyName: string;
+  lang?: string;
+}) {
+  // Fall back to English for unknown locales (e.g. an old template that
+  // still ships "es" — better to send English than crash the request).
+  const key = (opts.lang && (opts.lang in EMAIL_I18N) ? opts.lang : "en") as EmailLang;
+  const t = EMAIL_I18N[key];
+
+  return `
+    <div style="font-family: Arial, Helvetica, sans-serif; max-width: 600px; margin: 0 auto; color: #1a1a2e;">
+      <div style="background: #1a1a2e; padding: 24px 32px; border-radius: 8px 8px 0 0;">
+        <h2 style="color: #d4a843; margin: 0; font-size: 18px;">${t.headerTitle}</h2>
+        <p style="color: #a0a0b0; margin: 6px 0 0; font-size: 13px;">${t.refLabel}: ${opts.refNumber}</p>
+      </div>
+      <div style="background: #f8f9fa; padding: 28px 32px; border: 1px solid #e5e7eb; border-top: none;">
+        <p style="margin: 0 0 16px; font-size: 14px; line-height: 1.6;">
+          ${t.greeting(opts.carrierName)}
+        </p>
+        ${opts.message ? `<p style="margin: 0 0 16px; font-size: 14px; line-height: 1.6;">${opts.message.replace(/\n/g, "<br/>")}</p>` : ""}
+        <p style="margin: 0 0 16px; font-size: 14px; line-height: 1.6;">
+          ${t.intro}
+        </p>
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="${opts.uploadLink}" 
+             style="display: inline-block; background: #d4a843; color: #1a1a2e; text-decoration: none; padding: 14px 36px; border-radius: 6px; font-weight: 700; font-size: 14px; letter-spacing: 0.3px;">
+            ${t.button}
+          </a>
+        </div>
+        <p style="margin: 0 0 8px; font-size: 12px; color: #6b7280; text-align: center;">
+          ${t.copyLink} <a href="${opts.uploadLink}" style="color: #d4a843; word-break: break-all;">${opts.uploadLink}</a>
+        </p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+        <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+          ${t.expiry}
+        </p>
+      </div>
+      <div style="background: #1a1a2e; padding: 16px 32px; border-radius: 0 0 8px 8px; text-align: center;">
+        <p style="margin: 0; font-size: 11px; color: #6b7280;">
+          ${t.sentBy(opts.companyName)}
+        </p>
+      </div>
+    </div>
+  `;
+}

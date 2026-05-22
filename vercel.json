@@ -1,0 +1,10 @@
+{
+  "installCommand": "pnpm install",
+  "buildCommand": "node .v0/inject-built-with-v0.mjs && next build",
+  "crons": [
+    {
+      "path": "/api/cron/maintenance-check",
+      "schedule": "*/30 * * * *"
+    }
+  ]
+}

@@ -1,0 +1,674 @@
+"use client";
+
+import React from "react";
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Shield, Check, HardDrive, Users, Car, FileText, Building, Building2, MapPin, Loader2, ChevronRight, UserCog, FolderTree, ArrowLeftRight, Mail, Link2 } from "lucide-react";
+import { useAdminSession } from "@/hooks/use-admin-session";
+import Link from "next/link";
+
+export default function AdminSettingsPage() {
+  const { session: adminSession } = useAdminSession();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  
+  // Traccar settings
+  const [traccarServerUrl, setTraccarServerUrl] = useState("");
+  const [traccarEmail, setTraccarEmail] = useState("");
+  const [traccarPassword, setTraccarPassword] = useState("");
+  const [testingTraccar, setTestingTraccar] = useState(false);
+  const [traccarMessage, setTraccarMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  
+  // Stats
+  const [stats, setStats] = useState({
+    storageSize: 0,
+    driverCount: 0,
+    vehicleCount: 0,
+    inspectionCount: 0,
+  });
+  const [loadingStats, setLoadingStats] = useState(true);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!adminSession?.id) return;
+
+    const fetchStats = async () => {
+      const supabase = createClient();
+      
+      // Fetch admin details including Traccar settings and super admin status
+      const { data: adminData } = await supabase
+        .from("admins")
+        .select("company_name, traccar_server_url, traccar_email, traccar_password, is_super_admin")
+        .eq("id", adminSession.id)
+        .single();
+      
+      if (adminData?.is_super_admin) {
+        setIsSuperAdmin(true);
+      }
+      
+      if (adminData?.company_name) {
+        setCompanyName(adminData.company_name);
+      }
+      if (adminData?.traccar_server_url) {
+        setTraccarServerUrl(adminData.traccar_server_url);
+      }
+      if (adminData?.traccar_email) {
+        setTraccarEmail(adminData.traccar_email);
+      }
+      if (adminData?.traccar_password) {
+        setTraccarPassword(adminData.traccar_password);
+      }
+
+      // Fetch counts
+      const [driversResult, vehiclesResult, inspectionsResult] = await Promise.all([
+        supabase.from("drivers").select("id", { count: "exact", head: true }).eq("admin_id", adminSession.id),
+        supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("admin_id", adminSession.id),
+        supabase.from("inspections").select("id", { count: "exact", head: true }).eq("admin_id", adminSession.id),
+      ]);
+
+      // Calculate storage size by listing files in admin's folder
+      let totalSize = 0;
+      try {
+        const { data: files } = await supabase.storage
+          .from("inspection-photos")
+          .list(adminSession.id, { limit: 1000 });
+        
+        if (files) {
+          // List files in subfolders (inspection IDs)
+          for (const folder of files) {
+            if (folder.id) {
+              const { data: subFiles } = await supabase.storage
+                .from("inspection-photos")
+                .list(`${adminSession.id}/${folder.name}`, { limit: 100 });
+              
+              if (subFiles) {
+                for (const file of subFiles) {
+                  if (file.metadata?.size) {
+                    totalSize += file.metadata.size;
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error calculating storage:", e);
+      }
+
+      setStats({
+        storageSize: totalSize,
+        driverCount: driversResult.count || 0,
+        vehicleCount: vehiclesResult.count || 0,
+        inspectionCount: inspectionsResult.count || 0,
+      });
+      setLoadingStats(false);
+    };
+
+    fetchStats();
+  }, [adminSession?.id]);
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  };
+
+  const handleUpdateCompany = async () => {
+    if (!adminSession?.id) return;
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("admins")
+        .update({ company_name: companyName, updated_at: new Date().toISOString() })
+        .eq("id", adminSession.id);
+
+      if (error) {
+        setMessage({ type: "error", text: "Failed to update company name" });
+      } else {
+        // Update localStorage
+        const session = JSON.parse(localStorage.getItem("admin_session") || "{}");
+        session.company_name = companyName;
+        localStorage.setItem("admin_session", JSON.stringify(session));
+        setMessage({ type: "success", text: "Company name updated successfully" });
+      }
+    } catch {
+      setMessage({ type: "error", text: "Something went wrong" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveTraccar = async () => {
+    if (!adminSession?.id) return;
+    setLoading(true);
+    setTraccarMessage(null);
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("admins")
+        .update({
+          traccar_server_url: traccarServerUrl || null,
+          traccar_email: traccarEmail || null,
+          traccar_password: traccarPassword || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", adminSession.id);
+
+      if (error) {
+        setTraccarMessage({ type: "error", text: "Failed to save Traccar settings" });
+      } else {
+        setTraccarMessage({ type: "success", text: "Traccar settings saved successfully" });
+      }
+    } catch {
+      setTraccarMessage({ type: "error", text: "Something went wrong" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTestTraccar = async () => {
+    if (!adminSession?.id || !traccarServerUrl || !traccarEmail || !traccarPassword) {
+      setTraccarMessage({ type: "error", text: "Please fill in all Traccar fields" });
+      return;
+    }
+    
+    setTestingTraccar(true);
+    setTraccarMessage(null);
+
+    try {
+      // First save the settings
+      await handleSaveTraccar();
+      
+      // Then test the connection
+      const response = await fetch(`/api/traccar?action=devices&adminId=${adminSession.id}`);
+      const data = await response.json();
+
+      if (response.ok && data.devices) {
+        setTraccarMessage({ 
+          type: "success", 
+          text: `Connected successfully! Found ${data.devices.length} device(s).` 
+        });
+      } else {
+        setTraccarMessage({ 
+          type: "error", 
+          text: data.error || "Failed to connect to Traccar" 
+        });
+      }
+    } catch {
+      setTraccarMessage({ type: "error", text: "Failed to test Traccar connection" });
+    } finally {
+      setTestingTraccar(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminSession?.id) return;
+    setMessage(null);
+
+    if (newPassword !== confirmPassword) {
+      setMessage({ type: "error", text: "New passwords do not match" });
+      return;
+    }
+
+    if (newPassword.length < 4) {
+      setMessage({ type: "error", text: "Password must be at least 4 characters" });
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const supabase = createClient();
+      
+      // Verify current password
+      const { data: admin, error: fetchError } = await supabase
+        .from("admins")
+        .select("password_hash")
+        .eq("id", adminSession.id)
+        .single();
+
+      if (fetchError || !admin) {
+        setMessage({ type: "error", text: "Failed to verify current password" });
+        setLoading(false);
+        return;
+      }
+
+      if (admin.password_hash !== currentPassword) {
+        setMessage({ type: "error", text: "Current password is incorrect" });
+        setLoading(false);
+        return;
+      }
+
+      // Update password
+      const { error: updateError } = await supabase
+        .from("admins")
+        .update({ password_hash: newPassword, updated_at: new Date().toISOString() })
+        .eq("id", adminSession.id);
+
+      if (updateError) {
+        setMessage({ type: "error", text: "Failed to update password" });
+      } else {
+        setMessage({ type: "success", text: "Password changed successfully" });
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      }
+    } catch {
+      setMessage({ type: "error", text: "Something went wrong" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold">Settings</h1>
+        <p className="text-muted-foreground">Manage your account and view usage statistics</p>
+      </div>
+
+      {/* Management Links - Only show to owners */}
+      {(adminSession?.isOwner || !adminSession?.user_id) && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Link href="/admin/settings/users">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                      <UserCog className="h-5 w-5 text-blue-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium">Users & Roles</h3>
+                      <p className="text-sm text-muted-foreground">Manage user accounts and permissions</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/settings/roles">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
+                      <Shield className="h-5 w-5 text-purple-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium">Roles & Permissions</h3>
+                      <p className="text-sm text-muted-foreground">Configure access control and roles</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/settings/company">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                      <Building className="h-5 w-5 text-amber-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium">Company Profile</h3>
+                      <p className="text-sm text-muted-foreground">Company details, numbering format, defaults</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/settings/forwarding">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                      <ArrowLeftRight className="h-5 w-5 text-emerald-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium">Forwarder Configurator</h3>
+                      <p className="text-sm text-muted-foreground">Profit currency, margins, templates & notifications</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/settings/series">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                      <FileText className="h-5 w-5 text-amber-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium">Series Configurator</h3>
+                      <p className="text-sm text-muted-foreground">Document numbering for orders, invoices & more</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/settings/system-email">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-rose-500/10 flex items-center justify-center">
+                      <Mail className="h-5 w-5 text-rose-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium">System Email</h3>
+                      <p className="text-sm text-muted-foreground">SMTP for reports, alerts & notifications</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/settings/integrations">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+                      <Link2 className="h-5 w-5 text-cyan-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium">Integrations</h3>
+                      <p className="text-sm text-muted-foreground">Smartbill, FGO & billing software</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/settings/ai-instructions">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                      <FileText className="h-5 w-5 text-violet-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium">AI Extraction Instructions</h3>
+                      <p className="text-sm text-muted-foreground">Custom AI prompts for document extraction</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          {isSuperAdmin && (
+            <Link href="/admin/settings/tenants">
+              <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full border-primary/20 bg-primary/5">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Building2 className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium">Tenant Management</h3>
+                        <p className="text-sm text-muted-foreground">Create & manage admin accounts (Super Admin)</p>
+                      </div>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          )}
+        </div>
+      )}
+
+      {/* Usage Stats */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <HardDrive className="h-5 w-5 text-primary" />
+            <CardTitle>Usage Statistics</CardTitle>
+          </div>
+          <CardDescription>Your current storage and resource usage</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loadingStats ? (
+            <p className="text-muted-foreground">Loading statistics...</p>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-4 bg-muted/50 rounded-lg text-center">
+                <HardDrive className="h-6 w-6 mx-auto mb-2 text-blue-500" />
+                <p className="text-2xl font-bold">{formatBytes(stats.storageSize)}</p>
+                <p className="text-xs text-muted-foreground">Storage Used</p>
+              </div>
+              <div className="p-4 bg-muted/50 rounded-lg text-center">
+                <Users className="h-6 w-6 mx-auto mb-2 text-green-500" />
+                <p className="text-2xl font-bold">{stats.driverCount}</p>
+                <p className="text-xs text-muted-foreground">Drivers</p>
+              </div>
+              <div className="p-4 bg-muted/50 rounded-lg text-center">
+                <Car className="h-6 w-6 mx-auto mb-2 text-orange-500" />
+                <p className="text-2xl font-bold">{stats.vehicleCount}</p>
+                <p className="text-xs text-muted-foreground">Vehicles</p>
+              </div>
+              <div className="p-4 bg-muted/50 rounded-lg text-center">
+                <FileText className="h-6 w-6 mx-auto mb-2 text-purple-500" />
+                <p className="text-2xl font-bold">{stats.inspectionCount}</p>
+                <p className="text-xs text-muted-foreground">Inspections</p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Company Name */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Building className="h-5 w-5 text-primary" />
+            <CardTitle>Company Information</CardTitle>
+          </div>
+          <CardDescription>Update your company name displayed in the header</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-4">
+            <Input
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              placeholder="Enter company name"
+              className="flex-1"
+            />
+            <Button onClick={handleUpdateCompany} disabled={loading}>
+              {loading ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Traccar GPS Integration */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-primary" />
+            <CardTitle>Traccar GPS Integration</CardTitle>
+          </div>
+          <CardDescription>
+            Connect to your Traccar server to sync vehicle odometer and engine hours
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="traccar-url">Server URL</Label>
+            <Input
+              id="traccar-url"
+              value={traccarServerUrl}
+              onChange={(e) => setTraccarServerUrl(e.target.value)}
+              placeholder="https://your-traccar-server.com"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="traccar-email">Email</Label>
+            <Input
+              id="traccar-email"
+              type="email"
+              value={traccarEmail}
+              onChange={(e) => setTraccarEmail(e.target.value)}
+              placeholder="admin@example.com"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="traccar-password">Password</Label>
+            <Input
+              id="traccar-password"
+              type="password"
+              value={traccarPassword}
+              onChange={(e) => setTraccarPassword(e.target.value)}
+              placeholder="Enter Traccar password"
+            />
+          </div>
+          
+          {traccarMessage && (
+            <div
+              className={`p-3 rounded-lg text-sm ${
+                traccarMessage.type === "success"
+                  ? "bg-green-50 text-green-700 border border-green-200"
+                  : "bg-red-50 text-red-700 border border-red-200"
+              }`}
+            >
+              {traccarMessage.type === "success" && <Check className="h-4 w-4 inline mr-2" />}
+              {traccarMessage.text}
+            </div>
+          )}
+          
+          <div className="flex gap-2">
+            <Button onClick={handleSaveTraccar} disabled={loading}>
+              {loading ? "Saving..." : "Save"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleTestTraccar}
+              disabled={testingTraccar || !traccarServerUrl}
+              className="bg-transparent"
+            >
+              {testingTraccar ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Testing...
+                </>
+              ) : (
+                "Test Connection"
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Change Password */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-primary" />
+            <CardTitle>Change Password</CardTitle>
+          </div>
+          <CardDescription>Update your admin password</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="current">Current Password</Label>
+              <Input
+                id="current"
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Enter current password"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new">New Password</Label>
+              <Input
+                id="new"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter new password"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm">Confirm New Password</Label>
+              <Input
+                id="confirm"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+                required
+              />
+            </div>
+
+            {message && (
+              <div
+                className={`p-3 rounded-lg text-sm ${
+                  message.type === "success"
+                    ? "bg-green-50 text-green-700 border border-green-200"
+                    : "bg-red-50 text-red-700 border border-red-200"
+                }`}
+              >
+                {message.type === "success" && <Check className="h-4 w-4 inline mr-2" />}
+                {message.text}
+              </div>
+            )}
+
+            <Button type="submit" disabled={loading}>
+              {loading ? "Saving..." : "Change Password"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* About */}
+      <Card>
+        <CardHeader>
+          <CardTitle>About</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground space-y-2">
+          <p>Driver Daily Inspection System</p>
+          <p>This system allows drivers to complete mandatory daily vehicle inspections by uploading photos of their vehicles.</p>
+          <p className="text-xs mt-4">Account: {adminSession?.email}</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

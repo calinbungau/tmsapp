@@ -1,0 +1,1351 @@
+"use client";
+
+import React from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  ArrowLeft,
+  Plus,
+  Search,
+  MoreHorizontal,
+  Edit,
+  Trash2,
+  Building2,
+  Loader2,
+  CheckCircle,
+  XCircle,
+  Phone,
+  Mail,
+  MapPin,
+  Truck,
+  Package,
+  ArrowRightLeft,
+  Wrench,
+  Users,
+  Globe,
+  CreditCard,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+} from "lucide-react";
+import { useAdminSession } from "@/hooks/use-admin-session";
+import Link from "next/link";
+
+type PartnerType = "shipper" | "carrier" | "forwarder" | "vendor";
+
+interface BusinessPartner {
+  id: string;
+  name: string;
+  types: PartnerType[];
+  tax_id: string | null;
+  registration_number: string | null;
+  contact_person: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state_province: string | null;
+  postal_code: string | null;
+  country: string | null;
+  billing_address_line1: string | null;
+  billing_address_line2: string | null;
+  billing_city: string | null;
+  billing_state_province: string | null;
+  billing_postal_code: string | null;
+  billing_country: string | null;
+  payment_terms: string | null;
+  credit_limit: number | null;
+  bank_name: string | null;
+  bank_account_number: string | null;
+  bank_iban: string | null;
+  bank_swift: string | null;
+  contract_start_date: string | null;
+  contract_end_date: string | null;
+  contract_notes: string | null;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+}
+
+const PARTNER_TYPES: { value: PartnerType; label: string; icon: React.ElementType; color: string }[] = [
+  { value: "shipper", label: "Shipper", icon: Package, color: "bg-blue-500/10 text-blue-600 border-blue-500/30" },
+  { value: "carrier", label: "Carrier", icon: Truck, color: "bg-green-500/10 text-green-600 border-green-500/30" },
+  { value: "forwarder", label: "Forwarder", icon: ArrowRightLeft, color: "bg-purple-500/10 text-purple-600 border-purple-500/30" },
+  { value: "vendor", label: "Vendor", icon: Wrench, color: "bg-orange-500/10 text-orange-600 border-orange-500/30" },
+];
+
+const PAYMENT_TERMS = [
+  { value: "immediate", label: "Immediate" },
+  { value: "net_7", label: "Net 7 days" },
+  { value: "net_14", label: "Net 14 days" },
+  { value: "net_30", label: "Net 30 days" },
+  { value: "net_45", label: "Net 45 days" },
+  { value: "net_60", label: "Net 60 days" },
+  { value: "net_90", label: "Net 90 days" },
+];
+
+export default function BusinessPartnersPage() {
+  const { session: adminSession, loading: sessionLoading } = useAdminSession();
+  const searchParams = useSearchParams();
+  const [partners, setPartners] = useState<BusinessPartner[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterType, setFilterType] = useState<PartnerType | "all">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingPartner, setEditingPartner] = useState<BusinessPartner | null>(null);
+  const [activeTab, setActiveTab] = useState("general");
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+  
+  const [anafLoading, setAnafLoading] = useState(false);
+
+  const [formData, setFormData] = useState({
+    name: "",
+    types: [] as PartnerType[],
+    tax_id: "",
+    registration_number: "",
+    contact_person: "",
+    email: "",
+    phone: "",
+    website: "",
+    address_line1: "",
+    address_line2: "",
+    city: "",
+    state_province: "",
+    postal_code: "",
+    country: "",
+    billing_address_line1: "",
+    billing_address_line2: "",
+    billing_city: "",
+    billing_state_province: "",
+    billing_postal_code: "",
+    billing_country: "",
+    payment_terms: "",
+    credit_limit: "",
+    bank_name: "",
+    bank_account_number: "",
+    bank_iban: "",
+    bank_swift: "",
+    contract_start_date: "",
+    contract_end_date: "",
+    contract_notes: "",
+    is_active: true,
+    notes: "",
+    same_billing_address: true,
+  });
+
+useEffect(() => {
+  if (adminSession?.id) {
+  fetchPartners();
+  }
+  }, [adminSession?.id]);
+  
+  // Handle opening partner from URL query param (from quick search)
+  useEffect(() => {
+    const selectedId = searchParams.get("selected");
+    if (selectedId && partners.length > 0 && !loading) {
+      const partner = partners.find(p => p.id === selectedId);
+      if (partner) {
+        handleOpenDialog(partner);
+        // Clear the URL param after opening
+        window.history.replaceState({}, "", "/admin/business-partners");
+      }
+    }
+  }, [searchParams, partners, loading]);
+  
+  const fetchPartners = async () => {
+    if (!adminSession?.id) return;
+    
+    setLoading(true);
+    const supabase = createClient();
+    
+    const { data } = await supabase
+      .from("business_partners")
+      .select("*")
+      .eq("admin_id", adminSession.id)
+      .order("name");
+
+    if (data) {
+      setPartners(data);
+    }
+    setLoading(false);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: "",
+      types: [],
+      tax_id: "",
+      registration_number: "",
+      contact_person: "",
+      email: "",
+      phone: "",
+      website: "",
+      address_line1: "",
+      address_line2: "",
+      city: "",
+      state_province: "",
+      postal_code: "",
+      country: "",
+      billing_address_line1: "",
+      billing_address_line2: "",
+      billing_city: "",
+      billing_state_province: "",
+      billing_postal_code: "",
+      billing_country: "",
+      payment_terms: "",
+      credit_limit: "",
+      bank_name: "",
+      bank_account_number: "",
+      bank_iban: "",
+      bank_swift: "",
+      contract_start_date: "",
+      contract_end_date: "",
+      contract_notes: "",
+      is_active: true,
+      notes: "",
+      same_billing_address: true,
+    });
+    setEditingPartner(null);
+    setActiveTab("general");
+  };
+
+  const handleOpenDialog = (partner?: BusinessPartner) => {
+    if (partner) {
+      setEditingPartner(partner);
+      setFormData({
+        name: partner.name,
+        types: partner.types || [],
+        tax_id: partner.tax_id || "",
+        registration_number: partner.registration_number || "",
+        contact_person: partner.contact_person || "",
+        email: partner.email || "",
+        phone: partner.phone || "",
+        website: partner.website || "",
+        address_line1: partner.address_line1 || "",
+        address_line2: partner.address_line2 || "",
+        city: partner.city || "",
+        state_province: partner.state_province || "",
+        postal_code: partner.postal_code || "",
+        country: partner.country || "",
+        billing_address_line1: partner.billing_address_line1 || "",
+        billing_address_line2: partner.billing_address_line2 || "",
+        billing_city: partner.billing_city || "",
+        billing_state_province: partner.billing_state_province || "",
+        billing_postal_code: partner.billing_postal_code || "",
+        billing_country: partner.billing_country || "",
+        payment_terms: partner.payment_terms || "",
+        credit_limit: partner.credit_limit?.toString() || "",
+        bank_name: partner.bank_name || "",
+        bank_account_number: partner.bank_account_number || "",
+        bank_iban: partner.bank_iban || "",
+        bank_swift: partner.bank_swift || "",
+        contract_start_date: partner.contract_start_date || "",
+        contract_end_date: partner.contract_end_date || "",
+        contract_notes: partner.contract_notes || "",
+        is_active: partner.is_active,
+        notes: partner.notes || "",
+        same_billing_address: !partner.billing_address_line1,
+      });
+    } else {
+      resetForm();
+    }
+    setDialogOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!formData.name.trim()) {
+      alert("Partner name is required");
+      return;
+    }
+    if (formData.types.length === 0) {
+      alert("Please select at least one partner type");
+      return;
+    }
+
+    const supabase = createClient();
+    
+    const partnerData = {
+      name: formData.name.trim(),
+      types: formData.types,
+      tax_id: formData.tax_id || null,
+      registration_number: formData.registration_number || null,
+      contact_person: formData.contact_person || null,
+      email: formData.email || null,
+      phone: formData.phone || null,
+      website: formData.website || null,
+      address_line1: formData.address_line1 || null,
+      address_line2: formData.address_line2 || null,
+      city: formData.city || null,
+      state_province: formData.state_province || null,
+      postal_code: formData.postal_code || null,
+      country: formData.country || null,
+      billing_address_line1: formData.same_billing_address ? null : formData.billing_address_line1 || null,
+      billing_address_line2: formData.same_billing_address ? null : formData.billing_address_line2 || null,
+      billing_city: formData.same_billing_address ? null : formData.billing_city || null,
+      billing_state_province: formData.same_billing_address ? null : formData.billing_state_province || null,
+      billing_postal_code: formData.same_billing_address ? null : formData.billing_postal_code || null,
+      billing_country: formData.same_billing_address ? null : formData.billing_country || null,
+      payment_terms: formData.payment_terms || null,
+      credit_limit: formData.credit_limit ? parseFloat(formData.credit_limit) : null,
+      bank_name: formData.bank_name || null,
+      bank_account_number: formData.bank_account_number || null,
+      bank_iban: formData.bank_iban || null,
+      bank_swift: formData.bank_swift || null,
+      contract_start_date: formData.contract_start_date || null,
+      contract_end_date: formData.contract_end_date || null,
+      contract_notes: formData.contract_notes || null,
+      is_active: formData.is_active,
+      notes: formData.notes || null,
+    };
+
+    if (editingPartner) {
+      const { error } = await supabase
+        .from("business_partners")
+        .update(partnerData)
+        .eq("id", editingPartner.id);
+
+      if (error) {
+        alert("Failed to update partner: " + error.message);
+        return;
+      }
+    } else {
+      const { error } = await supabase
+        .from("business_partners")
+        .insert({ ...partnerData, admin_id: adminSession?.id });
+
+      if (error) {
+        alert("Failed to create partner: " + error.message);
+        return;
+      }
+    }
+
+    setDialogOpen(false);
+    resetForm();
+    fetchPartners();
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this business partner?")) return;
+
+    const supabase = createClient();
+    const { error } = await supabase.from("business_partners").delete().eq("id", id);
+
+    if (error) {
+      alert("Failed to delete partner: " + error.message);
+      return;
+    }
+
+    fetchPartners();
+  };
+
+  const toggleActive = async (partner: BusinessPartner) => {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("business_partners")
+      .update({ is_active: !partner.is_active })
+      .eq("id", partner.id);
+
+    if (!error) {
+      fetchPartners();
+    }
+  };
+
+  const toggleType = (type: PartnerType) => {
+    setFormData((prev) => ({
+      ...prev,
+      types: prev.types.includes(type)
+        ? prev.types.filter((t) => t !== type)
+        : [...prev.types, type],
+    }));
+  };
+
+  // EU country codes for VIES
+  const EU_COUNTRY_CODES = [
+    "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "EL", "ES", 
+    "FI", "FR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", 
+    "NL", "PL", "PT", "RO", "SE", "SI", "SK", "XI"
+  ];
+
+  // Unified VAT lookup - ANAF for Romania, VIES for other EU countries
+  const lookupVAT = async () => {
+    const taxId = formData.tax_id.trim().toUpperCase();
+    
+    if (!taxId) {
+      alert("Please enter a Tax ID / VAT Number first");
+      return;
+    }
+
+    // Check if Romanian (use ANAF for more detailed data)
+    const isRomanian = /^RO\d{6,10}$/i.test(taxId) || /^\d{6,10}$/.test(taxId);
+    
+    // Check if EU VAT number
+    const countryCode = taxId.substring(0, 2);
+    const isEU = EU_COUNTRY_CODES.includes(countryCode);
+
+    if (!isRomanian && !isEU) {
+      alert("VAT lookup is only available for EU companies.\n\nSupported countries: " + EU_COUNTRY_CODES.join(", "));
+      return;
+    }
+
+    setAnafLoading(true);
+    
+    try {
+      if (isRomanian) {
+        // Use ANAF for Romanian companies (more detailed data)
+        const response = await fetch("/api/anaf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cui: taxId }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          alert(result.error || "Failed to lookup company in ANAF");
+          return;
+        }
+
+        const data = result.data;
+        
+        setFormData((prev) => ({
+          ...prev,
+          name: data.name || prev.name,
+          registration_number: data.registrationNumber || prev.registration_number,
+          phone: data.phone || prev.phone,
+          address_line1: data.address || prev.address_line1,
+          city: data.city || prev.city,
+          state_province: data.county || prev.state_province,
+          postal_code: data.postalCode || prev.postal_code,
+          country: data.country || "Romania",
+          bank_iban: data.iban || prev.bank_iban,
+          is_active: data.isActive,
+          tax_id: data.isVatPayer && !/^RO/i.test(prev.tax_id) 
+            ? `RO${prev.tax_id.replace(/^RO/i, "")}` 
+            : prev.tax_id.toUpperCase(),
+        }));
+
+        const statusMsg = [
+          data.isVatPayer ? "VAT Payer" : "Not VAT registered",
+          data.isActive ? "Active" : "INACTIVE - Warning!",
+        ].join(" | ");
+        
+        alert(`Company data loaded from ANAF!\n\nStatus: ${statusMsg}`);
+      } else {
+        // Use VIES for other EU countries
+        const response = await fetch("/api/vies", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vatNumber: taxId }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          if (result.useAnaf) {
+            // Redirect to ANAF for Romanian companies
+            setAnafLoading(false);
+            return lookupVAT();
+          }
+          alert(result.error || "Failed to validate VAT number in VIES");
+          return;
+        }
+
+        const data = result.data;
+        
+        // Only update fields if we have data (some countries hide details for privacy)
+        setFormData((prev) => ({
+          ...prev,
+          name: data.name || prev.name,
+          address_line1: data.street || prev.address_line1,
+          city: data.city || prev.city,
+          postal_code: data.postalCode || prev.postal_code,
+          country: data.country || prev.country,
+          tax_id: data.vatNumber || prev.tax_id,
+        }));
+
+        // Show appropriate message based on whether we got company details
+        if (data.limitedData) {
+          alert(`VAT Number VALID in VIES!\n\nVAT: ${data.vatNumber}\nCountry: ${data.country}\n\nNote: ${data.limitedDataReason}\n\nPlease enter company details manually.`);
+        } else {
+          alert(`Company data loaded from VIES (EU VAT System)!\n\nVAT Number: ${data.vatNumber}\nCompany: ${data.name || "N/A"}\nStatus: Valid & Active`);
+        }
+      }
+    } catch (error) {
+      console.error("VAT lookup error:", error);
+      alert("Failed to connect to VAT validation service");
+    } finally {
+      setAnafLoading(false);
+    }
+  };
+
+  // Filter partners
+  const filteredPartners = partners.filter((partner) => {
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesName = partner.name.toLowerCase().includes(query);
+      const matchesContact = partner.contact_person?.toLowerCase().includes(query);
+      const matchesEmail = partner.email?.toLowerCase().includes(query);
+      const matchesCity = partner.city?.toLowerCase().includes(query);
+      if (!matchesName && !matchesContact && !matchesEmail && !matchesCity) return false;
+    }
+    
+    // Type filter
+    if (filterType !== "all" && !partner.types.includes(filterType)) return false;
+    
+    // Status filter
+    if (filterStatus === "active" && !partner.is_active) return false;
+    if (filterStatus === "inactive" && partner.is_active) return false;
+    
+    return true;
+  });
+  
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterType, filterStatus]);
+  
+  // Pagination calculations
+  const totalCount = filteredPartners.length;
+  const totalPages = Math.ceil(totalCount / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalCount);
+  const paginatedPartners = filteredPartners.slice(startIndex, endIndex);
+
+  // Stats
+  const stats = {
+    total: partners.length,
+    active: partners.filter((p) => p.is_active).length,
+    shippers: partners.filter((p) => p.types.includes("shipper")).length,
+    carriers: partners.filter((p) => p.types.includes("carrier")).length,
+    forwarders: partners.filter((p) => p.types.includes("forwarder")).length,
+    vendors: partners.filter((p) => p.types.includes("vendor")).length,
+  };
+
+  if (sessionLoading || loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link href="/admin/drivers">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold">Business Partners</h1>
+            <p className="text-muted-foreground">
+              Manage your shippers, carriers, forwarders, and vendors
+            </p>
+          </div>
+        </div>
+        <Button onClick={() => handleOpenDialog()}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Partner
+        </Button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-muted">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-xs text-muted-foreground">Total</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-green-500/10">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{stats.active}</p>
+                <p className="text-xs text-muted-foreground">Active</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-500/10">
+                <Package className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{stats.shippers}</p>
+                <p className="text-xs text-muted-foreground">Shippers</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-green-500/10">
+                <Truck className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{stats.carriers}</p>
+                <p className="text-xs text-muted-foreground">Carriers</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-purple-500/10">
+                <ArrowRightLeft className="h-5 w-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{stats.forwarders}</p>
+                <p className="text-xs text-muted-foreground">Forwarders</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-orange-500/10">
+                <Wrench className="h-5 w-5 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{stats.vendors}</p>
+                <p className="text-xs text-muted-foreground">Vendors</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search partners..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant={filterType === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterType("all")}
+              >
+                All Types
+              </Button>
+              {PARTNER_TYPES.map((type) => (
+                <Button
+                  key={type.value}
+                  variant={filterType === type.value ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFilterType(type.value)}
+                >
+                  <type.icon className="h-4 w-4 mr-1" />
+                  {type.label}
+                </Button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant={filterStatus === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterStatus("all")}
+              >
+                All
+              </Button>
+              <Button
+                variant={filterStatus === "active" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterStatus("active")}
+              >
+                Active
+              </Button>
+              <Button
+                variant={filterStatus === "inactive" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterStatus("inactive")}
+              >
+                Inactive
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Partners Table */}
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Partner</TableHead>
+                <TableHead>Types</TableHead>
+                <TableHead className="hidden md:table-cell">Contact</TableHead>
+                <TableHead className="hidden lg:table-cell">Location</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedPartners.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    {partners.length === 0 ? "No business partners yet. Add your first partner!" : "No partners match your filters."}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paginatedPartners.map((partner) => (
+                  <TableRow key={partner.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleOpenDialog(partner)}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Building2 className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <div className="font-medium">{partner.name}</div>
+                          {partner.tax_id && (
+                            <div className="text-sm text-muted-foreground">
+                              Tax ID: {partner.tax_id}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {partner.types.map((type) => {
+                          const typeConfig = PARTNER_TYPES.find((t) => t.value === type);
+                          return (
+                            <Badge
+                              key={type}
+                              variant="outline"
+                              className={`text-xs ${typeConfig?.color}`}
+                            >
+                              {typeConfig?.label || type}
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <div className="space-y-1">
+                        {partner.contact_person && (
+                          <div className="flex items-center gap-1 text-sm">
+                            <Users className="h-3 w-3 text-muted-foreground" />
+                            {partner.contact_person}
+                          </div>
+                        )}
+                        {partner.email && (
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Mail className="h-3 w-3" />
+                            {partner.email}
+                          </div>
+                        )}
+                        {partner.phone && (
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Phone className="h-3 w-3" />
+                            {partner.phone}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {partner.city || partner.country ? (
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <MapPin className="h-3 w-3" />
+                          {[partner.city, partner.country].filter(Boolean).join(", ")}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={partner.is_active ? "default" : "secondary"}>
+                        {partner.is_active ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleOpenDialog(partner)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => toggleActive(partner)}>
+                            {partner.is_active ? (
+                              <>
+                                <XCircle className="h-4 w-4 mr-2" />
+                                Deactivate
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Activate
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => handleDelete(partner.id)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+          
+          {/* Pagination */}
+          <div className="flex items-center justify-between px-6 py-3 border-t">
+            <p className="text-sm text-muted-foreground">
+              {totalCount > 0 ? `${startIndex + 1}-${endIndex} of ${totalCount} partners` : "No partners"}
+            </p>
+            <div className="flex items-center gap-4">
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                    .reduce<(number | "...")[]>((acc, p, idx, arr) => {
+                      if (idx > 0 && p - (arr[idx - 1]) > 1) acc.push("...");
+                      acc.push(p);
+                      return acc;
+                    }, [])
+                    .map((p, i) => p === "..." ? (
+                      <span key={`dots-${i}`} className="text-sm text-muted-foreground px-1">...</span>
+                    ) : (
+                      <Button key={p} variant={currentPage === p ? "default" : "ghost"} size="icon" className={`h-8 w-8 text-sm ${currentPage === p ? "bg-primary text-primary-foreground" : ""}`} onClick={() => setCurrentPage(p)}>
+                        {p}
+                      </Button>
+                    ))}
+                  <Button variant="ghost" size="icon" className="h-8 w-8" disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+              <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
+                <SelectTrigger className="w-[100px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((size) => (
+                    <SelectItem key={size} value={String(size)}>{size} / page</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Add/Edit Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setDialogOpen(open); }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingPartner ? "Edit Partner" : "Add Business Partner"}</DialogTitle>
+            <DialogDescription>
+              {editingPartner ? "Update partner information" : "Add a new shipper, carrier, forwarder, or vendor"}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="general">General</TabsTrigger>
+              <TabsTrigger value="address">Address</TabsTrigger>
+              <TabsTrigger value="financial">Financial</TabsTrigger>
+              <TabsTrigger value="contract">Contract</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="general" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Company Name *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
+                  placeholder="Enter company name"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Partner Types *</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  {PARTNER_TYPES.map((type) => (
+                    <div
+                      key={type.value}
+                      className={`flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                        formData.types.includes(type.value)
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:bg-muted/50"
+                      }`}
+                      onClick={() => toggleType(type.value)}
+                    >
+                      <Checkbox
+                        checked={formData.types.includes(type.value)}
+                        onCheckedChange={() => toggleType(type.value)}
+                      />
+                      <type.icon className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium">{type.label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {type.value === "shipper" && "Customer who pays you"}
+                          {type.value === "carrier" && "Transport company you hire"}
+                          {type.value === "forwarder" && "Freight intermediary"}
+                          {type.value === "vendor" && "Service provider"}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="tax_id">Tax ID / VAT Number</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="tax_id"
+                      value={formData.tax_id}
+                      onChange={(e) => setFormData((p) => ({ ...p, tax_id: e.target.value.toUpperCase() }))}
+                      onBlur={() => {
+                        // Auto-prompt VAT lookup for EU VAT numbers
+                        const taxId = formData.tax_id.trim().toUpperCase();
+                        const countryCode = taxId.substring(0, 2);
+                        const isEU = EU_COUNTRY_CODES.includes(countryCode) || /^\d{6,10}$/.test(taxId);
+                        if (isEU && !formData.name && !anafLoading) {
+                          // Auto-lookup if name is empty (likely new entry)
+                          lookupVAT();
+                        }
+                      }}
+                      placeholder="e.g. RO12345678"
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={lookupVAT}
+                      disabled={anafLoading || !formData.tax_id.trim()}
+                      title="Lookup company data (ANAF for Romania, VIES for other EU countries)"
+                    >
+                      {anafLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Globe className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Click the globe icon to auto-fill data (ANAF for RO, VIES for EU)
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="registration_number">Registration Number</Label>
+                  <Input
+                    id="registration_number"
+                    value={formData.registration_number}
+                    onChange={(e) => setFormData((p) => ({ ...p, registration_number: e.target.value }))}
+                    placeholder="Company registration"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="contact_person">Contact Person</Label>
+                <Input
+                  id="contact_person"
+                  value={formData.contact_person}
+                  onChange={(e) => setFormData((p) => ({ ...p, contact_person: e.target.value }))}
+                  placeholder="Primary contact name"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
+                    placeholder="contact@company.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input
+                    id="phone"
+                    value={formData.phone}
+                    onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
+                    placeholder="+1234567890"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="website">Website</Label>
+                <Input
+                  id="website"
+                  value={formData.website}
+                  onChange={(e) => setFormData((p) => ({ ...p, website: e.target.value }))}
+                  placeholder="https://www.company.com"
+                />
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="is_active"
+                  checked={formData.is_active}
+                  onCheckedChange={(checked) => setFormData((p) => ({ ...p, is_active: !!checked }))}
+                />
+                <Label htmlFor="is_active" className="font-normal cursor-pointer">
+                  Partner is active
+                </Label>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="address" className="space-y-4 mt-4">
+              <div className="space-y-4">
+                <h3 className="font-medium">Main Address</h3>
+                <div className="space-y-2">
+                  <Label htmlFor="address_line1">Street Address</Label>
+                  <Input
+                    id="address_line1"
+                    value={formData.address_line1}
+                    onChange={(e) => setFormData((p) => ({ ...p, address_line1: e.target.value }))}
+                    placeholder="Street and number"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="address_line2">Address Line 2</Label>
+                  <Input
+                    id="address_line2"
+                    value={formData.address_line2}
+                    onChange={(e) => setFormData((p) => ({ ...p, address_line2: e.target.value }))}
+                    placeholder="Apartment, suite, etc. (optional)"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="city">City</Label>
+                    <Input
+                      id="city"
+                      value={formData.city}
+                      onChange={(e) => setFormData((p) => ({ ...p, city: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="state_province">State / Province</Label>
+                    <Input
+                      id="state_province"
+                      value={formData.state_province}
+                      onChange={(e) => setFormData((p) => ({ ...p, state_province: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="postal_code">Postal Code</Label>
+                    <Input
+                      id="postal_code"
+                      value={formData.postal_code}
+                      onChange={(e) => setFormData((p) => ({ ...p, postal_code: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="country">Country</Label>
+                    <Input
+                      id="country"
+                      value={formData.country}
+                      onChange={(e) => setFormData((p) => ({ ...p, country: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-2 pt-4 border-t">
+                <Checkbox
+                  id="same_billing_address"
+                  checked={formData.same_billing_address}
+                  onCheckedChange={(checked) => setFormData((p) => ({ ...p, same_billing_address: !!checked }))}
+                />
+                <Label htmlFor="same_billing_address" className="font-normal cursor-pointer">
+                  Billing address same as main address
+                </Label>
+              </div>
+              
+              {!formData.same_billing_address && (
+                <div className="space-y-4">
+                  <h3 className="font-medium">Billing Address</h3>
+                  <div className="space-y-2">
+                    <Label htmlFor="billing_address_line1">Street Address</Label>
+                    <Input
+                      id="billing_address_line1"
+                      value={formData.billing_address_line1}
+                      onChange={(e) => setFormData((p) => ({ ...p, billing_address_line1: e.target.value }))}
+                      placeholder="Street and number"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="billing_address_line2">Address Line 2</Label>
+                    <Input
+                      id="billing_address_line2"
+                      value={formData.billing_address_line2}
+                      onChange={(e) => setFormData((p) => ({ ...p, billing_address_line2: e.target.value }))}
+                      placeholder="Apartment, suite, etc. (optional)"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="billing_city">City</Label>
+                      <Input
+                        id="billing_city"
+                        value={formData.billing_city}
+                        onChange={(e) => setFormData((p) => ({ ...p, billing_city: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="billing_state_province">State / Province</Label>
+                      <Input
+                        id="billing_state_province"
+                        value={formData.billing_state_province}
+                        onChange={(e) => setFormData((p) => ({ ...p, billing_state_province: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="billing_postal_code">Postal Code</Label>
+                      <Input
+                        id="billing_postal_code"
+                        value={formData.billing_postal_code}
+                        onChange={(e) => setFormData((p) => ({ ...p, billing_postal_code: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="billing_country">Country</Label>
+                      <Input
+                        id="billing_country"
+                        value={formData.billing_country}
+                        onChange={(e) => setFormData((p) => ({ ...p, billing_country: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="financial" className="space-y-4 mt-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="payment_terms">Payment Terms</Label>
+                  <select
+                    id="payment_terms"
+                    value={formData.payment_terms}
+                    onChange={(e) => setFormData((p) => ({ ...p, payment_terms: e.target.value }))}
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Select payment terms</option>
+                    {PAYMENT_TERMS.map((term) => (
+                      <option key={term.value} value={term.value}>
+                        {term.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="credit_limit">Credit Limit</Label>
+                  <Input
+                    id="credit_limit"
+                    type="number"
+                    value={formData.credit_limit}
+                    onChange={(e) => setFormData((p) => ({ ...p, credit_limit: e.target.value }))}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-4 pt-4 border-t">
+                <h3 className="font-medium">Bank Details</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="bank_name">Bank Name</Label>
+                    <Input
+                      id="bank_name"
+                      value={formData.bank_name}
+                      onChange={(e) => setFormData((p) => ({ ...p, bank_name: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bank_account_number">Account Number</Label>
+                    <Input
+                      id="bank_account_number"
+                      value={formData.bank_account_number}
+                      onChange={(e) => setFormData((p) => ({ ...p, bank_account_number: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="bank_iban">IBAN</Label>
+                    <Input
+                      id="bank_iban"
+                      value={formData.bank_iban}
+                      onChange={(e) => setFormData((p) => ({ ...p, bank_iban: e.target.value }))}
+                      placeholder="e.g. RO49AAAA1B31007593840000"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bank_swift">SWIFT / BIC</Label>
+                    <Input
+                      id="bank_swift"
+                      value={formData.bank_swift}
+                      onChange={(e) => setFormData((p) => ({ ...p, bank_swift: e.target.value }))}
+                      placeholder="e.g. BRDEROBU"
+                    />
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="contract" className="space-y-4 mt-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="contract_start_date">Contract Start Date</Label>
+                  <Input
+                    id="contract_start_date"
+                    type="date"
+                    value={formData.contract_start_date}
+                    onChange={(e) => setFormData((p) => ({ ...p, contract_start_date: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="contract_end_date">Contract End Date</Label>
+                  <Input
+                    id="contract_end_date"
+                    type="date"
+                    value={formData.contract_end_date}
+                    onChange={(e) => setFormData((p) => ({ ...p, contract_end_date: e.target.value }))}
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="contract_notes">Contract Notes</Label>
+                <Textarea
+                  id="contract_notes"
+                  value={formData.contract_notes}
+                  onChange={(e) => setFormData((p) => ({ ...p, contract_notes: e.target.value }))}
+                  placeholder="Contract terms, conditions, and notes..."
+                  rows={3}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="notes">General Notes</Label>
+                <Textarea
+                  id="notes"
+                  value={formData.notes}
+                  onChange={(e) => setFormData((p) => ({ ...p, notes: e.target.value }))}
+                  placeholder="Additional notes about this partner..."
+                  rows={3}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+          
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => { resetForm(); setDialogOpen(false); }}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave}>
+              {editingPartner ? "Update Partner" : "Create Partner"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
