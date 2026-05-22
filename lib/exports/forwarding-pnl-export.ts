@@ -760,74 +760,48 @@ export async function exportPnlPdf(ctx: ExportContext) {
   const orange: [number, number, number] = [249, 115, 22]
   const violet: [number, number, number] = [139, 92, 246]
 
-  // Header band — taller to host a "cute" issuer card on the right.
-  const headerH = 86
+  // Header band — taller to host the issuer card on the left and the
+  // BNG Tracking app logo on the right.
+  const headerH = 96
   doc.setFillColor(...ink)
   doc.rect(0, 0, pageW, headerH, "F")
   doc.setFillColor(...accent)
   doc.rect(0, headerH, pageW, 3, "F")
 
-  // BNG Tracking logo (white, 768x295) — top-left, title shifted right.
-  const bngLogo = await loadImageDataUrl("/images/logo-full-bng.png")
-  let titleX = 32
-  if (bngLogo) {
-    const logoH = 28
-    const logoW = logoH * (768 / 295) // preserve aspect ratio ≈ 73pt
-    doc.addImage(bngLogo, "PNG", 32, 18, logoW, logoH)
-    titleX = 32 + logoW + 16
-  }
-
-  doc.setTextColor(255, 255, 255)
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(18)
-  doc.text("Forwarding Orders P&L", titleX, 36)
-
-  doc.setFont("helvetica", "normal")
-  doc.setFontSize(10)
-  doc.setTextColor(203, 213, 225)
-  doc.text(`Period: ${ctx.from}  to  ${ctx.to}`, titleX, 56)
-
-  const generated = fmtDateTime(new Date())
-  doc.setFontSize(9)
-  doc.setTextColor(148, 163, 184)
-  doc.text(
-    `Generated ${generated}  ·  ${ctx.totals.count} orders`,
-    titleX,
-    72,
-  )
-
-  // ---- Cute issuer card on the right (customer logo + company name) ----
+  // ---- Issuer card on the LEFT (customer logo + company name) ----
   const company = ctx.company
+  const issuerW = 240
+  const issuerH = 70
+  const issuerX = 24
+  const issuerY = (headerH - issuerH) / 2
+  let titleX = 32
   if (company && (company.name || company.logoUrl)) {
-    const cardW = 220
-    const cardH = 58
-    const cardX = pageW - 32 - cardW
-    const cardY = 14
-
-    // Soft white rounded card with subtle amber accent strip
+    // Soft white rounded card with amber accent strip on the left edge.
     doc.setFillColor(255, 255, 255)
-    doc.roundedRect(cardX, cardY, cardW, cardH, 8, 8, "F")
+    doc.roundedRect(issuerX, issuerY, issuerW, issuerH, 10, 10, "F")
     doc.setFillColor(...accent)
-    doc.roundedRect(cardX, cardY, 4, cardH, 2, 2, "F")
+    doc.roundedRect(issuerX, issuerY, 4, issuerH, 2, 2, "F")
 
-    // Optional customer logo — square 40pt box, contained inside
-    let textX = cardX + 16
+    // Customer logo box — 56pt square, fills nicely with minimal padding.
+    let textX = issuerX + 18
     if (company.logoUrl) {
       const logoData = await loadImageDataUrl(company.logoUrl)
       if (logoData) {
-        const boxX = cardX + 12
-        const boxY = cardY + 9
-        const boxSize = 40
-        // Light slate background for transparent / dark logos
+        const boxSize = 56
+        const boxX = issuerX + 10
+        const boxY = issuerY + (issuerH - boxSize) / 2
+        // Subtle slate background so transparent/dark-on-dark logos pop.
         doc.setFillColor(248, 250, 252)
-        doc.roundedRect(boxX, boxY, boxSize, boxSize, 6, 6, "F")
+        doc.roundedRect(boxX, boxY, boxSize, boxSize, 8, 8, "F")
         const dims = imageDimsFromDataUrl(logoData)
         const isPng = logoData.startsWith("data:image/png")
         const ratio = dims ? dims.w / dims.h : 1
-        let drawW = boxSize - 8
+        // Use only 6pt of inner padding so the logo fills the box.
+        const innerMax = boxSize - 6
+        let drawW = innerMax
         let drawH = drawW / ratio
-        if (drawH > boxSize - 8) {
-          drawH = boxSize - 8
+        if (drawH > innerMax) {
+          drawH = innerMax
           drawW = drawH * ratio
         }
         const drawX = boxX + (boxSize - drawW) / 2
@@ -852,24 +826,54 @@ export async function exportPnlPdf(ctx: ExportContext) {
     doc.setFont("helvetica", "bold")
     doc.setFontSize(7)
     doc.setTextColor(...accent)
-    doc.text("ISSUED BY", textX, cardY + 18)
+    doc.text("ISSUED BY", textX, issuerY + 22)
 
     // Company name (wrap to two lines if needed)
     doc.setFont("helvetica", "bold")
     doc.setFontSize(11)
     doc.setTextColor(...ink)
     const name = (company.name ?? "").trim() || "—"
-    const nameLines = doc.splitTextToSize(name, cardW - (textX - cardX) - 14)
+    const nameLines = doc.splitTextToSize(name, issuerW - (textX - issuerX) - 14)
     const limited = (nameLines as string[]).slice(0, 2)
-    doc.text(limited, textX, cardY + 32)
-    if (limited.length > 1) {
-      // already drawn second line at +14
-    }
+    doc.text(limited, textX, issuerY + 38)
+
+    titleX = issuerX + issuerW + 24
   }
+
+  // ---- BNG Tracking logo on the RIGHT ----
+  const bngLogo = await loadImageDataUrl("/images/logo-full-bng.png")
+  let bngLeft = pageW - 32
+  if (bngLogo) {
+    const bngH = 32
+    const bngW = bngH * (768 / 295) // preserve aspect ratio ≈ 83pt
+    bngLeft = pageW - 32 - bngW
+    const bngY = (headerH - bngH) / 2
+    doc.addImage(bngLogo, "PNG", bngLeft, bngY, bngW, bngH)
+  }
+
+  // ---- Title block in the middle ----
+  doc.setTextColor(255, 255, 255)
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(18)
+  doc.text("Forwarding Orders P&L", titleX, 38)
+
+  doc.setFont("helvetica", "normal")
+  doc.setFontSize(10)
+  doc.setTextColor(203, 213, 225)
+  doc.text(`Period: ${ctx.from}  to  ${ctx.to}`, titleX, 60)
+
+  const generated = fmtDateTime(new Date())
+  doc.setFontSize(9)
+  doc.setTextColor(148, 163, 184)
+  doc.text(
+    `Generated ${generated}  ·  ${ctx.totals.count} orders`,
+    titleX,
+    78,
+  )
 
 
   // KPI cards
-  const cardY = 106
+  const cardY = 116
   const cardH = 56
   const gap = 10
   const cards: Array<{ label: string; value: string; color: [number, number, number] }> = [
