@@ -267,6 +267,8 @@ export default function ForwardingPnLPage() {
     React.useState<string>("all");
   const [carrierInvFilter, setCarrierInvFilter] = React.useState<string>("all");
   const [dueFilter, setDueFilter] = React.useState<string>("all"); // any | overdue | soon | ok
+  const [page, setPage] = React.useState<number>(1);
+  const [pageSize, setPageSize] = React.useState<number>(25);
 
   const { session } = useAdminSession();
   const adminId = session?.id;
@@ -488,6 +490,29 @@ export default function ForwardingPnLPage() {
     return { customer, carrier };
   }, [rows, todayMs]);
 
+  // Reset page to 1 whenever any filter / search / pageSize changes
+  React.useEffect(() => {
+    setPage(1);
+  }, [
+    execFilter,
+    invFilter,
+    carrierInvFilter,
+    customerFilter,
+    carrierFilter,
+    parentStatusFilter,
+    childStatusFilter,
+    dueFilter,
+    search,
+    pageSize,
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pagedRows = React.useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, safePage, pageSize]);
+
   // Totals
   const totals = React.useMemo(() => {
     return rows.reduce(
@@ -529,6 +554,8 @@ export default function ForwardingPnLPage() {
         apOutstanding: totals.outstanding_out,
         avgMargin,
         count: rows.length,
+        customerInvoices: invoiceStats.customer,
+        carrierInvoices: invoiceStats.carrier,
       },
       filters: {
         execution: execFilter,
@@ -730,33 +757,23 @@ export default function ForwardingPnLPage() {
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Customer</Label>
-              <select
+              <TypeaheadSelect
+                options={customerOptions}
                 value={customerFilter}
-                onChange={e => setCustomerFilter(e.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[160px] max-w-[220px]"
-              >
-                <option value="all">All customers</option>
-                {customerOptions.map(o => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setCustomerFilter}
+                placeholder="All customers"
+                emptyLabel="All customers"
+              />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Carrier</Label>
-              <select
+              <TypeaheadSelect
+                options={carrierOptions}
                 value={carrierFilter}
-                onChange={e => setCarrierFilter(e.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[160px] max-w-[220px]"
-              >
-                <option value="all">All carriers</option>
-                {carrierOptions.map(o => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setCarrierFilter}
+                placeholder="All carriers"
+                emptyLabel="All carriers"
+              />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Parent status</Label>
@@ -939,7 +956,7 @@ export default function ForwardingPnLPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map(r => (
+                  {pagedRows.map(r => (
                     <tr
                       key={r.order_id}
                       className="border-t hover:bg-muted/30"
@@ -1114,6 +1131,83 @@ export default function ForwardingPnLPage() {
                   </tr>
                 </tfoot>
               </table>
+            </div>
+          )}
+          {/* Pagination footer */}
+          {rows.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3 text-sm">
+              <div className="text-muted-foreground">
+                Showing{" "}
+                <span className="font-medium text-foreground">
+                  {(safePage - 1) * pageSize + 1}-
+                  {Math.min(safePage * pageSize, rows.length)}
+                </span>{" "}
+                of{" "}
+                <span className="font-medium text-foreground">
+                  {rows.length}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground">
+                  Rows per page
+                </Label>
+                <select
+                  value={pageSize}
+                  onChange={e => setPageSize(Number(e.target.value))}
+                  className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                >
+                  {[10, 25, 50, 100, 200].map(n => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2"
+                  onClick={() => setPage(1)}
+                  disabled={safePage === 1}
+                >
+                  «
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={safePage === 1}
+                >
+                  ‹ Prev
+                </Button>
+                <span className="px-3 text-xs text-muted-foreground">
+                  Page{" "}
+                  <span className="font-medium text-foreground">
+                    {safePage}
+                  </span>{" "}
+                  / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2"
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={safePage === totalPages}
+                >
+                  Next ›
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2"
+                  onClick={() => setPage(totalPages)}
+                  disabled={safePage === totalPages}
+                >
+                  »
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
@@ -1338,6 +1432,133 @@ function Legend({ dot, label }: { dot: string; label: string }) {
     <div className="inline-flex items-center gap-1">
       <span className={`inline-block h-2 w-2 rounded-full ${dot}`} />
       <span>{label}</span>
+    </div>
+  );
+}
+
+/**
+ * Typeahead select with free-text search. Useful when there can be hundreds
+ * of partners — the user types a few letters and we filter the list. Selecting
+ * a row sets the underlying filter to that partner's id; clearing the input
+ * sets it back to "all".
+ */
+function TypeaheadSelect({
+  options,
+  value,
+  onChange,
+  placeholder,
+  emptyLabel,
+}: {
+  options: { id: string; name: string }[];
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  emptyLabel?: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const wrapRef = React.useRef<HTMLDivElement>(null);
+
+  // Keep the visible label in sync with the externally-controlled value.
+  const selectedName =
+    value === "all"
+      ? ""
+      : options.find(o => o.id === value)?.name ?? "";
+
+  React.useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
+
+  React.useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const display = open ? query : selectedName;
+  const filtered = React.useMemo(() => {
+    const q = (open ? query : "").trim().toLowerCase();
+    if (!q) return options.slice(0, 50);
+    return options.filter(o => o.name.toLowerCase().includes(q)).slice(0, 50);
+  }, [options, query, open]);
+
+  return (
+    <div ref={wrapRef} className="relative min-w-[180px] max-w-[240px]">
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        <Input
+          value={display}
+          onFocus={() => setOpen(true)}
+          onChange={e => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          placeholder={placeholder}
+          className="h-9 pl-8 pr-7 text-sm"
+        />
+        {value !== "all" && (
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault();
+              onChange("all");
+              setQuery("");
+              setOpen(false);
+            }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+            aria-label="Clear selection"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full max-h-64 overflow-auto rounded-md border bg-popover shadow-md">
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault();
+              onChange("all");
+              setOpen(false);
+            }}
+            className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted ${value === "all" ? "bg-muted/50 font-medium" : ""}`}
+          >
+            {emptyLabel ?? "All"}
+          </button>
+          <div className="border-t" />
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-muted-foreground">
+              No matches
+            </div>
+          ) : (
+            filtered.map(o => (
+              <button
+                key={o.id}
+                type="button"
+                onMouseDown={e => {
+                  e.preventDefault();
+                  onChange(o.id);
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-3 py-1.5 text-sm hover:bg-muted truncate ${o.id === value ? "bg-muted/50 font-medium" : ""}`}
+                title={o.name}
+              >
+                {o.name}
+              </button>
+            ))
+          )}
+          {options.length > filtered.length && (
+            <div className="px-3 py-1.5 text-[10px] text-muted-foreground border-t bg-muted/30">
+              Showing {filtered.length} of {options.length} — keep typing to
+              narrow
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

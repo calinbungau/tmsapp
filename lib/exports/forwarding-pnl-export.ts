@@ -234,6 +234,18 @@ function executionCode(mode: PnlRow["execution_mode"]): string {
   }
 }
 
+export type InvoiceStatsBlock = {
+  total: number
+  collected: number
+  outstanding: number
+  overdue: number
+  dueSoon: number
+  countTotal: number
+  countOverdue: number
+  countDueSoon: number
+  countPaid: number
+}
+
 export type PnlTotals = {
   revenue: number
   costs: number
@@ -242,6 +254,8 @@ export type PnlTotals = {
   apOutstanding: number
   avgMargin: number
   count: number
+  customerInvoices?: InvoiceStatsBlock
+  carrierInvoices?: InvoiceStatsBlock
 }
 
 export type ExportContext = {
@@ -445,6 +459,71 @@ export async function exportPnlExcel(ctx: ExportContext) {
       }
     })
   })
+
+  // ---- Invoice statistics blocks (Customer A/R + Carrier A/P)
+  let invRow = 4 + kpis.length + 2
+  const invBlocks: Array<{ title: string; data?: InvoiceStatsBlock; accent: string }> = [
+    { title: "Customer Invoices (A/R)", data: ctx.totals.customerInvoices, accent: "FF0EA5E9" },
+    { title: "Carrier Invoices (A/P)", data: ctx.totals.carrierInvoices, accent: "FFF97316" },
+  ]
+  for (const block of invBlocks) {
+    if (!block.data) continue
+    summary.mergeCells(`A${invRow}:B${invRow}`)
+    const titleCell = summary.getCell(`A${invRow}`)
+    titleCell.value = block.title
+    titleCell.font = { bold: true, color: { argb: block.accent }, size: 12 }
+    titleCell.alignment = { vertical: "middle", indent: 1 }
+    titleCell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFF1F5F9" },
+    }
+    summary.getRow(invRow).height = 22
+    invRow += 1
+
+    const lines: Array<[string, number, string, "money" | "count" | "pct"]> = [
+      ["Total Invoiced (EUR)", block.data.total, "FF334155", "money"],
+      ["Collected (Încasat)", block.data.collected, "FF10B981", "money"],
+      ["Outstanding (Neîncasat)", block.data.outstanding, block.accent, "money"],
+      ["Overdue (Termen depășit)", block.data.overdue, "FFEF4444", "money"],
+      ["Due ≤ 10 days", block.data.dueSoon, "FFF59E0B", "money"],
+      [
+        "Collection Rate",
+        block.data.total > 0 ? (block.data.collected / block.data.total) * 100 : 0,
+        "FF10B981",
+        "pct",
+      ],
+      ["# Invoices", block.data.countTotal, "FF334155", "count"],
+      ["# Paid", block.data.countPaid, "FF10B981", "count"],
+      ["# Overdue", block.data.countOverdue, "FFEF4444", "count"],
+      ["# Due ≤ 10d", block.data.countDueSoon, "FFF59E0B", "count"],
+    ]
+    lines.forEach((ln, idx) => {
+      const r = summary.getRow(invRow)
+      r.height = 22
+      r.getCell(1).value = ln[0]
+      r.getCell(1).font = { bold: true, color: { argb: "FF334155" } }
+      r.getCell(1).alignment = { vertical: "middle", indent: 2 }
+      r.getCell(2).value = ln[1]
+      r.getCell(2).alignment = { horizontal: "right", vertical: "middle", indent: 1 }
+      r.getCell(2).font = { bold: true, color: { argb: ln[2] }, size: 12 }
+      if (ln[3] === "money") r.getCell(2).numFmt = '"€"#,##0.00'
+      else if (ln[3] === "pct") r.getCell(2).numFmt = "0.00\\%"
+      else r.getCell(2).numFmt = "0"
+      ;[1, 2].forEach(c => {
+        r.getCell(c).fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: idx % 2 === 0 ? "FFFAFAFA" : "FFFFFFFF" },
+        }
+        r.getCell(c).border = {
+          bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+        }
+      })
+      invRow += 1
+    })
+    invRow += 1 // spacer between blocks
+  }
 
   // ---- Sheet 2: Orders
   const ws = wb.addWorksheet("Orders", {
@@ -1043,6 +1122,105 @@ export async function exportPnlPdf(ctx: ExportContext) {
       })
     },
   })
+
+  // ---- Invoice statistics blocks (after the orders table)
+  const drawInvoiceBlock = (
+    title: string,
+    block: InvoiceStatsBlock,
+    accent: [number, number, number],
+    startY: number,
+  ): number => {
+    const blockW = pageW - 64
+    const x = 32
+    let y = startY
+
+    // Title bar
+    doc.setFillColor(241, 245, 249)
+    doc.roundedRect(x, y, blockW, 22, 4, 4, "F")
+    doc.setFillColor(...accent)
+    doc.rect(x, y, 3, 22, "F")
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(11)
+    doc.setTextColor(...ink)
+    doc.text(title, x + 12, y + 14)
+    y += 28
+
+    // 6 stat tiles in a row
+    const tiles: Array<{ label: string; value: string; color: [number, number, number] }> = [
+      { label: "Total Invoiced", value: `EUR ${fmtMoney(block.total)}`, color: ink },
+      { label: "Collected", value: `EUR ${fmtMoney(block.collected)}`, color: green },
+      { label: "Outstanding", value: `EUR ${fmtMoney(block.outstanding)}`, color: accent },
+      { label: "Overdue", value: `EUR ${fmtMoney(block.overdue)}`, color: red },
+      { label: "Due <= 10 days", value: `EUR ${fmtMoney(block.dueSoon)}`, color: orange },
+      {
+        label: "Collection Rate",
+        value: `${block.total > 0 ? ((block.collected / block.total) * 100).toFixed(1) : "0.0"}%`,
+        color: green,
+      },
+    ]
+    const gap2 = 6
+    const tileW = (blockW - gap2 * (tiles.length - 1)) / tiles.length
+    const tileH = 42
+    tiles.forEach((t, i) => {
+      const tx = x + i * (tileW + gap2)
+      doc.setFillColor(248, 250, 252)
+      doc.roundedRect(tx, y, tileW, tileH, 4, 4, "F")
+      doc.setDrawColor(226, 232, 240)
+      doc.setLineWidth(0.5)
+      doc.roundedRect(tx, y, tileW, tileH, 4, 4, "S")
+
+      doc.setTextColor(...muted)
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(7)
+      doc.text(t.label.toUpperCase(), tx + 8, y + 14)
+
+      doc.setTextColor(...t.color)
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(10)
+      doc.text(t.value, tx + 8, y + 32)
+    })
+    y += tileH + 6
+
+    // Counts line
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(8)
+    doc.setTextColor(...muted)
+    const counts = `${block.countTotal} invoice${block.countTotal === 1 ? "" : "s"}  -  ${block.countPaid} paid  -  ${block.countOverdue} overdue  -  ${block.countDueSoon} due <= 10d`
+    doc.text(counts, x + 4, y + 6)
+    y += 14
+
+    return y
+  }
+
+  const tableEndY = (doc as any).lastAutoTable?.finalY ?? 200
+  let blockY = tableEndY + 18
+
+  const ensureSpace = (needed: number) => {
+    if (blockY + needed > pageH - 50) {
+      doc.addPage()
+      blockY = 50
+    }
+  }
+
+  if (ctx.totals.customerInvoices) {
+    ensureSpace(110)
+    blockY = drawInvoiceBlock(
+      "Customer Invoices (A/R) - Money owed to us",
+      ctx.totals.customerInvoices,
+      blue,
+      blockY,
+    )
+    blockY += 6
+  }
+  if (ctx.totals.carrierInvoices) {
+    ensureSpace(110)
+    blockY = drawInvoiceBlock(
+      "Carrier Invoices (A/P) - Money we owe",
+      ctx.totals.carrierInvoices,
+      orange,
+      blockY,
+    )
+  }
 
   doc.save(`${fileBase(ctx)}.pdf`)
 }
