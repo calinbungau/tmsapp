@@ -182,7 +182,7 @@ export async function GET(req: NextRequest) {
   const { data: trips } = await sb
     .from("trips")
     .select(
-      "id, reference_number, duration_minutes, distance_km, driver_id, vehicle_id, planned_start, planned_end, actual_start, actual_end, status, route_confirmed_at",
+      "id, reference_number, duration_minutes, distance_km, driver_id, vehicle_id, planned_start, planned_end, actual_start, actual_end, status, route_confirmed_at, driver_rate_mode, driver_rate_per_km, driver_hourly_rate",
     )
     .eq("admin_id", adminId)
     .in("id", tripIds)
@@ -199,6 +199,9 @@ export async function GET(req: NextRequest) {
     actual_end: string | null
     status: string | null
     route_confirmed_at: string | null
+    driver_rate_mode: "hourly" | "per_km" | null
+    driver_rate_per_km: number | null
+    driver_hourly_rate: number | null
   }
   const tripMap = new Map<string, T>()
   for (const t of (trips ?? []) as T[]) tripMap.set(t.id, t)
@@ -220,22 +223,32 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // 2. Drivers (for hourly_rate)
+  // 2. Drivers (for hourly_rate / rate_per_km / rate_mode)
   const driverIds = Array.from(
     new Set(
       Array.from(tripMap.values()).map(t => t.driver_id).filter(Boolean) as string[],
     ),
   )
-  const driverRate = new Map<string, { name: string | null; rate: number | null }>()
+  const driverRate = new Map<
+    string,
+    {
+      name: string | null
+      hourly_rate: number | null
+      rate_per_km: number | null
+      rate_mode: "hourly" | "per_km" | null
+    }
+  >()
   if (driverIds.length) {
     const { data } = await sb
       .from("drivers")
-      .select("id, name, hourly_rate")
+      .select("id, name, hourly_rate, rate_per_km, rate_mode")
       .in("id", driverIds)
     for (const d of data ?? []) {
       driverRate.set((d as any).id as string, {
         name: (d as any).name as string | null,
-        rate: (d as any).hourly_rate as number | null,
+        hourly_rate: (d as any).hourly_rate as number | null,
+        rate_per_km: (d as any).rate_per_km as number | null,
+        rate_mode: ((d as any).rate_mode as "hourly" | "per_km" | null) ?? "hourly",
       })
     }
   }
@@ -513,27 +526,57 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  // Driver cost — synthetic line item (hours × hourly_rate)
+  // Driver cost — synthetic line item (mode-aware: per_km × distance OR hours × hourly_rate)
   for (const t of tripMap.values()) {
     if (!t.driver_id) continue
     const info = driverRate.get(t.driver_id)
-    const rate = info?.rate ? num(info.rate) : 0
+    const mode: "hourly" | "per_km" =
+      (t.driver_rate_mode as "hourly" | "per_km" | null) ||
+      info?.rate_mode ||
+      "hourly"
+    const hourly = t.driver_hourly_rate != null ? num(t.driver_hourly_rate) : (info?.hourly_rate ? num(info.hourly_rate) : 0)
+    const perKm = t.driver_rate_per_km != null ? num(t.driver_rate_per_km) : (info?.rate_per_km ? num(info.rate_per_km) : 0)
     const hours = (num(t.duration_minutes) || 0) / 60
-    if (rate > 0 && hours > 0) {
-      const eur = rate * hours
+    const km = num(t.distance_km) || 0
+
+    let eur = 0
+    let qty = 0
+    let unit: "h" | "km" = "h"
+    let rate = 0
+    let source = "drivers.hourly_rate"
+    let category = "driver_hours"
+    let description = `Driver hours × hourly rate${info?.name ? ` (${info.name})` : ""}`
+
+    if (mode === "per_km" && perKm > 0 && km > 0) {
+      eur = perKm * km
+      qty = km
+      unit = "km"
+      rate = perKm
+      source = t.driver_rate_per_km != null ? "trip override (per_km)" : "drivers.rate_per_km"
+      category = "driver_km"
+      description = `Driver km × per-km rate${info?.name ? ` (${info.name})` : ""}`
+    } else if (mode === "hourly" && hourly > 0 && hours > 0) {
+      eur = hourly * hours
+      qty = hours
+      unit = "h"
+      rate = hourly
+      source = t.driver_hourly_rate != null ? "trip override (hourly)" : "drivers.hourly_rate"
+    }
+
+    if (eur > 0) {
       items.push({
         trip_id: t.id,
         trip_ref: t.reference_number,
         bucket: "driver",
-        source: "drivers.hourly_rate",
+        source,
         occurred_at: t.actual_start ?? t.planned_start ?? null,
-        description: `Driver hours × hourly rate${info?.name ? ` (${info.name})` : ""}`,
+        description,
         vendor: info?.name ?? null,
         country: null,
-        category: "driver_hours",
+        category,
         cost_code: null,
-        quantity: Number(hours.toFixed(2)),
-        unit: "h",
+        quantity: Number(qty.toFixed(unit === "km" ? 0 : 2)),
+        unit,
         currency: "EUR",
         amount_eur: Number(eur.toFixed(2)),
       })
