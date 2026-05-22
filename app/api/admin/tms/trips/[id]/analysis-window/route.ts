@@ -1,7 +1,25 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { createClient as createServiceClient } from "@supabase/supabase-js"
 
 export const runtime = "nodejs"
+
+/**
+ * Service-role client for admin writes. The trips RLS policies are wired to
+ * authenticated users; the cookie-based server client gets rejected as `anon`
+ * inside dynamic route handlers (same problem documented in
+ * /api/admin/tms/trips/[id]/expenses), so we go through the service-role
+ * client for the actual update — exactly like the rest of the admin TMS
+ * routes do. The cookie client is still used to resolve the *current user*
+ * (best-effort, for `route_confirmed_by`).
+ */
+function serviceClient() {
+  return createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  )
+}
 
 /**
  * Persists the user-chosen Planned-vs-Actual inspection window on the
@@ -28,7 +46,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  const supabase = serviceClient()
 
   if (body?.reset === true) {
     const { error } = await supabase
@@ -71,10 +89,12 @@ export async function PATCH(
       ? Math.max(0, Math.round(body.distance_km * 100) / 100)
       : null
 
-  // Resolve current user (for route_confirmed_by) — best-effort.
+  // Resolve current user (for route_confirmed_by) — best-effort. Use the
+  // cookie-based client here; we only need the auth context, not RLS.
   let confirmedBy: string | null = null
   try {
-    const { data: auth } = await supabase.auth.getUser()
+    const cookieClient = await createClient()
+    const { data: auth } = await cookieClient.auth.getUser()
     confirmedBy = auth?.user?.id ?? null
   } catch {
     confirmedBy = null
