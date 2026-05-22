@@ -39,7 +39,25 @@ import {
   User,
   Package,
   AlertTriangle,
+  Download,
+  FileType2,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  exportFleetPnlCsv,
+  exportFleetPnlExcel,
+  exportFleetPnlPdf,
+  type FleetExportContext,
+} from "@/lib/exports/internal-fleet-pnl-export";
 
 /* ------------------------- types ------------------------- */
 
@@ -264,6 +282,71 @@ export default function InternalFleetPnLPage() {
     safePage * pageSize,
   );
 
+  /* Issuer/owner company info — used to brand exports. */
+  const { data: companyProfile } = useSWR<{
+    company_name: string | null;
+    logo_url: string | null;
+  } | null>(
+    adminId ? ["company_profile", adminId] : null,
+    async () => {
+      const sb = (await import("@/lib/supabase/client")).createClient();
+      const { data } = await sb
+        .from("company_profiles")
+        .select("company_name, logo_url")
+        .eq("admin_id", adminId!)
+        .maybeSingle();
+      return data ?? null;
+    },
+  );
+
+  const [exporting, setExporting] = React.useState<
+    null | "csv" | "xlsx" | "pdf"
+  >(null);
+
+  function buildExportContext(): FleetExportContext {
+    return {
+      from,
+      to,
+      rows: filteredRows as any,
+      totals: {
+        tripCount: totals.tripCount,
+        revenue: totals.revenue,
+        actual: totals.actual,
+        planned: totals.planned,
+        profit: totals.profit,
+        km: totals.km,
+        marginPct: totals.marginPct,
+        eurPerKm: totals.eurPerKm,
+        mixed: totals.mixed,
+        lossCount: totals.lossCount,
+      },
+      showPlanned,
+      filters: {
+        vehicle: vehicleFilter,
+        driver: driverFilter,
+        margin: marginFilter,
+        search,
+      },
+      company: {
+        name: companyProfile?.company_name ?? session?.company_name ?? null,
+        logoUrl: companyProfile?.logo_url ?? null,
+      },
+    };
+  }
+
+  async function handleExport(kind: "csv" | "xlsx" | "pdf") {
+    if (!filteredRows.length) return;
+    try {
+      setExporting(kind);
+      const ctx = buildExportContext();
+      if (kind === "csv") exportFleetPnlCsv(ctx);
+      else if (kind === "xlsx") await exportFleetPnlExcel(ctx);
+      else await exportFleetPnlPdf(ctx);
+    } finally {
+      setExporting(null);
+    }
+  }
+
   function toggle(id: string) {
     setExpanded(prev => {
       const n = new Set(prev);
@@ -296,6 +379,92 @@ export default function InternalFleetPnLPage() {
               </p>
             </div>
           </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                disabled={!filteredRows.length || !!exporting}
+                className="relative gap-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/20 hover:from-amber-600 hover:to-orange-600 hover:shadow-amber-500/30 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-300 dark:disabled:from-slate-700 dark:disabled:to-slate-700"
+              >
+                {exporting ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    Exporting {exporting.toUpperCase()}...
+                  </span>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4" />
+                    Export
+                    <ChevronDown className="h-4 w-4 opacity-80" />
+                  </>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72 p-2">
+              <DropdownMenuLabel className="px-2 pt-1 pb-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Export report
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                  >
+                    {filteredRows.length} trips
+                  </Badge>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem
+                disabled={!!exporting}
+                onClick={() => handleExport("pdf")}
+                className="group flex cursor-pointer items-center gap-3 rounded-md px-2 py-2.5 focus:bg-rose-500/10"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-gradient-to-br from-rose-500 to-red-600 text-white shadow-sm shadow-rose-500/30">
+                  <FileType2 className="h-4 w-4" />
+                </div>
+                <div className="flex flex-1 flex-col">
+                  <span className="text-sm font-semibold">PDF Report</span>
+                  <span className="text-xs text-muted-foreground">
+                    Branded landscape with KPIs &amp; trips table
+                  </span>
+                </div>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                disabled={!!exporting}
+                onClick={() => handleExport("xlsx")}
+                className="group flex cursor-pointer items-center gap-3 rounded-md px-2 py-2.5 focus:bg-emerald-500/10"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-sm shadow-emerald-500/30">
+                  <FileSpreadsheet className="h-4 w-4" />
+                </div>
+                <div className="flex flex-1 flex-col">
+                  <span className="text-sm font-semibold">Excel workbook</span>
+                  <span className="text-xs text-muted-foreground">
+                    Summary + Trips + Orders + Legs sheets
+                  </span>
+                </div>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                disabled={!!exporting}
+                onClick={() => handleExport("csv")}
+                className="group flex cursor-pointer items-center gap-3 rounded-md px-2 py-2.5 focus:bg-sky-500/10"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-sm shadow-sky-500/30">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <div className="flex flex-1 flex-col">
+                  <span className="text-sm font-semibold">CSV file</span>
+                  <span className="text-xs text-muted-foreground">
+                    Trips with summary header &amp; nested details
+                  </span>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Filters */}
