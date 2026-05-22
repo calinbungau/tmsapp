@@ -18,26 +18,53 @@ function fmtDateTime(input: string | Date | null | undefined): string {
   return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
 }
 
-let logoCache: string | null | undefined
-async function loadLogoDataUrl(): Promise<string | null> {
-  if (logoCache !== undefined) return logoCache
+const logoCache = new Map<string, string | null>()
+async function loadImageDataUrl(url: string): Promise<string | null> {
+  if (logoCache.has(url)) return logoCache.get(url) ?? null
   try {
-    const res = await fetch("/images/logo-full-bng.png")
+    const res = await fetch(url)
     if (!res.ok) {
-      logoCache = null
+      logoCache.set(url, null)
       return null
     }
     const blob = await res.blob()
-    logoCache = await new Promise<string>((resolve, reject) => {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => resolve(reader.result as string)
       reader.onerror = reject
       reader.readAsDataURL(blob)
     })
+    logoCache.set(url, dataUrl)
+    return dataUrl
   } catch {
-    logoCache = null
+    logoCache.set(url, null)
+    return null
   }
-  return logoCache
+}
+
+// Read PNG/JPEG dimensions from a data URL header so jsPDF can render
+// company logos at correct aspect ratio without distortion.
+function imageDimsFromDataUrl(dataUrl: string): { w: number; h: number } | null {
+  try {
+    const comma = dataUrl.indexOf(",")
+    if (comma < 0) return null
+    const meta = dataUrl.slice(0, comma)
+    const b64 = dataUrl.slice(comma + 1)
+    const bin = atob(b64.slice(0, 64)) // first 48 bytes are enough
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    if (meta.includes("image/png")) {
+      // PNG IHDR width/height at offsets 16-23
+      const w = (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19]
+      const h = (bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23]
+      if (w > 0 && h > 0) return { w, h }
+    }
+    if (meta.includes("image/jpeg") || meta.includes("image/jpg")) {
+      // very rough JPEG SOF0 scan — return null and let caller use fallback
+      return null
+    }
+  } catch {}
+  return null
 }
 
 export type PnlRow = {
@@ -224,6 +251,10 @@ export type ExportContext = {
     execution?: string
     customerInvoice?: string
   }
+  company?: {
+    name: string | null
+    logoUrl: string | null
+  } | null
 }
 
 const COLUMNS: Array<{
@@ -367,6 +398,15 @@ export async function exportPnlExcel(ctx: ExportContext) {
   summary.getCell("A2").font = { color: { argb: "FF64748B" }, italic: true, size: 11 }
   summary.getCell("A2").alignment = { horizontal: "left", indent: 1 }
   summary.getRow(2).height = 22
+
+  // Issuer / company line
+  if (ctx.company?.name) {
+    summary.mergeCells("A3:B3")
+    summary.getCell("A3").value = `Issued by ${ctx.company.name}`
+    summary.getCell("A3").font = { color: { argb: "FFF59E0B" }, bold: true, size: 10 }
+    summary.getCell("A3").alignment = { horizontal: "left", indent: 1 }
+    summary.getRow(3).height = 18
+  }
 
   const kpis: Array<[string, string | number, string]> = [
     ["Orders", ctx.totals.count, "FF334155"],
@@ -720,38 +760,116 @@ export async function exportPnlPdf(ctx: ExportContext) {
   const orange: [number, number, number] = [249, 115, 22]
   const violet: [number, number, number] = [139, 92, 246]
 
-  // Header band
+  // Header band — taller to host a "cute" issuer card on the right.
+  const headerH = 86
   doc.setFillColor(...ink)
-  doc.rect(0, 0, pageW, 70, "F")
+  doc.rect(0, 0, pageW, headerH, "F")
   doc.setFillColor(...accent)
-  doc.rect(0, 70, pageW, 3, "F")
+  doc.rect(0, headerH, pageW, 3, "F")
 
-  // BNG Tracking logo (white, 768x295) — placed top-left, then title shifted right
-  const logoData = await loadLogoDataUrl()
+  // BNG Tracking logo (white, 768x295) — top-left, title shifted right.
+  const bngLogo = await loadImageDataUrl("/images/logo-full-bng.png")
   let titleX = 32
-  if (logoData) {
-    const logoH = 26
-    const logoW = logoH * (768 / 295) // preserve aspect ratio ≈ 67.7pt
-    doc.addImage(logoData, "PNG", 32, 22, logoW, logoH)
-    titleX = 32 + logoW + 14
+  if (bngLogo) {
+    const logoH = 28
+    const logoW = logoH * (768 / 295) // preserve aspect ratio ≈ 73pt
+    doc.addImage(bngLogo, "PNG", 32, 18, logoW, logoH)
+    titleX = 32 + logoW + 16
   }
 
   doc.setTextColor(255, 255, 255)
   doc.setFont("helvetica", "bold")
   doc.setFontSize(18)
-  doc.text("Forwarding Orders P&L", titleX, 35)
+  doc.text("Forwarding Orders P&L", titleX, 36)
 
   doc.setFont("helvetica", "normal")
   doc.setFontSize(10)
   doc.setTextColor(203, 213, 225)
-  doc.text(`Period: ${ctx.from}  to  ${ctx.to}`, titleX, 55)
+  doc.text(`Period: ${ctx.from}  to  ${ctx.to}`, titleX, 56)
 
   const generated = fmtDateTime(new Date())
-  doc.text(`Generated ${generated}`, pageW - 32, 55, { align: "right" })
-  doc.text(`${ctx.totals.count} orders`, pageW - 32, 35, { align: "right" })
+  doc.setFontSize(9)
+  doc.setTextColor(148, 163, 184)
+  doc.text(
+    `Generated ${generated}  ·  ${ctx.totals.count} orders`,
+    titleX,
+    72,
+  )
+
+  // ---- Cute issuer card on the right (customer logo + company name) ----
+  const company = ctx.company
+  if (company && (company.name || company.logoUrl)) {
+    const cardW = 220
+    const cardH = 58
+    const cardX = pageW - 32 - cardW
+    const cardY = 14
+
+    // Soft white rounded card with subtle amber accent strip
+    doc.setFillColor(255, 255, 255)
+    doc.roundedRect(cardX, cardY, cardW, cardH, 8, 8, "F")
+    doc.setFillColor(...accent)
+    doc.roundedRect(cardX, cardY, 4, cardH, 2, 2, "F")
+
+    // Optional customer logo — square 40pt box, contained inside
+    let textX = cardX + 16
+    if (company.logoUrl) {
+      const logoData = await loadImageDataUrl(company.logoUrl)
+      if (logoData) {
+        const boxX = cardX + 12
+        const boxY = cardY + 9
+        const boxSize = 40
+        // Light slate background for transparent / dark logos
+        doc.setFillColor(248, 250, 252)
+        doc.roundedRect(boxX, boxY, boxSize, boxSize, 6, 6, "F")
+        const dims = imageDimsFromDataUrl(logoData)
+        const isPng = logoData.startsWith("data:image/png")
+        const ratio = dims ? dims.w / dims.h : 1
+        let drawW = boxSize - 8
+        let drawH = drawW / ratio
+        if (drawH > boxSize - 8) {
+          drawH = boxSize - 8
+          drawW = drawH * ratio
+        }
+        const drawX = boxX + (boxSize - drawW) / 2
+        const drawY = boxY + (boxSize - drawH) / 2
+        try {
+          doc.addImage(
+            logoData,
+            isPng ? "PNG" : "JPEG",
+            drawX,
+            drawY,
+            drawW,
+            drawH,
+          )
+        } catch {
+          // Ignore unsupported image formats — name still renders.
+        }
+        textX = boxX + boxSize + 12
+      }
+    }
+
+    // "ISSUED BY" eyebrow
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(7)
+    doc.setTextColor(...accent)
+    doc.text("ISSUED BY", textX, cardY + 18)
+
+    // Company name (wrap to two lines if needed)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(11)
+    doc.setTextColor(...ink)
+    const name = (company.name ?? "").trim() || "—"
+    const nameLines = doc.splitTextToSize(name, cardW - (textX - cardX) - 14)
+    const limited = (nameLines as string[]).slice(0, 2)
+    doc.text(limited, textX, cardY + 32)
+    if (limited.length > 1) {
+      // already drawn second line at +14
+    }
+  }
+
 
   // KPI cards
-  const cardY = 90
+  const cardY = 106
   const cardH = 56
   const gap = 10
   const cards: Array<{ label: string; value: string; color: [number, number, number] }> = [

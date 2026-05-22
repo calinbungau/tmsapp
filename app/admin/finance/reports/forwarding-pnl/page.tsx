@@ -236,6 +236,23 @@ export default function ForwardingPnLPage() {
     : null;
   const { data, isLoading, error } = useSWR<{ items: Row[] }>(url, fetcher);
 
+  // Issuer/owner company info — used to brand exports.
+  const { data: companyProfile } = useSWR<{
+    company_name: string | null;
+    logo_url: string | null;
+  } | null>(
+    adminId ? ["company_profile", adminId] : null,
+    async () => {
+      const sb = (await import("@/lib/supabase/client")).createClient();
+      const { data } = await sb
+        .from("company_profiles")
+        .select("company_name, logo_url")
+        .eq("admin_id", adminId!)
+        .maybeSingle();
+      return data ?? null;
+    },
+  );
+
   const rows = React.useMemo(() => {
     let items = data?.items ?? [];
     if (execFilter !== "all") {
@@ -290,6 +307,10 @@ export default function ForwardingPnLPage() {
         count: rows.length,
       },
       filters: { execution: execFilter, customerInvoice: invFilter },
+      company: {
+        name: companyProfile?.company_name ?? session?.company_name ?? null,
+        logoUrl: companyProfile?.logo_url ?? null,
+      },
     };
   }
 
