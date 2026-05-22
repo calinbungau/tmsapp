@@ -111,6 +111,24 @@ export type PnlRow = {
   carrier_paid_eur: number
   carrier_outstanding_eur: number
   subcontracts?: SubcontractInfo[]
+  customer_invoices?: InvoiceLite[]
+  carrier_invoices?: InvoiceLite[]
+}
+
+export type InvoiceLite = {
+  id: string
+  invoice_number: string | null
+  direction: "incoming" | "outgoing"
+  status: string | null
+  issue_date: string | null
+  due_date: string | null
+  paid_date: string | null
+  amount: number
+  total_with_tax: number
+  paid_amount: number
+  remaining_amount: number | null
+  currency: string | null
+  business_partner_id: string | null
 }
 
 export type SubcontractStop = {
@@ -298,14 +316,8 @@ const COLUMNS: Array<{
   { key: "cost_other_eur", header: "Other EUR", width: 12, numFmt: "#,##0.00", align: "right" },
   { key: "profit_eur", header: "Profit EUR", width: 13, numFmt: "#,##0.00", align: "right" },
   { key: "margin_pct", header: "Margin %", width: 10, numFmt: "0.00", align: "right" },
-  { key: "customer_invoice_status", header: "Customer INV.", width: 14 },
-  { key: "customer_invoiced_eur", header: "Cust. Invoiced", width: 14, numFmt: "#,##0.00", align: "right" },
-  { key: "customer_paid_eur", header: "Cust. Paid", width: 12, numFmt: "#,##0.00", align: "right" },
-  { key: "customer_outstanding_eur", header: "Cust. Outstanding", width: 16, numFmt: "#,##0.00", align: "right" },
-  { key: "carrier_invoice_status", header: "Carrier INV.", width: 14 },
-  { key: "carrier_invoiced_eur", header: "Carr. Invoiced", width: 14, numFmt: "#,##0.00", align: "right" },
-  { key: "carrier_paid_eur", header: "Carr. Paid", width: 12, numFmt: "#,##0.00", align: "right" },
-  { key: "carrier_outstanding_eur", header: "Carr. Outstanding", width: 16, numFmt: "#,##0.00", align: "right" },
+  { key: "customer_invoice_status", header: "Customer INV.", width: 28 },
+  { key: "carrier_invoice_status", header: "Carrier INV.", width: 28 },
   { key: "pod_status", header: "POD (Carrier)", width: 14 },
 ]
 
@@ -329,6 +341,24 @@ function cellValue(r: PnlRow, key: (typeof COLUMNS)[number]["key"]) {
   }
   if (key === "execution_mode") {
     return executionCode(r.execution_mode)
+  }
+  if (key === "customer_invoice_status") {
+    return invoiceCellText(
+      r.customer_invoice_status,
+      r.customer_invoiced_eur,
+      r.customer_paid_eur,
+      r.customer_invoices,
+      "customer",
+    )
+  }
+  if (key === "carrier_invoice_status") {
+    return invoiceCellText(
+      r.carrier_invoice_status,
+      r.carrier_invoiced_eur,
+      r.carrier_paid_eur,
+      r.carrier_invoices,
+      "carrier",
+    )
   }
   const v = (r as any)[key]
   return v === null || v === undefined ? "" : v
@@ -354,6 +384,185 @@ function fmtMoney(n: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n || 0)
+}
+
+// ---- Invoice cell helpers (mirror the on-screen 3-line layout) ----
+function fmtShortDate(iso: string | null | undefined): string {
+  if (!iso) return ""
+  // Render as DD/MM/YYYY to match the UI snippet
+  const d = new Date(iso.length <= 10 ? iso + "T00:00:00" : iso)
+  if (Number.isNaN(d.getTime())) return ""
+  const dd = String(d.getDate()).padStart(2, "0")
+  const mm = String(d.getMonth() + 1).padStart(2, "0")
+  const yy = d.getFullYear()
+  return `${dd}/${mm}/${yy}`
+}
+
+const _today0 = (() => {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+})()
+
+function classifyDue(
+  inv: InvoiceLite,
+): {
+  bucket: "paid" | "draft" | "overdue" | "soon" | "ok" | "noDue"
+  daysToDue: number | null
+} {
+  if (inv.status === "paid") return { bucket: "paid", daysToDue: null }
+  if (inv.status === "draft") return { bucket: "draft", daysToDue: null }
+  if (!inv.due_date) return { bucket: "noDue", daysToDue: null }
+  const due = new Date(inv.due_date + "T00:00:00").getTime()
+  const days = Math.round((due - _today0) / 86400000)
+  if (days < 0) return { bucket: "overdue", daysToDue: days }
+  if (days <= 10) return { bucket: "soon", daysToDue: days }
+  return { bucket: "ok", daysToDue: days }
+}
+
+/** Pick the most-urgent unpaid invoice (overdue first, then soon, then ok). */
+function pickNextInvoice(invs: InvoiceLite[]): InvoiceLite | null {
+  const unpaid = invs.filter(i => i.status !== "paid" && i.due_date)
+  if (!unpaid.length) return null
+  return [...unpaid].sort((a, b) =>
+    (a.due_date || "").localeCompare(b.due_date || ""),
+  )[0]
+}
+
+/** Build a friendly status label that matches the UI badges. */
+function invoiceStatusLabel(
+  status: string | null | undefined,
+  direction: "customer" | "carrier",
+): string {
+  if (!status) return direction === "customer" ? "None" : "No Inv."
+  if (direction === "customer") {
+    const map: Record<string, string> = {
+      none: "None",
+      draft: "Draft",
+      issued: "Issued",
+      partial: "Partial",
+      paid: "Paid",
+      overdue: "Overdue",
+    }
+    return map[status] ?? status
+  }
+  const map: Record<string, string> = {
+    none: "No Inv.",
+    fully_invoiced: "Invoiced",
+    partial_paid: "Partially Paid",
+    fully_paid: "Paid",
+  }
+  return map[status] ?? status
+}
+
+/**
+ * Render the "Issued / €0 / €2,105 / Due 09/06/2026" three-line block as a
+ * single text string (with line breaks) so jsPDF-AutoTable and ExcelJS — both
+ * of which honor `\n` inside a cell — can show the same layout the UI uses.
+ */
+function invoiceCellText(
+  status: string,
+  invoiced: number,
+  paid: number,
+  invoices: InvoiceLite[] | undefined,
+  direction: "customer" | "carrier",
+): string {
+  const lines: string[] = []
+  lines.push(invoiceStatusLabel(status, direction))
+  if (invoiced > 0 || paid > 0) {
+    lines.push(`EUR ${fmtMoney(paid)} / ${fmtMoney(invoiced)}`)
+  }
+  const nxt = pickNextInvoice(invoices ?? [])
+  if (nxt) {
+    const cl = classifyDue(nxt)
+    const dateStr = fmtShortDate(nxt.due_date)
+    if (cl.bucket === "overdue") {
+      lines.push(`Overdue ${dateStr} (${Math.abs(cl.daysToDue ?? 0)}d)`)
+    } else if (cl.bucket === "soon") {
+      lines.push(`Due in ${cl.daysToDue}d - ${dateStr}`)
+    } else if (cl.bucket === "ok") {
+      lines.push(`Due ${dateStr}`)
+    }
+    const unpaidCount = (invoices ?? []).filter(
+      i => i.status !== "paid" && i.due_date,
+    ).length
+    if (unpaidCount > 1) {
+      lines[lines.length - 1] += ` (+${unpaidCount - 1})`
+    }
+  }
+  return lines.join("\n")
+}
+
+/**
+ * Same as invoiceCellText but returns the structured pieces, used by ExcelJS
+ * `richText` to color each line independently (status badge color, paid/total
+ * in muted gray, due date colored by urgency).
+ */
+function invoiceCellRich(
+  status: string,
+  invoiced: number,
+  paid: number,
+  invoices: InvoiceLite[] | undefined,
+  direction: "customer" | "carrier",
+) {
+  const parts: Array<{ text: string; color: string; bold?: boolean }> = []
+  const statusColor = invoiceStatusColorHex(status, direction)
+  parts.push({
+    text: invoiceStatusLabel(status, direction),
+    color: statusColor,
+    bold: true,
+  })
+  if (invoiced > 0 || paid > 0) {
+    parts.push({
+      text: `\nEUR ${fmtMoney(paid)} / ${fmtMoney(invoiced)}`,
+      color: "FF64748B",
+    })
+  }
+  const nxt = pickNextInvoice(invoices ?? [])
+  if (nxt) {
+    const cl = classifyDue(nxt)
+    const dateStr = fmtShortDate(nxt.due_date)
+    let line = ""
+    let color = "FF10B981" // ok / future
+    if (cl.bucket === "overdue") {
+      line = `Overdue ${dateStr} (${Math.abs(cl.daysToDue ?? 0)}d)`
+      color = "FFEF4444"
+    } else if (cl.bucket === "soon") {
+      line = `Due in ${cl.daysToDue}d - ${dateStr}`
+      color = "FFF59E0B"
+    } else if (cl.bucket === "ok") {
+      line = `Due ${dateStr}`
+    }
+    if (line) {
+      const unpaidCount = (invoices ?? []).filter(
+        i => i.status !== "paid" && i.due_date,
+      ).length
+      if (unpaidCount > 1) line += ` (+${unpaidCount - 1})`
+      parts.push({ text: `\n${line}`, color, bold: true })
+    }
+  }
+  return parts
+}
+
+function invoiceStatusColorHex(
+  status: string | null | undefined,
+  direction: "customer" | "carrier",
+): string {
+  const cust: Record<string, string> = {
+    paid: "FF10B981",
+    partial: "FFF59E0B",
+    overdue: "FFEF4444",
+    issued: "FF0EA5E9",
+    draft: "FF64748B",
+    none: "FF94A3B8",
+  }
+  const carr: Record<string, string> = {
+    fully_paid: "FF10B981",
+    partial_paid: "FFF59E0B",
+    fully_invoiced: "FF0EA5E9",
+    none: "FF94A3B8",
+  }
+  return (direction === "customer" ? cust : carr)[status ?? "none"] ?? "FF334155"
 }
 
 // ---------------- CSV ----------------
@@ -565,7 +774,11 @@ export async function exportPnlExcel(ctx: ExportContext) {
     // wraps to two lines, mirroring the Forwarder Board card style.
     const refLines = String(row["reference_number"] ?? "").includes("\n") ? 2 : 1
     const statusLines = String(row["status"] ?? "").includes("\n") ? 2 : 1
-    added.height = Math.max(refLines, statusLines) === 2 ? 30 : 20
+    // Invoice columns can be up to 3 lines (status + amounts + due-date).
+    const custLines = String(row["customer_invoice_status"] ?? "").split("\n").length
+    const carrLines = String(row["carrier_invoice_status"] ?? "").split("\n").length
+    const maxLines = Math.max(refLines, statusLines, custLines, carrLines)
+    added.height = maxLines >= 3 ? 46 : maxLines === 2 ? 30 : 20
     const zebra = idx % 2 === 0 ? "FFFFFFFF" : "FFF8FAFC"
     added.eachCell(cell => {
       cell.fill = {
@@ -609,16 +822,61 @@ export async function exportPnlExcel(ctx: ExportContext) {
       const c = added.getCell(exIdx)
       c.font = { bold: true, color: { argb: map[r.execution_mode] ?? "FF334155" } }
     }
+
+    // Customer / Carrier invoice cells: render multi-line rich text so the
+    // status badge, paid-vs-total line, and due-date line each get their own
+    // color — matching the on-screen "Issued / EUR 0 / EUR 2,105 / Due 09/06"
+    // card style.
+    const renderInvoiceRich = (
+      key: "customer_invoice_status" | "carrier_invoice_status",
+      direction: "customer" | "carrier",
+    ) => {
+      const idx = COLUMNS.findIndex(c => c.key === key) + 1
+      if (idx <= 0) return
+      const status =
+        direction === "customer"
+          ? r.customer_invoice_status
+          : r.carrier_invoice_status
+      const invoiced =
+        direction === "customer"
+          ? r.customer_invoiced_eur
+          : r.carrier_invoiced_eur
+      const paid =
+        direction === "customer" ? r.customer_paid_eur : r.carrier_paid_eur
+      const invs =
+        direction === "customer" ? r.customer_invoices : r.carrier_invoices
+      const parts = invoiceCellRich(status, invoiced, paid, invs, direction)
+      const cell = added.getCell(idx)
+      cell.value = {
+        richText: parts.map(p => ({
+          text: p.text,
+          font: {
+            color: { argb: p.color },
+            bold: !!p.bold,
+            size: 10,
+            name: "Calibri",
+          },
+        })),
+      }
+      cell.alignment = {
+        wrapText: true,
+        vertical: "middle",
+        horizontal: "left",
+        indent: 1,
+      }
+    }
+    renderInvoiceRich("customer_invoice_status", "customer")
+    renderInvoiceRich("carrier_invoice_status", "carrier")
   })
 
-  // Totals row
+  // Totals row — outstanding A/R + A/P now live in the invoice-stat blocks
+  // on the Summary sheet, so the orders sheet just totals revenue / cost /
+  // profit / margin to keep the row compact.
   const totalsRow = ws.addRow({
     reference_number: "TOTAL",
     revenue_eur: ctx.totals.revenue,
     cost_total_eur: ctx.totals.costs,
     profit_eur: ctx.totals.profit,
-    customer_outstanding_eur: ctx.totals.arOutstanding,
-    carrier_outstanding_eur: ctx.totals.apOutstanding,
     margin_pct: ctx.totals.avgMargin,
   })
   totalsRow.height = 26
@@ -938,9 +1196,7 @@ export async function exportPnlPdf(ctx: ExportContext) {
       "Profit EUR",
       "Margin",
       "Customer INV.",
-      "Cust. Out.",
       "Carrier INV.",
-      "Carr. Out.",
       "POD",
     ],
   ]
@@ -958,10 +1214,20 @@ export async function exportPnlPdf(ctx: ExportContext) {
       fmtMoney(r.cost_total_eur),
       fmtMoney(r.profit_eur),
       r.margin_pct == null ? "-" : `${Number(r.margin_pct).toFixed(1)}%`,
-      r.customer_invoice_status,
-      fmtMoney(r.customer_outstanding_eur),
-      r.carrier_invoice_status,
-      fmtMoney(r.carrier_outstanding_eur),
+      invoiceCellText(
+        r.customer_invoice_status,
+        r.customer_invoiced_eur,
+        r.customer_paid_eur,
+        r.customer_invoices,
+        "customer",
+      ),
+      invoiceCellText(
+        r.carrier_invoice_status,
+        r.carrier_invoiced_eur,
+        r.carrier_paid_eur,
+        r.carrier_invoices,
+        "carrier",
+      ),
       podSummary(r.subcontracts),
     ]
   })
@@ -997,8 +1263,8 @@ export async function exportPnlPdf(ctx: ExportContext) {
       7: { halign: "right" },
       8: { halign: "right", fontStyle: "bold" },
       9: { halign: "right" },
-      11: { halign: "right" },
-      13: { halign: "right" },
+      10: { cellWidth: 78, valign: "top" },
+      11: { cellWidth: 78, valign: "top" },
     },
     didParseCell: (data) => {
       if (data.section !== "body") return
@@ -1020,7 +1286,9 @@ export async function exportPnlPdf(ctx: ExportContext) {
         data.cell.styles.textColor = map[r.execution_mode] ?? ink
         data.cell.styles.fontStyle = "bold"
       }
-      // Invoice status colors
+      // Customer Invoice cell — color the badge line by status. AutoTable
+      // colors the entire cell, so we tint by the dominant status color and
+      // keep the muted/due-date lines readable via the smaller font size.
       if (data.column.index === 10) {
         const map: Record<string, [number, number, number]> = {
           paid: green,
@@ -1033,8 +1301,9 @@ export async function exportPnlPdf(ctx: ExportContext) {
         data.cell.styles.textColor =
           map[r.customer_invoice_status] ?? ink
         data.cell.styles.fontStyle = "bold"
+        data.cell.styles.fontSize = 7.5
       }
-      if (data.column.index === 12) {
+      if (data.column.index === 11) {
         const map: Record<string, [number, number, number]> = {
           fully_paid: green,
           partial_paid: accent,
@@ -1044,9 +1313,10 @@ export async function exportPnlPdf(ctx: ExportContext) {
         data.cell.styles.textColor =
           map[r.carrier_invoice_status] ?? ink
         data.cell.styles.fontStyle = "bold"
+        data.cell.styles.fontSize = 7.5
       }
       // POD column
-      if (data.column.index === 14) {
+      if (data.column.index === 12) {
         const txt = String(data.cell.raw ?? "").toLowerCase()
         if (txt === "received") data.cell.styles.textColor = green
         else if (txt.startsWith("partial")) data.cell.styles.textColor = accent
