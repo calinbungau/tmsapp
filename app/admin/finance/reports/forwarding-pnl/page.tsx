@@ -201,12 +201,12 @@ function CarrierInvoiceBadge({
 
 export default function ForwardingPnLPage() {
   const today = new Date();
-  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+  const startOfYear = new Date(today.getFullYear(), 0, 1)
     .toISOString()
     .slice(0, 10);
   const todayStr = today.toISOString().slice(0, 10);
 
-  const [from, setFrom] = React.useState<string>(firstOfMonth);
+  const [from, setFrom] = React.useState<string>(startOfYear);
   const [to, setTo] = React.useState<string>(todayStr);
   const [execFilter, setExecFilter] = React.useState<string>("all");
   const [invFilter, setInvFilter] = React.useState<string>("all");
