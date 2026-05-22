@@ -568,19 +568,24 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    // also subcontracted legs on the same trip (carrier_cost on trip_legs)
+    // also subcontracted legs on the order — but ONLY those NOT on this internal trip
+    // (legs of this trip are already part of the trip's own internal cost, not a revenue deduction)
     const { data: subcontractedLegs } = await sb
       .from("trip_legs")
       .select("trip_id, order_id, carrier_cost, carrier_currency, assignment_type, carrier_id")
-      .in("trip_id", tripIds)
-    const subLegCostByOrder = new Map<string, number>()
+      .in("order_id", orderIds)
+    // map: order_id -> trip_id -> sub-leg eur
+    const subLegCostByOrderAndTrip = new Map<string, Map<string, number>>()
     for (const l of (subcontractedLegs ?? []) as any[]) {
       const isSub =
         (l.assignment_type && String(l.assignment_type).toLowerCase() !== "internal") ||
         !!l.carrier_id
       if (!isSub || !l.order_id) continue
       const eur = toEur(l.carrier_cost, l.carrier_currency, fx)
-      subLegCostByOrder.set(l.order_id, (subLegCostByOrder.get(l.order_id) ?? 0) + eur)
+      const inner = subLegCostByOrderAndTrip.get(l.order_id) ?? new Map<string, number>()
+      const key = l.trip_id ?? "__notrip__"
+      inner.set(key, (inner.get(key) ?? 0) + eur)
+      subLegCostByOrderAndTrip.set(l.order_id, inner)
     }
 
     for (const [tid, oids] of ordersByTrip.entries()) {
@@ -588,9 +593,17 @@ export async function GET(req: NextRequest) {
         const o = ordersById.get(oid)
         if (!o) continue
         const customerEur = toEur(o.customer_price, o.customer_currency, fx)
-        const sub =
-          (childCostByParent.get(o.id) ?? 0) +
-          (subLegCostByOrder.get(o.id) ?? 0)
+        // Sub-leg deduction: sum of sub-leg costs for this order across ALL trips
+        // EXCEPT the current internal trip (those are already this trip's own cost).
+        let subLegEur = 0
+        const inner = subLegCostByOrderAndTrip.get(o.id)
+        if (inner) {
+          for (const [legTripId, eur] of inner.entries()) {
+            if (legTripId === tid) continue
+            subLegEur += eur
+          }
+        }
+        const sub = (childCostByParent.get(o.id) ?? 0) + subLegEur
         const internal = Math.max(customerEur - sub, 0)
         revenue.push({
           trip_id: tid,
