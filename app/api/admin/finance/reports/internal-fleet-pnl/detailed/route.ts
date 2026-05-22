@@ -548,7 +548,10 @@ export async function GET(req: NextRequest) {
       customer: { id: string; name: string | null } | null
     }
     const ordersById = new Map<string, Ord>()
-    for (const o of (orders ?? []) as Ord[]) ordersById.set(o.id, o)
+    for (const o of (orders ?? []) as any[]) {
+      const cust = Array.isArray(o.customer) ? o.customer[0] ?? null : o.customer ?? null
+      ordersById.set(o.id, { ...o, customer: cust } as Ord)
+    }
 
     // sub-orders deduction (parent's children that are subcontracted)
     const { data: children } = await sb
