@@ -484,7 +484,12 @@ export function TabPlannedVsActual({
           <button
             type="button"
             onClick={applyRange}
-            disabled={!rangeDirty || saving || !rangeFrom || !rangeTo}
+            disabled={saving || !rangeFrom || !rangeTo}
+            title={
+              rangeDirty
+                ? "Save the edited window and the GPS-derived distance to this trip"
+                : "Confirm this executed route — saves the window, the GPS-derived distance, and marks the trip as Confirmed"
+            }
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? (
@@ -492,7 +497,7 @@ export function TabPlannedVsActual({
             ) : (
               <Save className="h-3 w-3" />
             )}
-            Apply &amp; save
+            {rangeDirty ? "Apply & save" : confirmedAt ? "Re-confirm" : "Confirm route"}
           </button>
         </div>
       </div>
@@ -857,7 +862,7 @@ export function TabPlannedVsActual({
         </div>
       )}
 
-      {/* ── Stop ETA list (planned vs actual deltas) ───────── */}
+      {/* ─�� Stop ETA list (planned vs actual deltas) ───────── */}
       <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
         <h3 className="text-xs font-semibold mb-2">
           Stop ETA · Planned vs Actual
