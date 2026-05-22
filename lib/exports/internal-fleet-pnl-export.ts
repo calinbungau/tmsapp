@@ -199,9 +199,37 @@ export type FleetDetailedLeg = {
   delta_km: number | null
 }
 
+export type FleetDetailedRevenueLine = {
+  trip_id: string
+  trip_ref: string | null
+  order_id: string
+  order_ref: string | null
+  customer_name: string | null
+  customer_price_eur: number
+  subcontracted_cost_eur: number
+  internal_revenue_eur: number
+}
+
+export type FleetDetailedTripHeader = {
+  trip_id: string
+  trip_ref: string | null
+  vehicle_plate: string | null
+  driver_name: string | null
+  planned_start: string | null
+  planned_end: string | null
+  actual_start: string | null
+  actual_end: string | null
+  planned_km: number | null
+  actual_km: number | null
+  route_confirmed_at: string | null
+  status: string | null
+}
+
 export type FleetDetailedExportContext = FleetExportContext & {
   items: FleetDetailedItem[]
   legs: FleetDetailedLeg[]
+  revenue: FleetDetailedRevenueLine[]
+  trip_headers: FleetDetailedTripHeader[]
 }
 
 const BUCKET_LABEL: Record<FleetDetailedItem["bucket"], string> = {
@@ -1075,78 +1103,234 @@ export async function exportFleetPnlPdf(ctx: FleetExportContext) {
 /* ============== Detailed (line-by-line) exports ============= */
 /* ============================================================ */
 
+/* ---- shared helpers for Detailed P&L grouping ---- */
+
+type TripPnlGroup = {
+  trip_id: string
+  trip_ref: string | null
+  header: FleetDetailedTripHeader | null
+  revenue_lines: FleetDetailedRevenueLine[]
+  items: FleetDetailedItem[]
+  legs: FleetDetailedLeg[]
+  revenue_eur: number
+  cost_eur: number
+  profit_eur: number
+  margin_pct: number
+  cost_per_km: number
+  bucket_totals: Record<FleetDetailedItem["bucket"], number>
+}
+
+function groupDetailed(ctx: FleetDetailedExportContext): TripPnlGroup[] {
+  const groups = new Map<string, TripPnlGroup>()
+  const ensure = (trip_id: string, trip_ref: string | null) => {
+    let g = groups.get(trip_id)
+    if (!g) {
+      g = {
+        trip_id,
+        trip_ref,
+        header: null,
+        revenue_lines: [],
+        items: [],
+        legs: [],
+        revenue_eur: 0,
+        cost_eur: 0,
+        profit_eur: 0,
+        margin_pct: 0,
+        cost_per_km: 0,
+        bucket_totals: { fuel: 0, toll: 0, driver: 0, other: 0, overhead: 0 },
+      }
+      groups.set(trip_id, g)
+    }
+    return g
+  }
+
+  for (const h of ctx.trip_headers ?? []) {
+    ensure(h.trip_id, h.trip_ref).header = h
+  }
+  for (const r of ctx.revenue ?? []) {
+    const g = ensure(r.trip_id, r.trip_ref)
+    g.revenue_lines.push(r)
+    g.revenue_eur += r.internal_revenue_eur
+  }
+  for (const it of ctx.items) {
+    const g = ensure(it.trip_id, it.trip_ref)
+    g.items.push(it)
+    g.cost_eur += it.amount_eur
+    g.bucket_totals[it.bucket] += it.amount_eur
+  }
+  for (const l of ctx.legs) {
+    ensure(l.trip_id, l.trip_ref).legs.push(l)
+  }
+
+  const out = Array.from(groups.values())
+  for (const g of out) {
+    g.profit_eur = g.revenue_eur - g.cost_eur
+    g.margin_pct = g.revenue_eur > 0 ? (g.profit_eur / g.revenue_eur) * 100 : 0
+    const km = g.header?.actual_km ?? g.header?.planned_km ?? null
+    g.cost_per_km = km && km > 0 ? g.cost_eur / km : 0
+  }
+  out.sort((a, b) => (a.trip_ref ?? "").localeCompare(b.trip_ref ?? ""))
+  return out
+}
+
+function detailedGrandTotals(groups: TripPnlGroup[]) {
+  let revenue = 0,
+    cost = 0,
+    km = 0
+  const buckets: Record<FleetDetailedItem["bucket"], number> = {
+    fuel: 0,
+    toll: 0,
+    driver: 0,
+    other: 0,
+    overhead: 0,
+  }
+  for (const g of groups) {
+    revenue += g.revenue_eur
+    cost += g.cost_eur
+    km += g.header?.actual_km ?? g.header?.planned_km ?? 0
+    for (const b of Object.keys(buckets) as FleetDetailedItem["bucket"][]) {
+      buckets[b] += g.bucket_totals[b]
+    }
+  }
+  const profit = revenue - cost
+  return {
+    revenue,
+    cost,
+    profit,
+    km,
+    margin_pct: revenue > 0 ? (profit / revenue) * 100 : 0,
+    cost_per_km: km > 0 ? cost / km : 0,
+    buckets,
+    trip_count: groups.length,
+  }
+}
+
 /* ---- Detailed CSV ---- */
 
 export function exportFleetPnlDetailedCsv(ctx: FleetDetailedExportContext) {
-  const meta = [
-    `Internal Fleet P&L — Detailed`,
-    `Period,${ctx.from} to ${ctx.to}`,
-    `Generated,${fmtDateTime(new Date())}`,
-    `Trips,${ctx.totals.tripCount}`,
-    `Line items,${ctx.items.length}`,
-    `Revenue EUR,${ctx.totals.revenue.toFixed(2)}`,
-    `Actual cost EUR,${ctx.totals.actual.toFixed(2)}`,
-    `Profit EUR,${ctx.totals.profit.toFixed(2)}`,
-    "",
-  ]
-
-  const headers = [
-    "Trip Ref",
-    "Bucket",
-    "Source",
-    "Date",
-    "Description",
-    "Vendor",
-    "Country",
-    "Category",
-    "Cost code",
-    "Qty",
-    "Unit",
-    "Currency",
-    "Amount EUR",
-  ]
+  const groups = groupDetailed(ctx)
+  const tot = detailedGrandTotals(groups)
   const csvEscape = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s)
+  const row = (parts: (string | number | null | undefined)[]) =>
+    parts.map(p => csvEscape(p == null ? "" : String(p))).join(",")
 
-  const rows = ctx.items.map(it =>
-    [
-      it.trip_ref ?? it.trip_id.slice(0, 8),
-      BUCKET_LABEL[it.bucket],
-      it.source,
-      it.occurred_at ? fmtDate(it.occurred_at) : "",
-      it.description,
-      it.vendor ?? "",
-      it.country ?? "",
-      it.category ?? "",
-      it.cost_code ?? "",
-      it.quantity == null ? "" : String(it.quantity),
-      it.unit ?? "",
-      it.currency ?? "",
-      it.amount_eur.toFixed(2),
-    ]
-      .map(s => csvEscape(String(s)))
-      .join(","),
-  )
+  const lines: string[] = []
+  // Global header
+  lines.push(`Internal Fleet P&L — Detailed`)
+  lines.push(`Period,${ctx.from} to ${ctx.to}`)
+  lines.push(`Generated,${fmtDateTime(new Date())}`)
+  lines.push(`Trips,${tot.trip_count}`)
+  lines.push(`Total Revenue EUR,${tot.revenue.toFixed(2)}`)
+  lines.push(`Total Cost EUR,${tot.cost.toFixed(2)}`)
+  lines.push(`Total Profit EUR,${tot.profit.toFixed(2)}`)
+  lines.push(`Total Margin %,${tot.margin_pct.toFixed(2)}`)
+  lines.push(`Total km,${tot.km.toFixed(0)}`)
+  lines.push(`EUR/km,${tot.cost_per_km.toFixed(3)}`)
+  lines.push("")
 
-  const legHeader = [
-    "",
-    "Per-leg planned vs actual km",
-    "Trip Ref,Leg #,Origin,Destination,Planned km,Actual km,Δ km",
-  ]
-  const legRows = ctx.legs.map(l =>
-    [
-      l.trip_ref ?? l.trip_id.slice(0, 8),
-      l.leg_number == null ? "" : String(l.leg_number),
-      l.origin ?? "",
-      l.destination ?? "",
-      l.planned_km == null ? "" : String(l.planned_km),
-      l.actual_km == null ? "" : String(l.actual_km),
-      l.delta_km == null ? "" : String(l.delta_km),
-    ]
-      .map(s => csvEscape(String(s)))
-      .join(","),
-  )
+  // Per-trip blocks
+  for (const g of groups) {
+    lines.push(
+      `### TRIP ${g.trip_ref ?? g.trip_id.slice(0, 8)} | ${g.header?.vehicle_plate ?? "—"} | ${g.header?.driver_name ?? "—"} | ${
+        g.header?.actual_start ? fmtDate(g.header.actual_start) : g.header?.planned_start ? fmtDate(g.header.planned_start) : ""
+      } → ${g.header?.actual_end ? fmtDate(g.header.actual_end) : g.header?.planned_end ? fmtDate(g.header.planned_end) : ""}${
+        g.header?.route_confirmed_at ? " [CONFIRMED]" : ""
+      }`,
+    )
+    lines.push(
+      row([
+        "",
+        `Planned km: ${g.header?.planned_km ?? "—"}`,
+        `Actual km: ${g.header?.actual_km ?? "—"}`,
+        `Status: ${g.header?.status ?? "—"}`,
+      ]),
+    )
 
-  const csv = [...meta, headers.join(","), ...rows, ...legHeader, ...legRows].join("\r\n")
+    // Revenue
+    lines.push("")
+    lines.push("REVENUE")
+    lines.push(row(["Order Ref", "Customer", "Customer Price EUR", "Subcontracted Cost EUR", "Internal Revenue EUR"]))
+    for (const r of g.revenue_lines) {
+      lines.push(
+        row([
+          r.order_ref ?? r.order_id.slice(0, 8),
+          r.customer_name ?? "",
+          r.customer_price_eur.toFixed(2),
+          r.subcontracted_cost_eur.toFixed(2),
+          r.internal_revenue_eur.toFixed(2),
+        ]),
+      )
+    }
+    lines.push(row(["", "Revenue total", "", "", g.revenue_eur.toFixed(2)]))
+
+    // Costs
+    lines.push("")
+    lines.push("COSTS")
+    lines.push(row(["Bucket", "Source", "Date", "Description", "Vendor", "Country", "Qty", "Unit", "Amount EUR"]))
+    for (const it of g.items) {
+      lines.push(
+        row([
+          BUCKET_LABEL[it.bucket],
+          it.source,
+          it.occurred_at ? fmtDate(it.occurred_at) : "",
+          it.description,
+          it.vendor ?? "",
+          it.country ?? "",
+          it.quantity ?? "",
+          it.unit ?? "",
+          it.amount_eur.toFixed(2),
+        ]),
+      )
+    }
+    // Bucket subtotals
+    for (const b of ["fuel", "toll", "driver", "other", "overhead"] as FleetDetailedItem["bucket"][]) {
+      const v = g.bucket_totals[b]
+      if (v) lines.push(row(["", `Subtotal ${BUCKET_LABEL[b]}`, "", "", "", "", "", "", v.toFixed(2)]))
+    }
+    lines.push(row(["", "Cost total", "", "", "", "", "", "", g.cost_eur.toFixed(2)]))
+
+    // Legs
+    if (g.legs.length) {
+      lines.push("")
+      lines.push("LEGS — Planned vs Actual km")
+      lines.push(row(["Leg #", "Origin", "Destination", "Planned km", "Actual km", "Δ km"]))
+      for (const l of g.legs) {
+        lines.push(
+          row([
+            l.leg_number ?? "",
+            l.origin ?? "",
+            l.destination ?? "",
+            l.planned_km ?? "",
+            l.actual_km ?? "",
+            l.delta_km ?? "",
+          ]),
+        )
+      }
+    }
+
+    // Trip P&L footer
+    lines.push("")
+    lines.push("TRIP P&L")
+    lines.push(row(["Revenue EUR", g.revenue_eur.toFixed(2)]))
+    lines.push(row(["Cost EUR", g.cost_eur.toFixed(2)]))
+    lines.push(row(["Profit EUR", g.profit_eur.toFixed(2)]))
+    lines.push(row(["Margin %", g.margin_pct.toFixed(2)]))
+    lines.push(row(["EUR/km", g.cost_per_km.toFixed(3)]))
+    lines.push("")
+    lines.push("")
+  }
+
+  // Grand totals
+  lines.push("GRAND TOTALS")
+  lines.push(row(["Trips", tot.trip_count]))
+  lines.push(row(["Revenue EUR", tot.revenue.toFixed(2)]))
+  lines.push(row(["Cost EUR", tot.cost.toFixed(2)]))
+  lines.push(row(["Profit EUR", tot.profit.toFixed(2)]))
+  lines.push(row(["Margin %", tot.margin_pct.toFixed(2)]))
+  lines.push(row(["km", tot.km.toFixed(0)]))
+  lines.push(row(["EUR/km", tot.cost_per_km.toFixed(3)]))
+
+  const csv = lines.join("\r\n")
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" })
   triggerDownload(blob, `${fileBaseDetailed(ctx)}.csv`)
 }
@@ -1158,7 +1342,10 @@ export async function exportFleetPnlDetailedExcel(ctx: FleetDetailedExportContex
   wb.creator = "BNG Track"
   wb.created = new Date()
 
-  /* Summary sheet */
+  const groups = groupDetailed(ctx)
+  const tot = detailedGrandTotals(groups)
+
+  /* ---------- Summary sheet (KPIs + cost composition) ---------- */
   const summary = wb.addWorksheet("Summary", { views: [{ showGridLines: false }] })
   summary.columns = [{ width: 32 }, { width: 22 }]
   summary.mergeCells("A1:B1")
@@ -1173,34 +1360,292 @@ export async function exportFleetPnlDetailedExcel(ctx: FleetDetailedExportContex
   summary.getCell("A2").value = `${ctx.from}  to  ${ctx.to}`
   summary.getCell("A2").font = { color: { argb: "FF64748B" }, italic: true }
 
-  // Bucket totals
-  const totalsByBucket = new Map<FleetDetailedItem["bucket"], number>()
-  for (const it of ctx.items) {
-    totalsByBucket.set(it.bucket, (totalsByBucket.get(it.bucket) ?? 0) + it.amount_eur)
-  }
-  const order: FleetDetailedItem["bucket"][] = ["fuel", "toll", "driver", "other", "overhead"]
   let row = 4
+  const writeKpi = (label: string, value: number | string, numFmt?: string, color?: string) => {
+    const r = summary.getRow(row)
+    r.getCell(1).value = label
+    r.getCell(2).value = value
+    if (numFmt) r.getCell(2).numFmt = numFmt
+    r.getCell(2).alignment = { horizontal: "right" }
+    r.getCell(2).font = {
+      bold: true,
+      color: color ? { argb: color } : { argb: "FF0F172A" },
+    }
+    row += 1
+  }
+  summary.getCell(`A${row}`).value = "P&L"
+  summary.getCell(`A${row}`).font = { bold: true }
+  row += 1
+  writeKpi("Trips", tot.trip_count)
+  writeKpi("Revenue (internal)", tot.revenue, '"€"#,##0.00')
+  writeKpi("Total cost", tot.cost, '"€"#,##0.00')
+  writeKpi("Profit", tot.profit, '"€"#,##0.00', tot.profit >= 0 ? "FF10B981" : "FFEF4444")
+  writeKpi("Margin %", tot.margin_pct, "0.00", tot.margin_pct >= 0 ? "FF10B981" : "FFEF4444")
+  writeKpi("km", tot.km, "#,##0")
+  writeKpi("EUR/km", tot.cost_per_km, "0.000")
+  row += 1
   summary.getCell(`A${row}`).value = "Cost composition"
   summary.getCell(`A${row}`).font = { bold: true }
   row += 1
+  const order: FleetDetailedItem["bucket"][] = ["fuel", "toll", "driver", "other", "overhead"]
   for (const b of order) {
     const r = summary.getRow(row)
     r.getCell(1).value = BUCKET_LABEL[b]
-    r.getCell(2).value = totalsByBucket.get(b) ?? 0
+    r.getCell(2).value = tot.buckets[b]
     r.getCell(2).numFmt = '"€"#,##0.00'
     r.getCell(2).alignment = { horizontal: "right" }
     r.getCell(2).font = { bold: true, color: { argb: BUCKET_COLOR[b] } }
     row += 1
   }
-  row += 1
-  summary.getCell(`A${row}`).value = "Total"
-  summary.getCell(`A${row}`).font = { bold: true }
-  summary.getCell(`B${row}`).value = ctx.totals.actual
-  summary.getCell(`B${row}`).numFmt = '"€"#,##0.00'
-  summary.getCell(`B${row}`).font = { bold: true }
-  summary.getCell(`B${row}`).alignment = { horizontal: "right" }
 
-  /* Line items sheet */
+  /* ---------- Trip P&L (flat: one row per trip) ---------- */
+  const flat = wb.addWorksheet("Trip P&L (flat)", {
+    views: [{ state: "frozen", ySplit: 1, showGridLines: false }],
+  })
+  flat.columns = [
+    { key: "trip_ref", header: "Trip Ref", width: 18 },
+    { key: "vehicle", header: "Vehicle", width: 14 },
+    { key: "driver", header: "Driver", width: 22 },
+    { key: "period", header: "Period", width: 22 },
+    { key: "confirmed", header: "Confirmed", width: 10 },
+    { key: "planned_km", header: "Planned km", width: 11, style: { numFmt: "#,##0" } },
+    { key: "actual_km", header: "Actual km", width: 11, style: { numFmt: "#,##0" } },
+    { key: "revenue", header: "Revenue EUR", width: 14, style: { numFmt: '"€"#,##0.00' } },
+    { key: "fuel", header: "Fuel EUR", width: 12, style: { numFmt: '"€"#,##0.00' } },
+    { key: "toll", header: "Toll EUR", width: 12, style: { numFmt: '"€"#,##0.00' } },
+    { key: "driver_cost", header: "Driver EUR", width: 12, style: { numFmt: '"€"#,##0.00' } },
+    { key: "other", header: "Other EUR", width: 12, style: { numFmt: '"€"#,##0.00' } },
+    { key: "overhead", header: "Overhead EUR", width: 13, style: { numFmt: '"€"#,##0.00' } },
+    { key: "cost", header: "Total cost EUR", width: 14, style: { numFmt: '"€"#,##0.00' } },
+    { key: "profit", header: "Profit EUR", width: 13, style: { numFmt: '"€"#,##0.00' } },
+    { key: "margin", header: "Margin %", width: 10, style: { numFmt: "0.00" } },
+    { key: "eurkm", header: "EUR/km", width: 9, style: { numFmt: "0.000" } },
+  ] as any
+  flat.getRow(1).height = 24
+  flat.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } }
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } }
+    cell.alignment = { vertical: "middle", indent: 1 }
+    cell.border = { bottom: { style: "medium", color: { argb: "FFF59E0B" } } }
+  })
+  groups.forEach((g, i) => {
+    const periodFrom =
+      g.header?.actual_start ?? g.header?.planned_start ?? null
+    const periodTo = g.header?.actual_end ?? g.header?.planned_end ?? null
+    const period =
+      (periodFrom ? fmtDate(periodFrom) : "") +
+      (periodTo ? ` → ${fmtDate(periodTo)}` : "")
+    const added = flat.addRow({
+      trip_ref: g.trip_ref ?? g.trip_id.slice(0, 8),
+      vehicle: g.header?.vehicle_plate ?? "",
+      driver: g.header?.driver_name ?? "",
+      period,
+      confirmed: g.header?.route_confirmed_at ? "Yes" : "—",
+      planned_km: g.header?.planned_km ?? "",
+      actual_km: g.header?.actual_km ?? "",
+      revenue: g.revenue_eur,
+      fuel: g.bucket_totals.fuel,
+      toll: g.bucket_totals.toll,
+      driver_cost: g.bucket_totals.driver,
+      other: g.bucket_totals.other,
+      overhead: g.bucket_totals.overhead,
+      cost: g.cost_eur,
+      profit: g.profit_eur,
+      margin: g.margin_pct,
+      eurkm: g.cost_per_km,
+    })
+    added.eachCell((cell, col) => {
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: i % 2 === 0 ? "FFFFFFFF" : "FFF8FAFC" },
+      }
+      cell.alignment = cell.alignment ?? { vertical: "middle", indent: 1 }
+      cell.border = { bottom: { style: "thin", color: { argb: "FFE2E8F0" } } }
+      if (col === 15) {
+        cell.font = { bold: true, color: { argb: g.profit_eur >= 0 ? "FF10B981" : "FFEF4444" } }
+      } else if (col === 16) {
+        cell.font = { bold: true, color: { argb: g.margin_pct >= 0 ? "FF10B981" : "FFEF4444" } }
+      } else if (col === 5 && g.header?.route_confirmed_at) {
+        cell.font = { bold: true, color: { argb: "FF10B981" } }
+      }
+    })
+  })
+  // Totals row
+  const totalsRow = flat.addRow({
+    trip_ref: "TOTAL",
+    vehicle: "",
+    driver: "",
+    period: "",
+    confirmed: "",
+    planned_km: "",
+    actual_km: tot.km,
+    revenue: tot.revenue,
+    fuel: tot.buckets.fuel,
+    toll: tot.buckets.toll,
+    driver_cost: tot.buckets.driver,
+    other: tot.buckets.other,
+    overhead: tot.buckets.overhead,
+    cost: tot.cost,
+    profit: tot.profit,
+    margin: tot.margin_pct,
+    eurkm: tot.cost_per_km,
+  })
+  totalsRow.eachCell(cell => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } }
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E293B" } }
+  })
+
+  /* ---------- Trip P&L (vertical: per-trip block) ---------- */
+  const vert = wb.addWorksheet("Trip P&L (vertical)", { views: [{ showGridLines: false }] })
+  vert.columns = [
+    { width: 22 },
+    { width: 30 },
+    { width: 18 },
+    { width: 18 },
+    { width: 18 },
+  ]
+  let vrow = 1
+  for (const g of groups) {
+    // Trip header band
+    vert.mergeCells(`A${vrow}:E${vrow}`)
+    const hCell = vert.getCell(`A${vrow}`)
+    hCell.value = `Trip ${g.trip_ref ?? g.trip_id.slice(0, 8)} — ${g.header?.vehicle_plate ?? "—"} · ${g.header?.driver_name ?? "—"}${g.header?.route_confirmed_at ? "  [CONFIRMED]" : ""}`
+    hCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } }
+    hCell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 13 }
+    hCell.alignment = { vertical: "middle", indent: 1 }
+    vert.getRow(vrow).height = 26
+    vrow += 1
+
+    // Sub-header line
+    const periodFrom = g.header?.actual_start ?? g.header?.planned_start ?? null
+    const periodTo = g.header?.actual_end ?? g.header?.planned_end ?? null
+    const sub = vert.getCell(`A${vrow}`)
+    sub.value = `${periodFrom ? fmtDate(periodFrom) : ""}${periodTo ? `  →  ${fmtDate(periodTo)}` : ""}  ·  Planned km: ${g.header?.planned_km ?? "—"}  ·  Actual km: ${g.header?.actual_km ?? "—"}  ·  Status: ${g.header?.status ?? "—"}`
+    vert.mergeCells(`A${vrow}:E${vrow}`)
+    sub.font = { italic: true, color: { argb: "FF64748B" } }
+    sub.alignment = { vertical: "middle", indent: 1 }
+    vrow += 2
+
+    // Revenue table
+    const rh = vert.getRow(vrow)
+    ;["Order Ref", "Customer", "Customer Price EUR", "Subc. Cost EUR", "Internal Revenue EUR"].forEach((t, i) => {
+      const c = rh.getCell(i + 1)
+      c.value = t
+      c.font = { bold: true, color: { argb: "FFFFFFFF" } }
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E293B" } }
+      c.alignment = { vertical: "middle", indent: 1 }
+    })
+    vrow += 1
+    for (const r of g.revenue_lines) {
+      const rr = vert.getRow(vrow)
+      rr.getCell(1).value = r.order_ref ?? r.order_id.slice(0, 8)
+      rr.getCell(2).value = r.customer_name ?? ""
+      rr.getCell(3).value = r.customer_price_eur
+      rr.getCell(3).numFmt = '"€"#,##0.00'
+      rr.getCell(4).value = r.subcontracted_cost_eur
+      rr.getCell(4).numFmt = '"€"#,##0.00'
+      rr.getCell(5).value = r.internal_revenue_eur
+      rr.getCell(5).numFmt = '"€"#,##0.00'
+      rr.getCell(5).font = { bold: true }
+      vrow += 1
+    }
+    const revTotal = vert.getRow(vrow)
+    revTotal.getCell(1).value = "Revenue total"
+    revTotal.getCell(1).font = { bold: true }
+    revTotal.getCell(5).value = g.revenue_eur
+    revTotal.getCell(5).numFmt = '"€"#,##0.00'
+    revTotal.getCell(5).font = { bold: true, color: { argb: "FF10B981" } }
+    vrow += 2
+
+    // Cost table
+    const ch = vert.getRow(vrow)
+    ;["Bucket", "Description", "Date / Vendor", "Qty", "Amount EUR"].forEach((t, i) => {
+      const c = ch.getCell(i + 1)
+      c.value = t
+      c.font = { bold: true, color: { argb: "FFFFFFFF" } }
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E293B" } }
+      c.alignment = { vertical: "middle", indent: 1 }
+    })
+    vrow += 1
+    for (const it of g.items) {
+      const rr = vert.getRow(vrow)
+      rr.getCell(1).value = BUCKET_LABEL[it.bucket]
+      rr.getCell(1).font = { bold: true, color: { argb: BUCKET_COLOR[it.bucket] } }
+      rr.getCell(2).value = it.description
+      rr.getCell(3).value =
+        (it.occurred_at ? fmtDate(it.occurred_at) : "") +
+        (it.vendor ? ` · ${it.vendor}` : "")
+      rr.getCell(4).value = it.quantity != null ? `${it.quantity}${it.unit ? ` ${it.unit}` : ""}` : ""
+      rr.getCell(5).value = it.amount_eur
+      rr.getCell(5).numFmt = '"€"#,##0.00'
+      vrow += 1
+    }
+    // Bucket subtotals
+    for (const b of order) {
+      const v = g.bucket_totals[b]
+      if (!v) continue
+      const rr = vert.getRow(vrow)
+      rr.getCell(2).value = `Subtotal ${BUCKET_LABEL[b]}`
+      rr.getCell(2).font = { italic: true, color: { argb: BUCKET_COLOR[b] } }
+      rr.getCell(5).value = v
+      rr.getCell(5).numFmt = '"€"#,##0.00'
+      rr.getCell(5).font = { bold: true, color: { argb: BUCKET_COLOR[b] } }
+      vrow += 1
+    }
+    const costTotal = vert.getRow(vrow)
+    costTotal.getCell(2).value = "Cost total"
+    costTotal.getCell(2).font = { bold: true }
+    costTotal.getCell(5).value = g.cost_eur
+    costTotal.getCell(5).numFmt = '"€"#,##0.00'
+    costTotal.getCell(5).font = { bold: true, color: { argb: "FFEF4444" } }
+    vrow += 2
+
+    // Legs
+    if (g.legs.length) {
+      const lh = vert.getRow(vrow)
+      ;["Leg #", "Origin", "Destination", "Planned km", "Actual km / Δ"].forEach((t, i) => {
+        const c = lh.getCell(i + 1)
+        c.value = t
+        c.font = { bold: true, color: { argb: "FFFFFFFF" } }
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF334155" } }
+      })
+      vrow += 1
+      for (const l of g.legs) {
+        const rr = vert.getRow(vrow)
+        rr.getCell(1).value = l.leg_number ?? ""
+        rr.getCell(2).value = l.origin ?? ""
+        rr.getCell(3).value = l.destination ?? ""
+        rr.getCell(4).value = l.planned_km ?? ""
+        rr.getCell(4).numFmt = "#,##0.0"
+        const deltaText =
+          l.actual_km != null
+            ? `${l.actual_km}${l.delta_km != null ? ` (${l.delta_km > 0 ? "+" : ""}${l.delta_km})` : ""}`
+            : "—"
+        rr.getCell(5).value = deltaText
+        if (l.delta_km != null) {
+          rr.getCell(5).font = { color: { argb: l.delta_km > 0 ? "FFEF4444" : "FF10B981" }, bold: true }
+        }
+        vrow += 1
+      }
+      vrow += 1
+    }
+
+    // P&L footer
+    const pf = vert.getRow(vrow)
+    pf.getCell(1).value = "TRIP P&L"
+    pf.getCell(1).font = { bold: true, color: { argb: "FFFFFFFF" } }
+    pf.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF59E0B" } }
+    pf.getCell(2).value = `Revenue ${g.revenue_eur.toFixed(2)}`
+    pf.getCell(3).value = `Cost ${g.cost_eur.toFixed(2)}`
+    pf.getCell(4).value = `Profit ${g.profit_eur.toFixed(2)}`
+    pf.getCell(4).font = { bold: true, color: { argb: g.profit_eur >= 0 ? "FF10B981" : "FFEF4444" } }
+    pf.getCell(5).value = `Margin ${g.margin_pct.toFixed(2)}%  ·  €/km ${g.cost_per_km.toFixed(3)}`
+    pf.getCell(5).font = { bold: true }
+    vrow += 3
+  }
+
+  /* ---------- Line items sheet (flat detail) ---------- */
   const ws = wb.addWorksheet("Line items", {
     views: [{ state: "frozen", ySplit: 1, showGridLines: false }],
   })
@@ -1258,7 +1703,7 @@ export async function exportFleetPnlDetailedExcel(ctx: FleetDetailedExportContex
     })
   })
 
-  /* Per-leg planned vs actual km */
+  /* ---------- Per-leg planned vs actual km ---------- */
   const legsWs = wb.addWorksheet("Legs km", {
     views: [{ state: "frozen", ySplit: 1, showGridLines: false }],
   })
@@ -1322,6 +1767,11 @@ export async function exportFleetPnlDetailedPdf(ctx: FleetDetailedExportContext)
   const ink: [number, number, number] = [15, 23, 42]
   const accent: [number, number, number] = [245, 158, 11]
   const muted: [number, number, number] = [100, 116, 139]
+  const green: [number, number, number] = [16, 185, 129]
+  const red: [number, number, number] = [239, 68, 68]
+
+  const groups = groupDetailed(ctx)
+  const tot = detailedGrandTotals(groups)
 
   // Header band
   const headerH = 78
@@ -1342,188 +1792,292 @@ export async function exportFleetPnlDetailedPdf(ctx: FleetDetailedExportContext)
   doc.setFontSize(9)
   doc.setTextColor(148, 163, 184)
   doc.text(
-    `Generated ${fmtDateTime(new Date())} · ${ctx.totals.tripCount} trips · ${ctx.items.length} line items`,
+    `Generated ${fmtDateTime(new Date())} · ${tot.trip_count} trips · Revenue EUR ${fmtMoney(tot.revenue)} · Cost EUR ${fmtMoney(tot.cost)} · Profit EUR ${fmtMoney(tot.profit)} (${tot.margin_pct.toFixed(1)}%)`,
     32,
     70,
   )
 
-  // Bucket totals strip
-  const totalsByBucket = new Map<FleetDetailedItem["bucket"], number>()
-  for (const it of ctx.items) {
-    totalsByBucket.set(it.bucket, (totalsByBucket.get(it.bucket) ?? 0) + it.amount_eur)
-  }
-  const buckets: FleetDetailedItem["bucket"][] = ["fuel", "toll", "driver", "other", "overhead"]
+  // KPI cards
   const stripY = 100
   const stripH = 50
   const cardGap = 10
-  const cardW = (pageW - 64 - cardGap * (buckets.length - 1)) / buckets.length
-  buckets.forEach((b, i) => {
+  type KpiCard = { label: string; value: string; color: [number, number, number] }
+  const kpis: KpiCard[] = [
+    { label: "REVENUE", value: `EUR ${fmtMoney(tot.revenue)}`, color: ink },
+    { label: "TOTAL COST", value: `EUR ${fmtMoney(tot.cost)}`, color: red },
+    {
+      label: "PROFIT",
+      value: `EUR ${fmtMoney(tot.profit)}`,
+      color: tot.profit >= 0 ? green : red,
+    },
+    {
+      label: "MARGIN",
+      value: `${tot.margin_pct.toFixed(2)}%`,
+      color: tot.margin_pct >= 0 ? green : red,
+    },
+    { label: "EUR / KM", value: tot.cost_per_km.toFixed(3), color: ink },
+  ]
+  const cardW = (pageW - 64 - cardGap * (kpis.length - 1)) / kpis.length
+  kpis.forEach((c, i) => {
     const x = 32 + i * (cardW + cardGap)
     doc.setFillColor(248, 250, 252)
     doc.roundedRect(x, stripY, cardW, stripH, 6, 6, "F")
-    // accent bar in bucket color (parse the FF... ARGB)
-    const argb = BUCKET_COLOR[b]
-    const r = parseInt(argb.slice(2, 4), 16)
-    const g = parseInt(argb.slice(4, 6), 16)
-    const bb = parseInt(argb.slice(6, 8), 16)
-    doc.setFillColor(r, g, bb)
+    doc.setFillColor(...c.color)
     doc.rect(x, stripY, 3, stripH, "F")
     doc.setTextColor(...muted)
     doc.setFont("helvetica", "normal")
     doc.setFontSize(8)
-    doc.text(BUCKET_LABEL[b].toUpperCase(), x + 12, stripY + 18)
-    doc.setTextColor(...ink)
+    doc.text(c.label, x + 12, stripY + 18)
+    doc.setTextColor(...c.color)
     doc.setFont("helvetica", "bold")
     doc.setFontSize(12)
-    doc.text(`EUR ${fmtMoney(totalsByBucket.get(b) ?? 0)}`, x + 12, stripY + 38)
+    doc.text(c.value, x + 12, stripY + 38)
   })
-
-  // Group line items by trip for readability.
-  const byTrip = new Map<string, FleetDetailedItem[]>()
-  for (const it of ctx.items) {
-    const k = it.trip_ref ?? it.trip_id
-    const arr = byTrip.get(k) ?? []
-    arr.push(it)
-    byTrip.set(k, arr)
-  }
 
   let cursorY = stripY + stripH + 16
 
-  // For each trip group, render a compact table.
-  const tripKeys = Array.from(byTrip.keys()).sort()
-  for (const k of tripKeys) {
-    const items = byTrip.get(k) ?? []
-    if (!items.length) continue
-    const tripTotal = items.reduce((s, it) => s + it.amount_eur, 0)
-
-    if (cursorY > pageH - 120) {
+  const ensureSpace = (need: number) => {
+    if (cursorY + need > pageH - 40) {
       doc.addPage()
       cursorY = 40
     }
+  }
 
-    // Trip header
-    doc.setFillColor(15, 23, 42)
-    doc.rect(32, cursorY, pageW - 64, 22, "F")
+  for (const g of groups) {
+    ensureSpace(80)
+
+    // Trip header band
+    doc.setFillColor(...ink)
+    doc.rect(32, cursorY, pageW - 64, 26, "F")
     doc.setTextColor(255, 255, 255)
     doc.setFont("helvetica", "bold")
-    doc.setFontSize(10)
-    doc.text(`Trip ${k}`, 40, cursorY + 15)
-    doc.setTextColor(245, 158, 11)
+    doc.setFontSize(11)
     doc.text(
-      `EUR ${fmtMoney(tripTotal)} · ${items.length} line item${items.length === 1 ? "" : "s"}`,
-      pageW - 40,
-      cursorY + 15,
-      { align: "right" },
+      `Trip ${g.trip_ref ?? g.trip_id.slice(0, 8)}  ·  ${g.header?.vehicle_plate ?? "—"}  ·  ${g.header?.driver_name ?? "—"}`,
+      40,
+      cursorY + 17,
+    )
+    if (g.header?.route_confirmed_at) {
+      doc.setTextColor(...green)
+      doc.text("CONFIRMED", pageW - 40, cursorY + 17, { align: "right" })
+    } else {
+      doc.setTextColor(...accent)
+      doc.text(
+        `Profit EUR ${fmtMoney(g.profit_eur)} · ${g.margin_pct.toFixed(1)}%`,
+        pageW - 40,
+        cursorY + 17,
+        { align: "right" },
+      )
+    }
+    cursorY += 26
+
+    // Sub-line: dates + km
+    doc.setFillColor(241, 245, 249)
+    doc.rect(32, cursorY, pageW - 64, 18, "F")
+    doc.setTextColor(...muted)
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(8)
+    const periodFrom = g.header?.actual_start ?? g.header?.planned_start ?? null
+    const periodTo = g.header?.actual_end ?? g.header?.planned_end ?? null
+    const periodStr = `${periodFrom ? fmtDate(periodFrom) : "—"} → ${periodTo ? fmtDate(periodTo) : "—"}`
+    doc.text(
+      `${periodStr}  ·  Planned km ${g.header?.planned_km ?? "—"}  ·  Actual km ${g.header?.actual_km ?? "—"}  ·  Status ${g.header?.status ?? "—"}`,
+      40,
+      cursorY + 12,
     )
     cursorY += 22
 
-    autoTable(doc, {
-      startY: cursorY,
-      theme: "grid",
-      head: [["Bucket", "Date", "Description", "Vendor", "Qty", "Unit", "Amount EUR"]],
-      body: items.map(it => [
-        BUCKET_LABEL[it.bucket],
-        it.occurred_at ? fmtDate(it.occurred_at) : "",
-        it.description,
-        it.vendor ?? "",
-        it.quantity == null ? "" : String(it.quantity),
-        it.unit ?? "",
-        `EUR ${fmtMoney(it.amount_eur)}`,
-      ]),
-      styles: {
-        font: "helvetica",
-        fontSize: 8,
-        cellPadding: 3,
-        lineColor: [226, 232, 240],
-        lineWidth: 0.5,
-        textColor: ink,
-        valign: "middle",
-      },
-      headStyles: {
-        fillColor: [30, 41, 59],
-        textColor: [255, 255, 255],
-        fontStyle: "bold",
-        fontSize: 8,
-      },
-      alternateRowStyles: { fillColor: [248, 250, 252] },
-      columnStyles: {
-        0: { cellWidth: 80, fontStyle: "bold" },
-        1: { cellWidth: 60 },
-        2: { cellWidth: 260 },
-        3: { cellWidth: 100 },
-        4: { halign: "right", cellWidth: 40 },
-        5: { cellWidth: 30 },
-        6: { halign: "right", cellWidth: 90, fontStyle: "bold" },
-      },
-      didParseCell: data => {
-        if (data.section !== "body" || data.column.index !== 0) return
-        const it = items[data.row.index]
-        if (!it) return
-        const argb = BUCKET_COLOR[it.bucket]
-        data.cell.styles.textColor = [
-          parseInt(argb.slice(2, 4), 16),
-          parseInt(argb.slice(4, 6), 16),
-          parseInt(argb.slice(6, 8), 16),
-        ]
-      },
-      margin: { left: 32, right: 32 },
-    })
-    // @ts-expect-error autoTable adds finalY
-    cursorY = (doc.lastAutoTable?.finalY ?? cursorY) + 14
-  }
-
-  // Per-leg planned vs actual km appendix
-  if (ctx.legs.length) {
-    if (cursorY > pageH - 120) {
-      doc.addPage()
-      cursorY = 40
+    // Revenue table
+    if (g.revenue_lines.length) {
+      autoTable(doc, {
+        startY: cursorY,
+        theme: "grid",
+        head: [["Order Ref", "Customer", "Customer Price EUR", "Subc. Cost EUR", "Internal Revenue EUR"]],
+        body: [
+          ...g.revenue_lines.map(r => [
+            r.order_ref ?? r.order_id.slice(0, 8),
+            r.customer_name ?? "",
+            `EUR ${fmtMoney(r.customer_price_eur)}`,
+            `EUR ${fmtMoney(r.subcontracted_cost_eur)}`,
+            `EUR ${fmtMoney(r.internal_revenue_eur)}`,
+          ]),
+          ["", "Revenue total", "", "", `EUR ${fmtMoney(g.revenue_eur)}`],
+        ],
+        styles: { font: "helvetica", fontSize: 8, cellPadding: 3, lineColor: [226, 232, 240], lineWidth: 0.5 },
+        headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [240, 253, 244] },
+        columnStyles: {
+          0: { cellWidth: 90, fontStyle: "bold" },
+          1: { cellWidth: 200 },
+          2: { halign: "right", cellWidth: 110 },
+          3: { halign: "right", cellWidth: 110 },
+          4: { halign: "right", cellWidth: 130, fontStyle: "bold" },
+        },
+        didParseCell: data => {
+          if (data.section === "body" && data.row.index === g.revenue_lines.length) {
+            data.cell.styles.fillColor = [220, 252, 231]
+            data.cell.styles.fontStyle = "bold"
+          }
+        },
+        margin: { left: 32, right: 32 },
+      })
+      // @ts-expect-error autoTable adds finalY
+      cursorY = (doc.lastAutoTable?.finalY ?? cursorY) + 8
     }
+
+    // Costs table
+    if (g.items.length) {
+      ensureSpace(60)
+      const order: FleetDetailedItem["bucket"][] = ["fuel", "toll", "driver", "other", "overhead"]
+      const subtotalRows: any[][] = []
+      for (const b of order) {
+        const v = g.bucket_totals[b]
+        if (v) subtotalRows.push(["", `Subtotal ${BUCKET_LABEL[b]}`, "", "", "", "", `EUR ${fmtMoney(v)}`])
+      }
+      autoTable(doc, {
+        startY: cursorY,
+        theme: "grid",
+        head: [["Bucket", "Description", "Date", "Vendor", "Qty", "Unit", "Amount EUR"]],
+        body: [
+          ...g.items.map(it => [
+            BUCKET_LABEL[it.bucket],
+            it.description,
+            it.occurred_at ? fmtDate(it.occurred_at) : "",
+            it.vendor ?? "",
+            it.quantity == null ? "" : String(it.quantity),
+            it.unit ?? "",
+            `EUR ${fmtMoney(it.amount_eur)}`,
+          ]),
+          ...subtotalRows,
+          ["", "Cost total", "", "", "", "", `EUR ${fmtMoney(g.cost_eur)}`],
+        ],
+        styles: { font: "helvetica", fontSize: 8, cellPadding: 3, lineColor: [226, 232, 240], lineWidth: 0.5, textColor: ink },
+        headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          0: { cellWidth: 80, fontStyle: "bold" },
+          1: { cellWidth: 240 },
+          2: { cellWidth: 60 },
+          3: { cellWidth: 110 },
+          4: { halign: "right", cellWidth: 40 },
+          5: { cellWidth: 30 },
+          6: { halign: "right", cellWidth: 90, fontStyle: "bold" },
+        },
+        didParseCell: data => {
+          if (data.section !== "body") return
+          const itemsLen = g.items.length
+          const totalRowIdx = itemsLen + subtotalRows.length
+          if (data.row.index < itemsLen && data.column.index === 0) {
+            const it = g.items[data.row.index]
+            if (it) {
+              const argb = BUCKET_COLOR[it.bucket]
+              data.cell.styles.textColor = [
+                parseInt(argb.slice(2, 4), 16),
+                parseInt(argb.slice(4, 6), 16),
+                parseInt(argb.slice(6, 8), 16),
+              ]
+            }
+          } else if (data.row.index >= itemsLen && data.row.index < totalRowIdx) {
+            data.cell.styles.fillColor = [255, 251, 235]
+            data.cell.styles.fontStyle = "bold"
+          } else if (data.row.index === totalRowIdx) {
+            data.cell.styles.fillColor = [254, 226, 226]
+            data.cell.styles.fontStyle = "bold"
+          }
+        },
+        margin: { left: 32, right: 32 },
+      })
+      // @ts-expect-error autoTable adds finalY
+      cursorY = (doc.lastAutoTable?.finalY ?? cursorY) + 8
+    }
+
+    // Legs
+    if (g.legs.length) {
+      ensureSpace(60)
+      autoTable(doc, {
+        startY: cursorY,
+        theme: "grid",
+        head: [["Leg #", "Origin", "Destination", "Planned km", "Actual km", "Δ km"]],
+        body: g.legs.map(l => [
+          l.leg_number == null ? "" : String(l.leg_number),
+          l.origin ?? "",
+          l.destination ?? "",
+          l.planned_km == null ? "—" : String(l.planned_km),
+          l.actual_km == null ? "—" : String(l.actual_km),
+          l.delta_km == null ? "—" : l.delta_km > 0 ? `+${l.delta_km}` : String(l.delta_km),
+        ]),
+        styles: { font: "helvetica", fontSize: 8, cellPadding: 3, lineColor: [226, 232, 240], lineWidth: 0.5 },
+        headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          0: { halign: "right", cellWidth: 40 },
+          1: { cellWidth: 200 },
+          2: { cellWidth: 200 },
+          3: { halign: "right", cellWidth: 70 },
+          4: { halign: "right", cellWidth: 70 },
+          5: { halign: "right", cellWidth: 60, fontStyle: "bold" },
+        },
+        didParseCell: data => {
+          if (data.section !== "body" || data.column.index !== 5) return
+          const l = g.legs[data.row.index]
+          if (!l || l.delta_km == null) return
+          data.cell.styles.textColor = l.delta_km > 0 ? red : green
+        },
+        margin: { left: 32, right: 32 },
+      })
+      // @ts-expect-error autoTable adds finalY
+      cursorY = (doc.lastAutoTable?.finalY ?? cursorY) + 8
+    }
+
+    // Trip P&L footer band
+    ensureSpace(34)
+    doc.setFillColor(...accent)
+    doc.rect(32, cursorY, pageW - 64, 26, "F")
     doc.setTextColor(...ink)
     doc.setFont("helvetica", "bold")
-    doc.setFontSize(11)
-    doc.text("Per-leg planned vs actual km", 32, cursorY + 4)
-    cursorY += 12
-
-    autoTable(doc, {
-      startY: cursorY,
-      theme: "grid",
-      head: [["Trip Ref", "Leg #", "Origin", "Destination", "Planned km", "Actual km", "Δ km"]],
-      body: ctx.legs.map(l => [
-        l.trip_ref ?? l.trip_id.slice(0, 8),
-        l.leg_number == null ? "" : String(l.leg_number),
-        l.origin ?? "",
-        l.destination ?? "",
-        l.planned_km == null ? "—" : String(l.planned_km),
-        l.actual_km == null ? "—" : String(l.actual_km),
-        l.delta_km == null ? "—" : (l.delta_km > 0 ? `+${l.delta_km}` : String(l.delta_km)),
-      ]),
-      styles: {
-        font: "helvetica",
-        fontSize: 8,
-        cellPadding: 3,
-        lineColor: [226, 232, 240],
-        lineWidth: 0.5,
-      },
-      headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: "bold" },
-      alternateRowStyles: { fillColor: [248, 250, 252] },
-      columnStyles: {
-        0: { cellWidth: 70, fontStyle: "bold" },
-        1: { halign: "right", cellWidth: 40 },
-        2: { cellWidth: 180 },
-        3: { cellWidth: 180 },
-        4: { halign: "right", cellWidth: 70 },
-        5: { halign: "right", cellWidth: 70 },
-        6: { halign: "right", cellWidth: 60, fontStyle: "bold" },
-      },
-      didParseCell: data => {
-        if (data.section !== "body" || data.column.index !== 6) return
-        const l = ctx.legs[data.row.index]
-        if (!l || l.delta_km == null) return
-        data.cell.styles.textColor = l.delta_km > 0 ? [220, 38, 38] : [16, 185, 129]
-      },
-      margin: { left: 32, right: 32 },
-    })
+    doc.setFontSize(10)
+    doc.text("TRIP P&L", 40, cursorY + 17)
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(9)
+    const pnlText = `Revenue EUR ${fmtMoney(g.revenue_eur)}    Cost EUR ${fmtMoney(g.cost_eur)}    Profit EUR ${fmtMoney(g.profit_eur)}    Margin ${g.margin_pct.toFixed(2)}%    EUR/km ${g.cost_per_km.toFixed(3)}`
+    doc.text(pnlText, pageW - 40, cursorY + 17, { align: "right" })
+    cursorY += 30
   }
+
+  // Grand totals page
+  ensureSpace(160)
+  doc.setFillColor(...ink)
+  doc.rect(32, cursorY, pageW - 64, 30, "F")
+  doc.setTextColor(255, 255, 255)
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(13)
+  doc.text("GRAND TOTALS", 40, cursorY + 20)
+  cursorY += 30
+
+  autoTable(doc, {
+    startY: cursorY,
+    theme: "plain",
+    body: [
+      ["Trips", String(tot.trip_count)],
+      ["Revenue", `EUR ${fmtMoney(tot.revenue)}`],
+      ["Total cost", `EUR ${fmtMoney(tot.cost)}`],
+      ["Profit", `EUR ${fmtMoney(tot.profit)}`],
+      ["Margin %", `${tot.margin_pct.toFixed(2)}%`],
+      ["km", tot.km.toFixed(0)],
+      ["EUR / km", tot.cost_per_km.toFixed(3)],
+      ["Fuel & AdBlue", `EUR ${fmtMoney(tot.buckets.fuel)}`],
+      ["Tolls & vignettes", `EUR ${fmtMoney(tot.buckets.toll)}`],
+      ["Driver", `EUR ${fmtMoney(tot.buckets.driver)}`],
+      ["Other expenses", `EUR ${fmtMoney(tot.buckets.other)}`],
+      ["Allocated overhead", `EUR ${fmtMoney(tot.buckets.overhead)}`],
+    ],
+    styles: { font: "helvetica", fontSize: 10, cellPadding: 6 },
+    columnStyles: {
+      0: { cellWidth: 240, fontStyle: "bold", textColor: muted },
+      1: { halign: "right", cellWidth: 200, fontStyle: "bold", textColor: ink },
+    },
+    margin: { left: 32, right: 32 },
+  })
 
   // Footer
   const pageCount = doc.getNumberOfPages()

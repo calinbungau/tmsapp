@@ -367,11 +367,15 @@ export default function InternalFleetPnLPage() {
       const json = (await res.json()) as {
         items: FleetDetailedItem[];
         legs: FleetDetailedLeg[];
+        revenue?: import("@/lib/exports/internal-fleet-pnl-export").FleetDetailedRevenueLine[];
+        trip_headers?: import("@/lib/exports/internal-fleet-pnl-export").FleetDetailedTripHeader[];
       };
       const ctx: FleetDetailedExportContext = {
         ...buildExportContext(),
         items: json.items ?? [],
         legs: json.legs ?? [],
+        revenue: json.revenue ?? [],
+        trip_headers: json.trip_headers ?? [],
       };
       if (kind === "csv") exportFleetPnlDetailedCsv(ctx);
       else if (kind === "xlsx") await exportFleetPnlDetailedExcel(ctx);
@@ -499,8 +503,9 @@ export default function InternalFleetPnLPage() {
                   Detailed (line-by-line)
                 </div>
                 <div className="text-[11px] text-muted-foreground">
-                  Itemized: fuel/AdBlue, tolls/vignettes, driver, other,
-                  allocated overhead + planned vs actual km per leg.
+                          Itemized: revenue (per order, internal share), costs
+                          (fuel/AdBlue, tolls, driver, other, overhead), legs
+                          planned vs actual km, and per-trip P&L.
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-1.5 px-1 pb-1">
@@ -510,7 +515,7 @@ export default function InternalFleetPnLPage() {
                   onClick={() => handleExportDetailed("pdf")}
                   icon={<FileType2 className="h-4 w-4" />}
                   label="PDF"
-                  hint="Grouped per trip"
+                          hint="Trip-by-trip P&L"
                   gradient="from-rose-500 to-red-600"
                 />
                 <ExportTile
@@ -519,7 +524,7 @@ export default function InternalFleetPnLPage() {
                   onClick={() => handleExportDetailed("xlsx")}
                   icon={<FileSpreadsheet className="h-4 w-4" />}
                   label="Excel"
-                  hint="Items + Legs km"
+                          hint="P&L + items + legs"
                   gradient="from-emerald-500 to-green-600"
                 />
                 <ExportTile
@@ -528,7 +533,7 @@ export default function InternalFleetPnLPage() {
                   onClick={() => handleExportDetailed("csv")}
                   icon={<FileText className="h-4 w-4" />}
                   label="CSV"
-                  hint="Flat items + legs"
+                          hint="Per-trip P&L blocks"
                   gradient="from-sky-500 to-blue-600"
                 />
               </div>

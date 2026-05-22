@@ -47,6 +47,32 @@ export type DetailedLineItem = {
   amount_eur: number
 }
 
+export type DetailedRevenueLine = {
+  trip_id: string
+  trip_ref: string | null
+  order_id: string
+  order_ref: string | null
+  customer_name: string | null
+  customer_price_eur: number
+  subcontracted_cost_eur: number
+  internal_revenue_eur: number
+}
+
+export type DetailedTripHeader = {
+  trip_id: string
+  trip_ref: string | null
+  vehicle_plate: string | null
+  driver_name: string | null
+  planned_start: string | null
+  planned_end: string | null
+  actual_start: string | null
+  actual_end: string | null
+  planned_km: number | null
+  actual_km: number | null
+  route_confirmed_at: string | null
+  status: string | null
+}
+
 export type DetailedLegRow = {
   trip_id: string
   trip_ref: string | null
@@ -133,11 +159,11 @@ export async function GET(req: NextRequest) {
   const sb = serviceClient()
   const fx = await loadFxToEurMap(sb)
 
-  // 1. Trips (for ref + duration + driver_id + distance_km)
+  // 1. Trips (for ref + duration + driver_id + distance_km + status + confirmed)
   const { data: trips } = await sb
     .from("trips")
     .select(
-      "id, reference_number, duration_minutes, distance_km, driver_id, vehicle_id, planned_start, planned_end, actual_start, actual_end",
+      "id, reference_number, duration_minutes, distance_km, driver_id, vehicle_id, planned_start, planned_end, actual_start, actual_end, status, route_confirmed_at, planned_distance_km",
     )
     .eq("admin_id", adminId)
     .in("id", tripIds)
@@ -146,15 +172,35 @@ export async function GET(req: NextRequest) {
     reference_number: string | null
     duration_minutes: number | null
     distance_km: number | null
+    planned_distance_km: number | null
     driver_id: string | null
     vehicle_id: string | null
     planned_start: string | null
+    planned_end: string | null
     actual_start: string | null
+    actual_end: string | null
+    status: string | null
+    route_confirmed_at: string | null
   }
   const tripMap = new Map<string, T>()
   for (const t of (trips ?? []) as T[]) tripMap.set(t.id, t)
 
   const tripRef = (id: string): string | null => tripMap.get(id)?.reference_number ?? null
+
+  // Vehicles (plate)
+  const vehicleIds = Array.from(
+    new Set(Array.from(tripMap.values()).map(t => t.vehicle_id).filter(Boolean) as string[]),
+  )
+  const vehiclePlate = new Map<string, string | null>()
+  if (vehicleIds.length) {
+    const { data } = await sb
+      .from("vehicles")
+      .select("id, license_plate")
+      .in("id", vehicleIds)
+    for (const v of data ?? []) {
+      vehiclePlate.set((v as any).id as string, (v as any).license_plate as string | null)
+    }
+  }
 
   // 2. Drivers (for hourly_rate)
   const driverIds = Array.from(
@@ -480,5 +526,103 @@ export async function GET(req: NextRequest) {
     return (a.leg_number ?? 0) - (b.leg_number ?? 0)
   })
 
-  return NextResponse.json({ items, legs })
+  /* ---- revenue lines per trip per order ---- */
+  const revenue: DetailedRevenueLine[] = []
+  if (orderIds.length) {
+    const { data: orders } = await sb
+      .from("orders")
+      .select(
+        "id, order_reference, customer_id, customer_price, customer_currency, parent_order_id, carrier_cost, carrier_currency, customer:customers(id, name)",
+      )
+      .in("id", orderIds)
+
+    type Ord = {
+      id: string
+      order_reference: string | null
+      customer_id: string | null
+      customer_price: number | null
+      customer_currency: string | null
+      parent_order_id: string | null
+      carrier_cost: number | null
+      carrier_currency: string | null
+      customer: { id: string; name: string | null } | null
+    }
+    const ordersById = new Map<string, Ord>()
+    for (const o of (orders ?? []) as Ord[]) ordersById.set(o.id, o)
+
+    // sub-orders deduction (parent's children that are subcontracted)
+    const { data: children } = await sb
+      .from("orders")
+      .select("id, parent_order_id, carrier_cost, carrier_currency")
+      .in("parent_order_id", orderIds)
+    const childCostByParent = new Map<string, number>()
+    for (const c of (children ?? []) as any[]) {
+      if (!c.parent_order_id) continue
+      const eur = toEur(c.carrier_cost, c.carrier_currency, fx)
+      childCostByParent.set(
+        c.parent_order_id,
+        (childCostByParent.get(c.parent_order_id) ?? 0) + eur,
+      )
+    }
+
+    // also subcontracted legs on the same trip (carrier_cost on trip_legs)
+    const { data: subcontractedLegs } = await sb
+      .from("trip_legs")
+      .select("trip_id, order_id, carrier_cost, carrier_currency, assignment_type, carrier_id")
+      .in("trip_id", tripIds)
+    const subLegCostByOrder = new Map<string, number>()
+    for (const l of (subcontractedLegs ?? []) as any[]) {
+      const isSub =
+        (l.assignment_type && String(l.assignment_type).toLowerCase() !== "internal") ||
+        !!l.carrier_id
+      if (!isSub || !l.order_id) continue
+      const eur = toEur(l.carrier_cost, l.carrier_currency, fx)
+      subLegCostByOrder.set(l.order_id, (subLegCostByOrder.get(l.order_id) ?? 0) + eur)
+    }
+
+    for (const [tid, oids] of ordersByTrip.entries()) {
+      for (const oid of oids) {
+        const o = ordersById.get(oid)
+        if (!o) continue
+        const customerEur = toEur(o.customer_price, o.customer_currency, fx)
+        const sub =
+          (childCostByParent.get(o.id) ?? 0) +
+          (subLegCostByOrder.get(o.id) ?? 0)
+        const internal = Math.max(customerEur - sub, 0)
+        revenue.push({
+          trip_id: tid,
+          trip_ref: tripRef(tid),
+          order_id: o.id,
+          order_ref: o.order_reference,
+          customer_name: o.customer?.name ?? null,
+          customer_price_eur: Number(customerEur.toFixed(2)),
+          subcontracted_cost_eur: Number(sub.toFixed(2)),
+          internal_revenue_eur: Number(internal.toFixed(2)),
+        })
+      }
+    }
+    revenue.sort((a, b) => (a.trip_ref ?? "").localeCompare(b.trip_ref ?? ""))
+  }
+
+  /* ---- trip headers ---- */
+  const trip_headers: DetailedTripHeader[] = []
+  for (const t of tripMap.values()) {
+    trip_headers.push({
+      trip_id: t.id,
+      trip_ref: t.reference_number,
+      vehicle_plate: t.vehicle_id ? vehiclePlate.get(t.vehicle_id) ?? null : null,
+      driver_name: t.driver_id ? driverRate.get(t.driver_id)?.name ?? null : null,
+      planned_start: t.planned_start,
+      planned_end: t.planned_end,
+      actual_start: t.actual_start,
+      actual_end: t.actual_end,
+      planned_km: t.planned_distance_km != null ? num(t.planned_distance_km) : null,
+      actual_km: t.distance_km != null ? num(t.distance_km) : null,
+      route_confirmed_at: t.route_confirmed_at,
+      status: t.status,
+    })
+  }
+  trip_headers.sort((a, b) => (a.trip_ref ?? "").localeCompare(b.trip_ref ?? ""))
+
+  return NextResponse.json({ items, legs, revenue, trip_headers })
 }
