@@ -49,6 +49,27 @@ export type PnlRow = {
   carrier_invoiced_eur: number
   carrier_paid_eur: number
   carrier_outstanding_eur: number
+  subcontracts?: SubcontractInfo[]
+}
+
+export type SubcontractInfo = {
+  id: string
+  reference_number: string | null
+  carrier_id: string | null
+  carrier_name: string | null
+  cost_amount: number
+  cost_currency: string | null
+  pod_count: number
+  pod_last_uploaded_at: string | null
+  pod_status: "received" | "missing"
+}
+
+function podSummary(subs: SubcontractInfo[] | undefined) {
+  if (!subs || subs.length === 0) return "n/a"
+  const received = subs.filter(s => s.pod_status === "received").length
+  if (received === 0) return "Missing"
+  if (received === subs.length) return "Received"
+  return `Partial ${received}/${subs.length}`
 }
 
 export type PnlTotals = {
@@ -73,7 +94,7 @@ export type ExportContext = {
 }
 
 const COLUMNS: Array<{
-  key: keyof PnlRow | "created_date"
+  key: keyof PnlRow | "created_date" | "pod_status"
   header: string
   width: number
   numFmt?: string
@@ -96,19 +117,23 @@ const COLUMNS: Array<{
   { key: "cost_other_eur", header: "Other EUR", width: 12, numFmt: "#,##0.00", align: "right" },
   { key: "profit_eur", header: "Profit EUR", width: 13, numFmt: "#,##0.00", align: "right" },
   { key: "margin_pct", header: "Margin %", width: 10, numFmt: "0.00", align: "right" },
-  { key: "customer_invoice_status", header: "AR Status", width: 12 },
-  { key: "customer_invoiced_eur", header: "AR Invoiced", width: 13, numFmt: "#,##0.00", align: "right" },
-  { key: "customer_paid_eur", header: "AR Paid", width: 12, numFmt: "#,##0.00", align: "right" },
-  { key: "customer_outstanding_eur", header: "AR Outstanding", width: 14, numFmt: "#,##0.00", align: "right" },
-  { key: "carrier_invoice_status", header: "AP Status", width: 14 },
-  { key: "carrier_invoiced_eur", header: "AP Invoiced", width: 13, numFmt: "#,##0.00", align: "right" },
-  { key: "carrier_paid_eur", header: "AP Paid", width: 12, numFmt: "#,##0.00", align: "right" },
-  { key: "carrier_outstanding_eur", header: "AP Outstanding", width: 14, numFmt: "#,##0.00", align: "right" },
+  { key: "customer_invoice_status", header: "Customer INV.", width: 14 },
+  { key: "customer_invoiced_eur", header: "Cust. Invoiced", width: 14, numFmt: "#,##0.00", align: "right" },
+  { key: "customer_paid_eur", header: "Cust. Paid", width: 12, numFmt: "#,##0.00", align: "right" },
+  { key: "customer_outstanding_eur", header: "Cust. Outstanding", width: 16, numFmt: "#,##0.00", align: "right" },
+  { key: "carrier_invoice_status", header: "Carrier INV.", width: 14 },
+  { key: "carrier_invoiced_eur", header: "Carr. Invoiced", width: 14, numFmt: "#,##0.00", align: "right" },
+  { key: "carrier_paid_eur", header: "Carr. Paid", width: 12, numFmt: "#,##0.00", align: "right" },
+  { key: "carrier_outstanding_eur", header: "Carr. Outstanding", width: 16, numFmt: "#,##0.00", align: "right" },
+  { key: "pod_status", header: "POD (Carrier)", width: 14 },
 ]
 
 function cellValue(r: PnlRow, key: (typeof COLUMNS)[number]["key"]) {
   if (key === "created_date") {
     return r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : ""
+  }
+  if (key === "pod_status") {
+    return podSummary(r.subcontracts)
   }
   const v = (r as any)[key]
   return v === null || v === undefined ? "" : v
@@ -336,6 +361,89 @@ export async function exportPnlExcel(ctx: ExportContext) {
     to: { row: 1, column: COLUMNS.length },
   }
 
+  // ---- Sheet 3: Subcontracts (VLR-*)
+  const allSubs = ctx.rows.flatMap(r =>
+    (r.subcontracts ?? []).map(s => ({ parent: r, sub: s })),
+  )
+  if (allSubs.length > 0) {
+    const subsSheet = wb.addWorksheet("Subcontracts", {
+      views: [{ state: "frozen", ySplit: 1, showGridLines: false }],
+    })
+    const SUB_COLS = [
+      { header: "Parent Order", key: "parent", width: 18 },
+      { header: "Subcontract Ref", key: "sub_ref", width: 18 },
+      { header: "Customer", key: "customer", width: 28 },
+      { header: "Carrier", key: "carrier", width: 28 },
+      { header: "Cost", key: "cost", width: 12, numFmt: "#,##0.00" },
+      { header: "Curr", key: "cur", width: 7 },
+      { header: "POD Status", key: "pod", width: 14 },
+      { header: "POD Files", key: "pod_count", width: 10, numFmt: "0" },
+      { header: "POD Last Upload", key: "pod_last", width: 22 },
+    ] as const
+
+    subsSheet.columns = SUB_COLS.map(c => ({
+      header: c.header,
+      key: c.key,
+      width: c.width,
+      style: (c as any).numFmt ? { numFmt: (c as any).numFmt } : {},
+    }))
+
+    const subHeader = subsSheet.getRow(1)
+    subHeader.height = 30
+    subHeader.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 }
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF0F172A" },
+      }
+      cell.alignment = { vertical: "middle", horizontal: "left", indent: 1 }
+      cell.border = {
+        bottom: { style: "medium", color: { argb: "FF8B5CF6" } },
+      }
+    })
+
+    allSubs.forEach(({ parent, sub }, idx) => {
+      const r = subsSheet.addRow({
+        parent: parent.reference_number ?? parent.order_id.slice(0, 8),
+        sub_ref: sub.reference_number ?? sub.id.slice(0, 8),
+        customer: parent.customer_name ?? "-",
+        carrier: sub.carrier_name ?? "-",
+        cost: sub.cost_amount,
+        cur: sub.cost_currency ?? "",
+        pod: sub.pod_status === "received" ? "Received" : "Missing",
+        pod_count: sub.pod_count,
+        pod_last: sub.pod_last_uploaded_at
+          ? new Date(sub.pod_last_uploaded_at).toISOString().replace("T", " ").slice(0, 19)
+          : "",
+      })
+      r.height = 20
+      const zebra = idx % 2 === 0 ? "FFFFFFFF" : "FFF8FAFC"
+      r.eachCell(cell => {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: zebra },
+        }
+        cell.border = {
+          bottom: { style: "hair", color: { argb: "FFE2E8F0" } },
+        }
+      })
+      const podCell = r.getCell(7)
+      podCell.font = {
+        bold: true,
+        color: {
+          argb: sub.pod_status === "received" ? "FF059669" : "FFDC2626",
+        },
+      }
+    })
+
+    subsSheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: SUB_COLS.length },
+    }
+  }
+
   const buf = await wb.xlsx.writeBuffer()
   const blob = new Blob([buf], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -424,10 +532,11 @@ export function exportPnlPdf(ctx: ExportContext) {
       "Cost EUR",
       "Profit EUR",
       "Margin",
-      "AR",
-      "AR Out.",
-      "AP",
-      "AP Out.",
+      "Customer INV.",
+      "Cust. Out.",
+      "Carrier INV.",
+      "Carr. Out.",
+      "POD",
     ],
   ]
   const body = ctx.rows.map(r => [
@@ -444,6 +553,7 @@ export function exportPnlPdf(ctx: ExportContext) {
     fmtMoney(r.customer_outstanding_eur),
     r.carrier_invoice_status,
     fmtMoney(r.carrier_outstanding_eur),
+    podSummary(r.subcontracts),
   ])
 
   autoTable(doc, {
@@ -520,6 +630,15 @@ export function exportPnlPdf(ctx: ExportContext) {
         }
         data.cell.styles.textColor =
           map[r.carrier_invoice_status] ?? ink
+        data.cell.styles.fontStyle = "bold"
+      }
+      // POD column
+      if (data.column.index === 13) {
+        const txt = String(data.cell.raw ?? "").toLowerCase()
+        if (txt === "received") data.cell.styles.textColor = green
+        else if (txt.startsWith("partial")) data.cell.styles.textColor = accent
+        else if (txt === "missing") data.cell.styles.textColor = red
+        else data.cell.styles.textColor = muted
         data.cell.styles.fontStyle = "bold"
       }
     },
