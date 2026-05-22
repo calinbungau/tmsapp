@@ -26,6 +26,15 @@ const REPORT_TYPES = [
     href: "/admin/finance/reports/forwarding-pnl",
   },
   {
+    id: "internal-fleet-pnl",
+    name: "Internal Fleet P&L",
+    description:
+      "Per trip: revenue (allocated to internal legs), actual costs (fuel, tolls, driver, other), optional planned costs from budgets, profit, margin and EUR/km — with orders and legs nested.",
+    icon: Truck,
+    ready: true,
+    href: "/admin/finance/reports/internal-fleet-pnl",
+  },
+  {
     id: "cost-summary",
     name: "Cost Summary Report",
     description: "Summary of all costs by group and category for a selected period",
