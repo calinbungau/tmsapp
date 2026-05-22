@@ -85,6 +85,25 @@ export type DetailedLegRow = {
   delta_km: number | null
 }
 
+export type DetailedStopRow = {
+  trip_id: string
+  trip_ref: string | null
+  stop_id: string
+  sequence_order: number | null
+  stop_type: string | null
+  company_name: string | null
+  address: string | null
+  city: string | null
+  country: string | null
+  planned_date: string | null
+  planned_time_from: string | null
+  planned_time_to: string | null
+  actual_arrival: string | null
+  actual_departure: string | null
+  status: string | null
+  reference_number: string | null
+}
+
 const FUEL_TOKENS = ["fuel", "diesel", "adblue", "ad_blue", "ad-blue"]
 const TOLL_TOKENS = ["toll", "vignette", "highway", "motorway", "rovinieta"]
 const DRIVER_TOKENS = ["per_diem", "diurna", "perdiem", "driver_allowance"]
@@ -305,6 +324,55 @@ export async function GET(req: NextRequest) {
     legsByTrip.set(l.trip_id, arr)
   }
 
+  // 8b. trip_stops — used to populate leg origin/destination (when not stored
+  // on the leg directly) and to render a Route/Stops table per trip.
+  const { data: stopsData } = await sb
+    .from("trip_stops")
+    .select(
+      "id, trip_id, leg_id, sequence_order, stop_type, company_name, address, city, country, planned_date, planned_time_from, planned_time_to, actual_arrival, actual_departure, status, reference_number",
+    )
+    .in("trip_id", tripIds)
+    .order("sequence_order", { ascending: true })
+  type StopRow = {
+    id: string
+    trip_id: string | null
+    leg_id: string | null
+    sequence_order: number | null
+    stop_type: string | null
+    company_name: string | null
+    address: string | null
+    city: string | null
+    country: string | null
+    planned_date: string | null
+    planned_time_from: string | null
+    planned_time_to: string | null
+    actual_arrival: string | null
+    actual_departure: string | null
+    status: string | null
+    reference_number: string | null
+  }
+  const stopsByTrip = new Map<string, StopRow[]>()
+  const stopsByLeg = new Map<string, StopRow[]>()
+  for (const s of (stopsData ?? []) as StopRow[]) {
+    if (s.trip_id) {
+      const a = stopsByTrip.get(s.trip_id) ?? []
+      a.push(s)
+      stopsByTrip.set(s.trip_id, a)
+    }
+    if (s.leg_id) {
+      const a = stopsByLeg.get(s.leg_id) ?? []
+      a.push(s)
+      stopsByLeg.set(s.leg_id, a)
+    }
+  }
+  function stopLabel(s: StopRow | undefined): string | null {
+    if (!s) return null
+    const parts = [s.company_name, [s.city, s.country].filter(Boolean).join(", ")]
+      .filter(Boolean)
+      .join(" — ")
+    return parts || s.address || null
+  }
+
   /* ---- assemble line items ---- */
   const items: DetailedLineItem[] = []
 
@@ -502,13 +570,25 @@ export async function GET(req: NextRequest) {
         planned != null && plannedSum > 0 && tripActual > 0
           ? Number(((planned / plannedSum) * tripActual).toFixed(1))
           : null
+      // Fallback: if origin/destination_address is null on the leg, derive
+      // from the first/last trip_stop linked to this leg.
+      let origin = l.origin_address
+      let destination = l.destination_address
+      const legStops = stopsByLeg.get(l.id)
+      if (legStops && legStops.length) {
+        const sorted = [...legStops].sort(
+          (a, b) => (a.sequence_order ?? 0) - (b.sequence_order ?? 0),
+        )
+        if (!origin) origin = stopLabel(sorted[0])
+        if (!destination) destination = stopLabel(sorted[sorted.length - 1])
+      }
       legs.push({
         trip_id: tid,
         trip_ref: tripRef(tid),
         leg_id: l.id,
         leg_number: l.leg_number,
-        origin: l.origin_address,
-        destination: l.destination_address,
+        origin,
+        destination,
         planned_km: planned,
         actual_km: actual,
         delta_km:
@@ -652,5 +732,40 @@ export async function GET(req: NextRequest) {
   }
   trip_headers.sort((a, b) => (a.trip_ref ?? "").localeCompare(b.trip_ref ?? ""))
 
-  return NextResponse.json({ items, legs, revenue, trip_headers })
+  /* ---- stops (route per trip) ---- */
+  const stops: DetailedStopRow[] = []
+  for (const [tid, arr] of stopsByTrip.entries()) {
+    const ref = tripRef(tid)
+    const sorted = [...arr].sort(
+      (a, b) => (a.sequence_order ?? 0) - (b.sequence_order ?? 0),
+    )
+    for (const s of sorted) {
+      stops.push({
+        trip_id: tid,
+        trip_ref: ref,
+        stop_id: s.id,
+        sequence_order: s.sequence_order,
+        stop_type: s.stop_type,
+        company_name: s.company_name,
+        address: s.address,
+        city: s.city,
+        country: s.country,
+        planned_date: s.planned_date,
+        planned_time_from: s.planned_time_from,
+        planned_time_to: s.planned_time_to,
+        actual_arrival: s.actual_arrival,
+        actual_departure: s.actual_departure,
+        status: s.status,
+        reference_number: s.reference_number,
+      })
+    }
+  }
+  stops.sort((a, b) => {
+    const ra = a.trip_ref ?? ""
+    const rb = b.trip_ref ?? ""
+    if (ra !== rb) return ra.localeCompare(rb)
+    return (a.sequence_order ?? 0) - (b.sequence_order ?? 0)
+  })
+
+  return NextResponse.json({ items, legs, revenue, trip_headers, stops })
 }

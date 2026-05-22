@@ -369,6 +369,7 @@ export default function InternalFleetPnLPage() {
         legs: FleetDetailedLeg[];
         revenue?: import("@/lib/exports/internal-fleet-pnl-export").FleetDetailedRevenueLine[];
         trip_headers?: import("@/lib/exports/internal-fleet-pnl-export").FleetDetailedTripHeader[];
+        stops?: import("@/lib/exports/internal-fleet-pnl-export").FleetDetailedStop[];
       };
       const ctx: FleetDetailedExportContext = {
         ...buildExportContext(),
@@ -376,6 +377,7 @@ export default function InternalFleetPnLPage() {
         legs: json.legs ?? [],
         revenue: json.revenue ?? [],
         trip_headers: json.trip_headers ?? [],
+        stops: json.stops ?? [],
       };
       if (kind === "csv") exportFleetPnlDetailedCsv(ctx);
       else if (kind === "xlsx") await exportFleetPnlDetailedExcel(ctx);

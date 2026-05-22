@@ -225,11 +225,31 @@ export type FleetDetailedTripHeader = {
   status: string | null
 }
 
+export type FleetDetailedStop = {
+  trip_id: string
+  trip_ref: string | null
+  stop_id: string
+  sequence_order: number | null
+  stop_type: string | null
+  company_name: string | null
+  address: string | null
+  city: string | null
+  country: string | null
+  planned_date: string | null
+  planned_time_from: string | null
+  planned_time_to: string | null
+  actual_arrival: string | null
+  actual_departure: string | null
+  status: string | null
+  reference_number: string | null
+}
+
 export type FleetDetailedExportContext = FleetExportContext & {
   items: FleetDetailedItem[]
   legs: FleetDetailedLeg[]
   revenue: FleetDetailedRevenueLine[]
   trip_headers: FleetDetailedTripHeader[]
+  stops?: FleetDetailedStop[]
 }
 
 const BUCKET_LABEL: Record<FleetDetailedItem["bucket"], string> = {
@@ -1112,6 +1132,7 @@ type TripPnlGroup = {
   revenue_lines: FleetDetailedRevenueLine[]
   items: FleetDetailedItem[]
   legs: FleetDetailedLeg[]
+  stops: FleetDetailedStop[]
   revenue_eur: number
   cost_eur: number
   profit_eur: number
@@ -1132,6 +1153,7 @@ function groupDetailed(ctx: FleetDetailedExportContext): TripPnlGroup[] {
         revenue_lines: [],
         items: [],
         legs: [],
+        stops: [],
         revenue_eur: 0,
         cost_eur: 0,
         profit_eur: 0,
@@ -1161,6 +1183,9 @@ function groupDetailed(ctx: FleetDetailedExportContext): TripPnlGroup[] {
   for (const l of ctx.legs) {
     ensure(l.trip_id, l.trip_ref).legs.push(l)
   }
+  for (const s of ctx.stops ?? []) {
+    ensure(s.trip_id, s.trip_ref).stops.push(s)
+  }
 
   const out = Array.from(groups.values())
   for (const g of out) {
@@ -1168,6 +1193,8 @@ function groupDetailed(ctx: FleetDetailedExportContext): TripPnlGroup[] {
     g.margin_pct = g.revenue_eur > 0 ? (g.profit_eur / g.revenue_eur) * 100 : 0
     const km = g.header?.actual_km ?? g.header?.planned_km ?? null
     g.cost_per_km = km && km > 0 ? g.cost_eur / km : 0
+    g.stops.sort((a, b) => (a.sequence_order ?? 0) - (b.sequence_order ?? 0))
+    g.legs.sort((a, b) => (a.leg_number ?? 0) - (b.leg_number ?? 0))
   }
   out.sort((a, b) => (a.trip_ref ?? "").localeCompare(b.trip_ref ?? ""))
   return out
@@ -1773,32 +1800,53 @@ export async function exportFleetPnlDetailedPdf(ctx: FleetDetailedExportContext)
   const groups = groupDetailed(ctx)
   const tot = detailedGrandTotals(groups)
 
-  // Header band
-  const headerH = 78
+  // Header band — title + company subtitle on the left, BNG logo on the right
+  // (mirrors Forwarding Orders P&L for visual consistency).
+  const company = ctx.company
+  const hasCompany = !!company?.name
+  const headerH = 96
   doc.setFillColor(...ink)
   doc.rect(0, 0, pageW, headerH, "F")
   doc.setFillColor(...accent)
   doc.rect(0, headerH, pageW, 3, "F")
 
+  const titleX = 32
+  const bngLogo = await loadImageDataUrl("/images/logo-full-bng.png")
+  if (bngLogo) {
+    const bngH = 32
+    const bngW = bngH * (768 / 295)
+    const bngLeft = pageW - 32 - bngW
+    const bngY = (headerH - bngH) / 2
+    doc.addImage(bngLogo, "PNG", bngLeft, bngY, bngW, bngH)
+  }
+
   doc.setTextColor(255, 255, 255)
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(18)
-  doc.text("Internal Fleet P&L — Detailed", 32, 34)
+  doc.setFontSize(20)
+  doc.text("Internal Fleet P&L — Detailed", titleX, 34)
+
+  if (hasCompany) {
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(11)
+    doc.setTextColor(...accent)
+    doc.text(company!.name!, titleX, 52)
+  }
 
   doc.setFont("helvetica", "normal")
   doc.setFontSize(10)
   doc.setTextColor(203, 213, 225)
-  doc.text(`Period: ${ctx.from}  to  ${ctx.to}`, 32, 54)
+  doc.text(`Period: ${ctx.from}  to  ${ctx.to}`, titleX, hasCompany ? 70 : 56)
+
   doc.setFontSize(9)
   doc.setTextColor(148, 163, 184)
   doc.text(
     `Generated ${fmtDateTime(new Date())} · ${tot.trip_count} trips · Revenue EUR ${fmtMoney(tot.revenue)} · Cost EUR ${fmtMoney(tot.cost)} · Profit EUR ${fmtMoney(tot.profit)} (${tot.margin_pct.toFixed(1)}%)`,
-    32,
-    70,
+    titleX,
+    hasCompany ? 86 : 72,
   )
 
   // KPI cards
-  const stripY = 100
+  const stripY = headerH + 20
   const stripH = 50
   const cardGap = 10
   type KpiCard = { label: string; value: string; color: [number, number, number] }
@@ -1906,9 +1954,9 @@ export async function exportFleetPnlDetailedPdf(ctx: FleetDetailedExportContext)
         styles: { font: "helvetica", fontSize: 8, cellPadding: 3, lineColor: [226, 232, 240], lineWidth: 0.5 },
         headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [240, 253, 244] },
+        tableWidth: "auto",
         columnStyles: {
           0: { cellWidth: 90, fontStyle: "bold" },
-          1: { cellWidth: 200 },
           2: { halign: "right", cellWidth: 110 },
           3: { halign: "right", cellWidth: 110 },
           4: { halign: "right", cellWidth: 130, fontStyle: "bold" },
@@ -1954,9 +2002,9 @@ export async function exportFleetPnlDetailedPdf(ctx: FleetDetailedExportContext)
         styles: { font: "helvetica", fontSize: 8, cellPadding: 3, lineColor: [226, 232, 240], lineWidth: 0.5, textColor: ink },
         headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [248, 250, 252] },
+        tableWidth: "auto",
         columnStyles: {
           0: { cellWidth: 80, fontStyle: "bold" },
-          1: { cellWidth: 240 },
           2: { cellWidth: 60 },
           3: { cellWidth: 110 },
           4: { halign: "right", cellWidth: 40 },
@@ -1991,6 +2039,54 @@ export async function exportFleetPnlDetailedPdf(ctx: FleetDetailedExportContext)
       cursorY = (doc.lastAutoTable?.finalY ?? cursorY) + 8
     }
 
+    // Stops (Route)
+    if (g.stops.length) {
+      ensureSpace(60)
+      autoTable(doc, {
+        startY: cursorY,
+        theme: "grid",
+        head: [["#", "Type", "Company", "Address", "City", "Country", "Planned", "Actual", "Ref"]],
+        body: g.stops.map(s => {
+          const planned = [
+            s.planned_date ? fmtDate(s.planned_date) : null,
+            s.planned_time_from && s.planned_time_to
+              ? `${s.planned_time_from.slice(0, 5)}–${s.planned_time_to.slice(0, 5)}`
+              : s.planned_time_from?.slice(0, 5) ?? null,
+          ].filter(Boolean).join(" ")
+          const actual = s.actual_arrival
+            ? fmtDateTime(s.actual_arrival)
+            : s.actual_departure
+            ? fmtDateTime(s.actual_departure)
+            : ""
+          return [
+            s.sequence_order == null ? "" : String(s.sequence_order),
+            (s.stop_type ?? "").toUpperCase(),
+            s.company_name ?? "",
+            s.address ?? "",
+            s.city ?? "",
+            s.country ?? "",
+            planned || "—",
+            actual || "—",
+            s.reference_number ?? "",
+          ]
+        }),
+        styles: { font: "helvetica", fontSize: 8, cellPadding: 3, lineColor: [226, 232, 240], lineWidth: 0.5 },
+        headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        tableWidth: "auto",
+        columnStyles: {
+          0: { halign: "right", cellWidth: 22 },
+          1: { fontStyle: "bold", cellWidth: 50 },
+          6: { cellWidth: 80 },
+          7: { cellWidth: 90 },
+          8: { cellWidth: 60 },
+        },
+        margin: { left: 32, right: 32 },
+      })
+      // @ts-expect-error autoTable adds finalY
+      cursorY = (doc.lastAutoTable?.finalY ?? cursorY) + 8
+    }
+
     // Legs
     if (g.legs.length) {
       ensureSpace(60)
@@ -2009,10 +2105,9 @@ export async function exportFleetPnlDetailedPdf(ctx: FleetDetailedExportContext)
         styles: { font: "helvetica", fontSize: 8, cellPadding: 3, lineColor: [226, 232, 240], lineWidth: 0.5 },
         headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [248, 250, 252] },
+        tableWidth: "auto",
         columnStyles: {
           0: { halign: "right", cellWidth: 40 },
-          1: { cellWidth: 200 },
-          2: { cellWidth: 200 },
           3: { halign: "right", cellWidth: 70 },
           4: { halign: "right", cellWidth: 70 },
           5: { halign: "right", cellWidth: 60, fontStyle: "bold" },
