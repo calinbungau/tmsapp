@@ -23,6 +23,10 @@ import {
   Clock,
   Layers,
   ExternalLink,
+  FileText,
+  FileSpreadsheet,
+  FileType2,
+  ChevronDown,
 } from "lucide-react";
 import {
   Tooltip,
@@ -30,6 +34,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  exportPnlCsv,
+  exportPnlExcel,
+  exportPnlPdf,
+} from "@/lib/exports/forwarding-pnl-export";
 
 type Row = {
   order_id: string;
@@ -256,75 +273,41 @@ export default function ForwardingPnLPage() {
   const avgMargin =
     totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0;
 
+  const [exporting, setExporting] = React.useState<null | "csv" | "xlsx" | "pdf">(null);
+
+  function buildExportContext() {
+    return {
+      from,
+      to,
+      rows: rows as any,
+      totals: {
+        revenue: totals.revenue,
+        costs: totals.costs,
+        profit: totals.profit,
+        arOutstanding: totals.arOutstanding,
+        apOutstanding: totals.apOutstanding,
+        avgMargin,
+        count: rows.length,
+      },
+      filters: { execution: execFilter, customerInvoice: invFilter },
+    };
+  }
+
+  async function handleExport(kind: "csv" | "xlsx" | "pdf") {
+    if (!rows.length) return;
+    try {
+      setExporting(kind);
+      const ctx = buildExportContext();
+      if (kind === "csv") exportPnlCsv(ctx);
+      else if (kind === "xlsx") await exportPnlExcel(ctx);
+      else exportPnlPdf(ctx);
+    } finally {
+      setExporting(null);
+    }
+  }
+
   function exportCsv() {
-    const headers = [
-      "Order Ref",
-      "Customer",
-      "Created",
-      "Status",
-      "Execution",
-      "Legs Total",
-      "Legs Internal",
-      "Legs Subcontract",
-      "Revenue",
-      "Currency",
-      "Revenue EUR",
-      "Cost Total EUR",
-      "Cost Internal EUR",
-      "Cost Subcontract EUR",
-      "Cost Other EUR",
-      "Profit EUR",
-      "Margin %",
-      "Customer Invoice",
-      "Customer Invoiced EUR",
-      "Customer Paid EUR",
-      "Customer Outstanding EUR",
-      "Carrier Invoice",
-      "Carrier Invoiced EUR",
-      "Carrier Paid EUR",
-      "Carrier Outstanding EUR",
-    ];
-    const lines = rows.map(r =>
-      [
-        r.reference_number ?? r.order_id,
-        r.customer_name ?? "",
-        new Date(r.created_at).toISOString().slice(0, 10),
-        r.status ?? "",
-        r.execution_mode,
-        r.legs_total,
-        r.legs_internal,
-        r.legs_subcontract,
-        r.revenue_amount,
-        r.revenue_currency,
-        r.revenue_eur,
-        r.cost_total_eur,
-        r.cost_internal_eur,
-        r.cost_subcontract_eur,
-        r.cost_other_eur,
-        r.profit_eur,
-        r.margin_pct ?? "",
-        r.customer_invoice_status,
-        r.customer_invoiced_eur,
-        r.customer_paid_eur,
-        r.customer_outstanding_eur,
-        r.carrier_invoice_status,
-        r.carrier_invoiced_eur,
-        r.carrier_paid_eur,
-        r.carrier_outstanding_eur,
-      ]
-        .map(v =>
-          typeof v === "string" && (v.includes(",") || v.includes('"'))
-            ? `"${v.replace(/"/g, '""')}"`
-            : String(v),
-        )
-        .join(","),
-    );
-    const csv = [headers.join(","), ...lines].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `forwarding-pnl_${from}_${to}.csv`;
-    a.click();
+    handleExport("csv");
   }
 
   return (
@@ -347,10 +330,91 @@ export default function ForwardingPnLPage() {
             status.
           </p>
         </div>
-        <Button variant="outline" onClick={exportCsv} disabled={!rows.length}>
-          <Download className="h-4 w-4 mr-2" />
-          Export CSV
-        </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                disabled={!rows.length || !!exporting}
+                className="relative gap-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/20 hover:from-amber-600 hover:to-orange-600 hover:shadow-amber-500/30 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-300 dark:disabled:from-slate-700 dark:disabled:to-slate-700"
+              >
+                {exporting ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    Exporting {exporting.toUpperCase()}...
+                  </span>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4" />
+                    Export
+                    <ChevronDown className="h-4 w-4 opacity-80" />
+                  </>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72 p-2">
+              <DropdownMenuLabel className="px-2 pt-1 pb-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Export report
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                  >
+                    {rows.length} orders
+                  </Badge>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem
+                disabled={!!exporting}
+                onClick={() => handleExport("pdf")}
+                className="group flex cursor-pointer items-center gap-3 rounded-md px-2 py-2.5 focus:bg-rose-500/10"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-gradient-to-br from-rose-500 to-red-600 text-white shadow-sm shadow-rose-500/30">
+                  <FileType2 className="h-4 w-4" />
+                </div>
+                <div className="flex flex-1 flex-col">
+                  <span className="text-sm font-semibold">PDF Report</span>
+                  <span className="text-xs text-muted-foreground">
+                    Branded landscape with KPIs &amp; table
+                  </span>
+                </div>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                disabled={!!exporting}
+                onClick={() => handleExport("xlsx")}
+                className="group flex cursor-pointer items-center gap-3 rounded-md px-2 py-2.5 focus:bg-emerald-500/10"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-sm shadow-emerald-500/30">
+                  <FileSpreadsheet className="h-4 w-4" />
+                </div>
+                <div className="flex flex-1 flex-col">
+                  <span className="text-sm font-semibold">Excel workbook</span>
+                  <span className="text-xs text-muted-foreground">
+                    Summary + Orders sheets, formatted
+                  </span>
+                </div>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                disabled={!!exporting}
+                onClick={() => handleExport("csv")}
+                className="group flex cursor-pointer items-center gap-3 rounded-md px-2 py-2.5 focus:bg-sky-500/10"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-sm shadow-sky-500/30">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <div className="flex flex-1 flex-col">
+                  <span className="text-sm font-semibold">CSV file</span>
+                  <span className="text-xs text-muted-foreground">
+                    Raw data with summary header
+                  </span>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
       </div>
 
       {/* Filters */}
