@@ -300,7 +300,7 @@ export default function ForwardingPnLPage() {
       const ctx = buildExportContext();
       if (kind === "csv") exportPnlCsv(ctx);
       else if (kind === "xlsx") await exportPnlExcel(ctx);
-      else exportPnlPdf(ctx);
+      else await exportPnlPdf(ctx);
     } finally {
       setExporting(null);
     }

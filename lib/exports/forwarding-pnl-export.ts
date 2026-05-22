@@ -9,6 +9,37 @@ import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 import { getLabel } from "@/lib/tms/status/registry"
 
+// dd.mm.yyyy hh:mm:ss — used everywhere a timestamp is rendered.
+function fmtDateTime(input: string | Date | null | undefined): string {
+  if (!input) return ""
+  const d = typeof input === "string" ? new Date(input) : input
+  if (Number.isNaN(d.getTime())) return ""
+  const p = (n: number) => String(n).padStart(2, "0")
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
+let logoCache: string | null | undefined
+async function loadLogoDataUrl(): Promise<string | null> {
+  if (logoCache !== undefined) return logoCache
+  try {
+    const res = await fetch("/images/logo-full-bng.png")
+    if (!res.ok) {
+      logoCache = null
+      return null
+    }
+    const blob = await res.blob()
+    logoCache = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    logoCache = null
+  }
+  return logoCache
+}
+
 export type PnlRow = {
   order_id: string
   reference_number: string | null
@@ -205,7 +236,7 @@ const COLUMNS: Array<{
   { key: "reference_number", header: "Order Ref", width: 22 },
   { key: "customer_name", header: "Customer", width: 26 },
   { key: "carrier_summary", header: "Carrier", width: 26 },
-  { key: "created_date", header: "Created", width: 12 },
+  { key: "created_date", header: "Created", width: 20 },
   { key: "status", header: "Status", width: 22 },
   { key: "execution_mode", header: "Exec.", width: 7, align: "center" },
   { key: "legs_total", header: "Legs", width: 8, align: "right" },
@@ -233,7 +264,7 @@ const COLUMNS: Array<{
 
 function cellValue(r: PnlRow, key: (typeof COLUMNS)[number]["key"]) {
   if (key === "created_date") {
-    return r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : ""
+    return r.created_at ? fmtDateTime(r.created_at) : ""
   }
   if (key === "pod_status") {
     return podSummary(r.subcontracts)
@@ -292,7 +323,7 @@ export function exportPnlCsv(ctx: ExportContext) {
   const meta = [
     `Forwarding Orders P&L`,
     `Period,${ctx.from} to ${ctx.to}`,
-    `Generated,${new Date().toISOString().slice(0, 19).replace("T", " ")}`,
+    `Generated,${fmtDateTime(new Date())}`,
     `Orders,${ctx.totals.count}`,
     `Revenue EUR,${ctx.totals.revenue.toFixed(2)}`,
     `Cost Total EUR,${ctx.totals.costs.toFixed(2)}`,
@@ -651,9 +682,7 @@ export async function exportPnlExcel(ctx: ExportContext) {
       // 13 Added on
       setCell(
         13,
-        sub.added_at
-          ? new Date(sub.added_at).toISOString().slice(0, 10)
-          : "",
+        sub.added_at ? fmtDateTime(sub.added_at) : "",
         { colorArgb: "FF64748B" },
       )
       // 14 Added by
@@ -676,7 +705,7 @@ export async function exportPnlExcel(ctx: ExportContext) {
 }
 
 // ---------------- PDF ----------------
-export function exportPnlPdf(ctx: ExportContext) {
+export async function exportPnlPdf(ctx: ExportContext) {
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" })
   const pageW = doc.internal.pageSize.getWidth()
   const pageH = doc.internal.pageSize.getHeight()
@@ -697,17 +726,27 @@ export function exportPnlPdf(ctx: ExportContext) {
   doc.setFillColor(...accent)
   doc.rect(0, 70, pageW, 3, "F")
 
+  // BNG Tracking logo (white, 768x295) — placed top-left, then title shifted right
+  const logoData = await loadLogoDataUrl()
+  let titleX = 32
+  if (logoData) {
+    const logoH = 26
+    const logoW = logoH * (768 / 295) // preserve aspect ratio ≈ 67.7pt
+    doc.addImage(logoData, "PNG", 32, 22, logoW, logoH)
+    titleX = 32 + logoW + 14
+  }
+
   doc.setTextColor(255, 255, 255)
   doc.setFont("helvetica", "bold")
   doc.setFontSize(18)
-  doc.text("Forwarding Orders P&L", 32, 35)
+  doc.text("Forwarding Orders P&L", titleX, 35)
 
   doc.setFont("helvetica", "normal")
   doc.setFontSize(10)
   doc.setTextColor(203, 213, 225)
-  doc.text(`Period: ${ctx.from}  to  ${ctx.to}`, 32, 55)
+  doc.text(`Period: ${ctx.from}  to  ${ctx.to}`, titleX, 55)
 
-  const generated = new Date().toISOString().slice(0, 19).replace("T", " ")
+  const generated = fmtDateTime(new Date())
   doc.text(`Generated ${generated}`, pageW - 32, 55, { align: "right" })
   doc.text(`${ctx.totals.count} orders`, pageW - 32, 35, { align: "right" })
 
@@ -771,7 +810,7 @@ export function exportPnlPdf(ctx: ExportContext) {
       ref.secondary ? `${ref.primary}\n${ref.secondary}` : ref.primary,
       r.customer_name ?? "-",
       carrierSummary(r.subcontracts),
-      new Date(r.created_at).toISOString().slice(0, 10),
+      fmtDateTime(r.created_at),
       st.secondary ? `${st.primary}\n${st.secondary}` : st.primary,
       executionCode(r.execution_mode),
       fmtMoney(r.revenue_eur),
@@ -812,7 +851,7 @@ export function exportPnlPdf(ctx: ExportContext) {
       0: { fontStyle: "bold", cellWidth: 64 },
       2: { textColor: violet, fontStyle: "bold" },
       4: { cellWidth: 70 },
-      5: { halign: "center", fontStyle: "bold", cellWidth: 22 },
+      5: { halign: "center", fontStyle: "bold", cellWidth: 36 },
       6: { halign: "right" },
       7: { halign: "right" },
       8: { halign: "right", fontStyle: "bold" },
