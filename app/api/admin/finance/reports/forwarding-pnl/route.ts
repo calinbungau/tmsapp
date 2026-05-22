@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
   const { data: subs, error: subErr } = await sb
     .from("orders")
     .select(
-      "id, reference_number, parent_order_id, customer_id, customer_reference, customer_price, customer_currency, status, cargo_description, weight_kg, pallet_count, loading_meters, created_at, created_by",
+      "id, reference_number, parent_order_id, carrier_id, customer_id, customer_reference, customer_price, customer_currency, status, cargo_description, weight_kg, pallet_count, loading_meters, created_at, created_by",
     )
     .eq("admin_id", adminId)
     .eq("commercial_role", "carrier_subcontract")
@@ -97,20 +97,22 @@ export async function GET(req: NextRequest) {
 
   const subList = subs ?? [];
   const carrierIds = Array.from(
-    new Set(subList.map(s => s.customer_id).filter(Boolean) as string[]),
+    new Set(
+      subList
+        .map(s => ((s as any).carrier_id as string) || ((s as any).customer_id as string))
+        .filter(Boolean) as string[],
+    ),
   );
 
   const carrierMap = new Map<string, string>();
   if (carrierIds.length) {
     const { data: bps } = await sb
       .from("business_partners")
-      .select("id, name, company_name")
+      .select("id, name")
       .in("id", carrierIds);
     for (const bp of bps ?? []) {
-      carrierMap.set(
-        bp.id as string,
-        ((bp as any).company_name || (bp as any).name || "") as string,
-      );
+      const nm = ((bp as any).name as string) || "";
+      if (nm) carrierMap.set(bp.id as string, nm);
     }
   }
 
@@ -213,7 +215,10 @@ export async function GET(req: NextRequest) {
   const subsByParent = new Map<string, SubcontractInfo[]>();
   for (const s of subList) {
     const pid = (s as any).parent_order_id as string;
-    const carrierId = ((s as any).customer_id as string) || null;
+    const carrierId =
+      ((s as any).carrier_id as string) ||
+      ((s as any).customer_id as string) ||
+      null;
     const sid = (s as any).id as string;
     const pod = podMap.get(sid);
 
