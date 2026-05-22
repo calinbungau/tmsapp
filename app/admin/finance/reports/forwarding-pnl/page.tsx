@@ -282,10 +282,10 @@ export default function ForwardingPnLPage() {
       rows: rows as any,
       totals: {
         revenue: totals.revenue,
-        costs: totals.costs,
+        costs: totals.cost,
         profit: totals.profit,
-        arOutstanding: totals.arOutstanding,
-        apOutstanding: totals.apOutstanding,
+        arOutstanding: totals.outstanding_in,
+        apOutstanding: totals.outstanding_out,
         avgMargin,
         count: rows.length,
       },
