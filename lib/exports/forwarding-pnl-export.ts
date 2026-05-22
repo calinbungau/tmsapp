@@ -44,7 +44,9 @@ async function loadImageDataUrl(url: string): Promise<string | null> {
 
 // Read PNG/JPEG dimensions from a data URL header so jsPDF can render
 // company logos at correct aspect ratio without distortion.
-function imageDimsFromDataUrl(dataUrl: string): { w: number; h: number } | null {
+// (kept for future use — no longer called in the current header.)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _imageDimsFromDataUrl(dataUrl: string): { w: number; h: number } | null {
   try {
     const comma = dataUrl.indexOf(",")
     if (comma < 0) return null
@@ -760,107 +762,45 @@ export async function exportPnlPdf(ctx: ExportContext) {
   const orange: [number, number, number] = [249, 115, 22]
   const violet: [number, number, number] = [139, 92, 246]
 
-  // Header band — taller to host the issuer card on the left and the
-  // BNG Tracking app logo on the right.
+  // Header band — clean: title + company subtitle on the left, BNG logo on the right.
   const headerH = 96
   doc.setFillColor(...ink)
   doc.rect(0, 0, pageW, headerH, "F")
   doc.setFillColor(...accent)
   doc.rect(0, headerH, pageW, 3, "F")
 
-  // ---- Issuer card on the LEFT (customer logo + company name) ----
   const company = ctx.company
-  const issuerW = 240
-  const issuerH = 70
-  const issuerX = 24
-  const issuerY = (headerH - issuerH) / 2
-  let titleX = 32
-  if (company && (company.name || company.logoUrl)) {
-    // Soft white rounded card with amber accent strip on the left edge.
-    doc.setFillColor(255, 255, 255)
-    doc.roundedRect(issuerX, issuerY, issuerW, issuerH, 10, 10, "F")
-    doc.setFillColor(...accent)
-    doc.roundedRect(issuerX, issuerY, 4, issuerH, 2, 2, "F")
-
-    // Customer logo box — 56pt square, fills nicely with minimal padding.
-    let textX = issuerX + 18
-    if (company.logoUrl) {
-      const logoData = await loadImageDataUrl(company.logoUrl)
-      if (logoData) {
-        const boxSize = 56
-        const boxX = issuerX + 10
-        const boxY = issuerY + (issuerH - boxSize) / 2
-        // Subtle slate background so transparent/dark-on-dark logos pop.
-        doc.setFillColor(248, 250, 252)
-        doc.roundedRect(boxX, boxY, boxSize, boxSize, 8, 8, "F")
-        const dims = imageDimsFromDataUrl(logoData)
-        const isPng = logoData.startsWith("data:image/png")
-        const ratio = dims ? dims.w / dims.h : 1
-        // Use only 6pt of inner padding so the logo fills the box.
-        const innerMax = boxSize - 6
-        let drawW = innerMax
-        let drawH = drawW / ratio
-        if (drawH > innerMax) {
-          drawH = innerMax
-          drawW = drawH * ratio
-        }
-        const drawX = boxX + (boxSize - drawW) / 2
-        const drawY = boxY + (boxSize - drawH) / 2
-        try {
-          doc.addImage(
-            logoData,
-            isPng ? "PNG" : "JPEG",
-            drawX,
-            drawY,
-            drawW,
-            drawH,
-          )
-        } catch {
-          // Ignore unsupported image formats — name still renders.
-        }
-        textX = boxX + boxSize + 12
-      }
-    }
-
-    // "ISSUED BY" eyebrow
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(7)
-    doc.setTextColor(...accent)
-    doc.text("ISSUED BY", textX, issuerY + 22)
-
-    // Company name (wrap to two lines if needed)
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(11)
-    doc.setTextColor(...ink)
-    const name = (company.name ?? "").trim() || "—"
-    const nameLines = doc.splitTextToSize(name, issuerW - (textX - issuerX) - 14)
-    const limited = (nameLines as string[]).slice(0, 2)
-    doc.text(limited, textX, issuerY + 38)
-
-    titleX = issuerX + issuerW + 24
-  }
+  const titleX = 32
 
   // ---- BNG Tracking logo on the RIGHT ----
   const bngLogo = await loadImageDataUrl("/images/logo-full-bng.png")
-  let bngLeft = pageW - 32
   if (bngLogo) {
     const bngH = 32
     const bngW = bngH * (768 / 295) // preserve aspect ratio ≈ 83pt
-    bngLeft = pageW - 32 - bngW
+    const bngLeft = pageW - 32 - bngW
     const bngY = (headerH - bngH) / 2
     doc.addImage(bngLogo, "PNG", bngLeft, bngY, bngW, bngH)
   }
 
-  // ---- Title block in the middle ----
+  // ---- Title block on the LEFT ----
   doc.setTextColor(255, 255, 255)
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(18)
-  doc.text("Forwarding Orders P&L", titleX, 38)
+  doc.setFontSize(20)
+  doc.text("Forwarding Orders P&L", titleX, 34)
+
+  // Company name — clean amber subtitle directly under the title.
+  const hasCompany = !!company?.name
+  if (hasCompany) {
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(11)
+    doc.setTextColor(...accent)
+    doc.text(company!.name!, titleX, 52)
+  }
 
   doc.setFont("helvetica", "normal")
   doc.setFontSize(10)
   doc.setTextColor(203, 213, 225)
-  doc.text(`Period: ${ctx.from}  to  ${ctx.to}`, titleX, 60)
+  doc.text(`Period: ${ctx.from}  to  ${ctx.to}`, titleX, hasCompany ? 70 : 56)
 
   const generated = fmtDateTime(new Date())
   doc.setFontSize(9)
@@ -868,7 +808,7 @@ export async function exportPnlPdf(ctx: ExportContext) {
   doc.text(
     `Generated ${generated}  ·  ${ctx.totals.count} orders`,
     titleX,
-    78,
+    hasCompany ? 86 : 72,
   )
 
 
@@ -1037,12 +977,14 @@ export async function exportPnlPdf(ctx: ExportContext) {
       }
     },
     didDrawPage: () => {
-      // Footer
-      const str = `Page ${doc.getNumberOfPages()}`
+      // Footer: <Company> · Forwarding Orders P&L (period) · Generated by BNG Tracking
+      const issuer = ctx.company?.name?.trim() || "—"
+      const left = `${issuer}  ·  Forwarding Orders P&L (${ctx.from} → ${ctx.to})  ·  Generated by BNG Tracking`
+      const right = `Page ${doc.getNumberOfPages()}`
       doc.setFontSize(8)
       doc.setTextColor(...muted)
-      doc.text("BNG Track  •  Forwarding Orders P&L", 32, pageH - 18)
-      doc.text(str, pageW - 32, pageH - 18, { align: "right" })
+      doc.text(left, 32, pageH - 18)
+      doc.text(right, pageW - 32, pageH - 18, { align: "right" })
     },
   })
 
