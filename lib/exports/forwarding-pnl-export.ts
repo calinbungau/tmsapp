@@ -7,6 +7,7 @@
 import ExcelJS from "exceljs"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
+import { getLabel } from "@/lib/tms/status/registry"
 
 export type PnlRow = {
   order_id: string
@@ -124,6 +125,55 @@ function carrierSummary(subs: SubcontractInfo[] | undefined) {
   return `${names[0]} +${names.length - 1}`
 }
 
+// Order Ref display: "VLR-1510 / VLR-1511" on the first line, parent
+// "Parent: TMS-..." style stacked below. If no subcontracts, falls back to
+// just the parent reference.
+function orderRefDisplay(r: PnlRow): { primary: string; secondary: string } {
+  const parentRef = r.reference_number ?? r.order_id.slice(0, 8)
+  const refs = (r.subcontracts ?? [])
+    .map(s => s.reference_number ?? "")
+    .filter(Boolean)
+  if (refs.length === 0) return { primary: parentRef, secondary: "" }
+  const head = refs.slice(0, 2).join(" / ")
+  const tail = refs.length > 2 ? ` +${refs.length - 2}` : ""
+  return { primary: `${head}${tail}`, secondary: `Parent: ${parentRef}` }
+}
+
+// Combined status: parent status on top, dominant forwarder status on
+// the second line. Falls back to single line if no subs.
+function statusDisplay(r: PnlRow): { primary: string; secondary: string } {
+  const parent = r.status ? getLabel(r.status) : "—"
+  const subs = r.subcontracts ?? []
+  if (subs.length === 0) return { primary: parent, secondary: "" }
+  const subStatuses = subs
+    .map(s => s.status)
+    .filter(Boolean) as string[]
+  if (subStatuses.length === 0) return { primary: parent, secondary: "" }
+  // Pick the most common forwarder status as the dominant label
+  const counts = new Map<string, number>()
+  for (const s of subStatuses) counts.set(s, (counts.get(s) ?? 0) + 1)
+  const dominant = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0]
+  const allSame = counts.size === 1
+  const dominantLabel = getLabel(dominant)
+  const secondary = allSame
+    ? dominantLabel
+    : `${dominantLabel} (mixed)`
+  return { primary: parent, secondary }
+}
+
+function executionCode(mode: PnlRow["execution_mode"]): string {
+  switch (mode) {
+    case "internal":
+      return "INT"
+    case "subcontracted":
+      return "SUB"
+    case "mixed":
+      return "MIX"
+    default:
+      return "—"
+  }
+}
+
 export type PnlTotals = {
   revenue: number
   costs: number
@@ -152,12 +202,12 @@ const COLUMNS: Array<{
   numFmt?: string
   align?: "left" | "right" | "center"
 }> = [
-  { key: "reference_number", header: "Order Ref", width: 18 },
-  { key: "customer_name", header: "Customer", width: 28 },
-  { key: "carrier_summary", header: "Carrier", width: 28 },
+  { key: "reference_number", header: "Order Ref", width: 22 },
+  { key: "customer_name", header: "Customer", width: 26 },
+  { key: "carrier_summary", header: "Carrier", width: 26 },
   { key: "created_date", header: "Created", width: 12 },
-  { key: "status", header: "Status", width: 16 },
-  { key: "execution_mode", header: "Execution", width: 14 },
+  { key: "status", header: "Status", width: 22 },
+  { key: "execution_mode", header: "Exec.", width: 7, align: "center" },
   { key: "legs_total", header: "Legs", width: 8, align: "right" },
   { key: "legs_internal", header: "Internal", width: 9, align: "right" },
   { key: "legs_subcontract", header: "Subc.", width: 8, align: "right" },
@@ -190,6 +240,17 @@ function cellValue(r: PnlRow, key: (typeof COLUMNS)[number]["key"]) {
   }
   if (key === "carrier_summary") {
     return carrierSummary(r.subcontracts)
+  }
+  if (key === "reference_number") {
+    const d = orderRefDisplay(r)
+    return d.secondary ? `${d.primary}\n${d.secondary}` : d.primary
+  }
+  if (key === "status") {
+    const s = statusDisplay(r)
+    return s.secondary ? `${s.primary}\n${s.secondary}` : s.primary
+  }
+  if (key === "execution_mode") {
+    return executionCode(r.execution_mode)
   }
   const v = (r as any)[key]
   return v === null || v === undefined ? "" : v
@@ -348,7 +409,11 @@ export async function exportPnlExcel(ctx: ExportContext) {
       row[c.key as string] = cellValue(r, c.key)
     })
     const added = ws.addRow(row)
-    added.height = 20
+    // Determine row height — taller when the Order Ref or Status column
+    // wraps to two lines, mirroring the Forwarder Board card style.
+    const refLines = String(row["reference_number"] ?? "").includes("\n") ? 2 : 1
+    const statusLines = String(row["status"] ?? "").includes("\n") ? 2 : 1
+    added.height = Math.max(refLines, statusLines) === 2 ? 30 : 20
     const zebra = idx % 2 === 0 ? "FFFFFFFF" : "FFF8FAFC"
     added.eachCell(cell => {
       cell.fill = {
@@ -358,6 +423,11 @@ export async function exportPnlExcel(ctx: ExportContext) {
       }
       cell.border = {
         bottom: { style: "hair", color: { argb: "FFE2E8F0" } },
+      }
+      cell.alignment = {
+        ...(cell.alignment ?? {}),
+        wrapText: true,
+        vertical: "middle",
       }
     })
 
@@ -682,7 +752,7 @@ export function exportPnlPdf(ctx: ExportContext) {
       "Carrier",
       "Created",
       "Status",
-      "Execution",
+      "Exec.",
       "Revenue EUR",
       "Cost EUR",
       "Profit EUR",
@@ -694,23 +764,27 @@ export function exportPnlPdf(ctx: ExportContext) {
       "POD",
     ],
   ]
-  const body = ctx.rows.map(r => [
-    r.reference_number ?? r.order_id.slice(0, 8),
-    r.customer_name ?? "-",
-    carrierSummary(r.subcontracts),
-    new Date(r.created_at).toISOString().slice(0, 10),
-    r.status ?? "-",
-    r.execution_mode,
-    fmtMoney(r.revenue_eur),
-    fmtMoney(r.cost_total_eur),
-    fmtMoney(r.profit_eur),
-    r.margin_pct == null ? "-" : `${Number(r.margin_pct).toFixed(1)}%`,
-    r.customer_invoice_status,
-    fmtMoney(r.customer_outstanding_eur),
-    r.carrier_invoice_status,
-    fmtMoney(r.carrier_outstanding_eur),
-    podSummary(r.subcontracts),
-  ])
+  const body = ctx.rows.map(r => {
+    const ref = orderRefDisplay(r)
+    const st = statusDisplay(r)
+    return [
+      ref.secondary ? `${ref.primary}\n${ref.secondary}` : ref.primary,
+      r.customer_name ?? "-",
+      carrierSummary(r.subcontracts),
+      new Date(r.created_at).toISOString().slice(0, 10),
+      st.secondary ? `${st.primary}\n${st.secondary}` : st.primary,
+      executionCode(r.execution_mode),
+      fmtMoney(r.revenue_eur),
+      fmtMoney(r.cost_total_eur),
+      fmtMoney(r.profit_eur),
+      r.margin_pct == null ? "-" : `${Number(r.margin_pct).toFixed(1)}%`,
+      r.customer_invoice_status,
+      fmtMoney(r.customer_outstanding_eur),
+      r.carrier_invoice_status,
+      fmtMoney(r.carrier_outstanding_eur),
+      podSummary(r.subcontracts),
+    ]
+  })
 
   autoTable(doc, {
     head,
@@ -735,8 +809,10 @@ export function exportPnlPdf(ctx: ExportContext) {
     },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     columnStyles: {
-      0: { fontStyle: "bold" },
+      0: { fontStyle: "bold", cellWidth: 64 },
       2: { textColor: violet, fontStyle: "bold" },
+      4: { cellWidth: 70 },
+      5: { halign: "center", fontStyle: "bold", cellWidth: 22 },
       6: { halign: "right" },
       7: { halign: "right" },
       8: { halign: "right", fontStyle: "bold" },
