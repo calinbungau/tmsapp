@@ -5,9 +5,16 @@ export const runtime = "nodejs"
 
 /**
  * Persists the user-chosen Planned-vs-Actual inspection window on the
- * trip. PATCH with `{ from, to }` (ISO timestamps, both required) saves
- * a custom range; PATCH with `{ reset: true }` clears the saved range
- * so the trip falls back to the "first stop → last stop" default.
+ * trip. PATCH with `{ from, to, distance_km? }` (ISO timestamps) saves a
+ * custom range and — if a GPS distance is supplied — also stamps
+ * `trips.distance_km` and marks the trip's route as Confirmed by setting
+ * `route_confirmed_at = now()` and `status = 'confirmed'` (only when the
+ * trip is still in a pre-confirmed state, so we don't downgrade an
+ * already-completed trip).
+ *
+ * PATCH with `{ reset: true }` clears the saved window AND the confirmed
+ * markers so the trip falls back to the default first-stop → last-stop
+ * window and is no longer shown as confirmed.
  */
 export async function PATCH(
   req: NextRequest,
@@ -29,6 +36,8 @@ export async function PATCH(
       .update({
         analysis_window_from: null,
         analysis_window_to: null,
+        route_confirmed_at: null,
+        route_confirmed_by: null,
       })
       .eq("id", tripId)
     if (error) {
@@ -38,7 +47,7 @@ export async function PATCH(
         { status: 500 }
       )
     }
-    return NextResponse.json({ ok: true, reset: true })
+    return NextResponse.json({ ok: true, reset: true, confirmed: false })
   }
 
   const from = typeof body?.from === "string" ? new Date(body.from) : null
@@ -56,13 +65,52 @@ export async function PATCH(
     )
   }
 
-  const { error } = await supabase
+  // Optional GPS-derived distance (km). Persist when sane.
+  const distanceKm =
+    typeof body?.distance_km === "number" && Number.isFinite(body.distance_km)
+      ? Math.max(0, Math.round(body.distance_km * 100) / 100)
+      : null
+
+  // Resolve current user (for route_confirmed_by) — best-effort.
+  let confirmedBy: string | null = null
+  try {
+    const { data: auth } = await supabase.auth.getUser()
+    confirmedBy = auth?.user?.id ?? null
+  } catch {
+    confirmedBy = null
+  }
+
+  const nowIso = new Date().toISOString()
+
+  // Read current status so we don't downgrade a finished trip.
+  const { data: existing, error: existingErr } = await supabase
     .from("trips")
-    .update({
-      analysis_window_from: from.toISOString(),
-      analysis_window_to: to.toISOString(),
-    })
+    .select("id, status")
     .eq("id", tripId)
+    .maybeSingle()
+  if (existingErr) {
+    console.error("[v0] analysis-window load error:", existingErr)
+    return NextResponse.json(
+      { error: "Failed to load trip", detail: existingErr.message },
+      { status: 500 }
+    )
+  }
+
+  const update: Record<string, unknown> = {
+    analysis_window_from: from.toISOString(),
+    analysis_window_to: to.toISOString(),
+    route_confirmed_at: nowIso,
+    route_confirmed_by: confirmedBy,
+  }
+  if (distanceKm != null) update.distance_km = distanceKm
+
+  // Only promote to "confirmed" when trip is still in a pre-confirmed state.
+  const promotable = new Set([null, "draft", "planned", "scheduled"])
+  if (promotable.has(existing?.status ?? null)) {
+    update.status = "confirmed"
+  }
+
+  const { error } = await supabase.from("trips").update(update).eq("id", tripId)
   if (error) {
     console.error("[v0] analysis-window save error:", error)
     return NextResponse.json(
@@ -72,7 +120,10 @@ export async function PATCH(
   }
   return NextResponse.json({
     ok: true,
+    confirmed: true,
     from: from.toISOString(),
     to: to.toISOString(),
+    distance_km: distanceKm,
+    route_confirmed_at: nowIso,
   })
 }

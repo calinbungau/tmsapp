@@ -47,7 +47,6 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -56,7 +55,13 @@ import {
   exportFleetPnlCsv,
   exportFleetPnlExcel,
   exportFleetPnlPdf,
+  exportFleetPnlDetailedCsv,
+  exportFleetPnlDetailedExcel,
+  exportFleetPnlDetailedPdf,
   type FleetExportContext,
+  type FleetDetailedExportContext,
+  type FleetDetailedItem,
+  type FleetDetailedLeg,
 } from "@/lib/exports/internal-fleet-pnl-export";
 
 /* ------------------------- types ------------------------- */
@@ -299,9 +304,7 @@ export default function InternalFleetPnLPage() {
     },
   );
 
-  const [exporting, setExporting] = React.useState<
-    null | "csv" | "xlsx" | "pdf"
-  >(null);
+  const [exporting, setExporting] = React.useState<string | null>(null);
 
   function buildExportContext(): FleetExportContext {
     return {
@@ -337,11 +340,44 @@ export default function InternalFleetPnLPage() {
   async function handleExport(kind: "csv" | "xlsx" | "pdf") {
     if (!filteredRows.length) return;
     try {
-      setExporting(kind);
+      setExporting(`summary-${kind}`);
       const ctx = buildExportContext();
       if (kind === "csv") exportFleetPnlCsv(ctx);
       else if (kind === "xlsx") await exportFleetPnlExcel(ctx);
       else await exportFleetPnlPdf(ctx);
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  async function handleExportDetailed(kind: "csv" | "xlsx" | "pdf") {
+    if (!filteredRows.length || !adminId) return;
+    try {
+      setExporting(`detailed-${kind}`);
+      // Fetch line-item itemization for the currently filtered trips.
+      const tripIds = filteredRows.map(r => r.trip_id).join(",");
+      const res = await fetch(
+        `/api/admin/finance/reports/internal-fleet-pnl/detailed?admin_id=${adminId}&trip_ids=${encodeURIComponent(
+          tripIds,
+        )}`,
+      );
+      if (!res.ok) {
+        throw new Error(`Detailed fetch failed: ${res.status}`);
+      }
+      const json = (await res.json()) as {
+        items: FleetDetailedItem[];
+        legs: FleetDetailedLeg[];
+      };
+      const ctx: FleetDetailedExportContext = {
+        ...buildExportContext(),
+        items: json.items ?? [],
+        legs: json.legs ?? [],
+      };
+      if (kind === "csv") exportFleetPnlDetailedCsv(ctx);
+      else if (kind === "xlsx") await exportFleetPnlDetailedExcel(ctx);
+      else await exportFleetPnlDetailedPdf(ctx);
+    } catch (err) {
+      console.error("[v0] detailed export failed:", err);
     } finally {
       setExporting(null);
     }
@@ -389,7 +425,7 @@ export default function InternalFleetPnLPage() {
                 {exporting ? (
                   <span className="flex items-center gap-2">
                     <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                    Exporting {exporting.toUpperCase()}...
+                    Exporting {exporting.replace("-", " ").toUpperCase()}...
                   </span>
                 ) : (
                   <>
@@ -400,7 +436,7 @@ export default function InternalFleetPnLPage() {
                 )}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72 p-2">
+            <DropdownMenuContent align="end" className="w-[420px] p-2">
               <DropdownMenuLabel className="px-2 pt-1 pb-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -416,53 +452,86 @@ export default function InternalFleetPnLPage() {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
 
-              <DropdownMenuItem
-                disabled={!!exporting}
-                onClick={() => handleExport("pdf")}
-                className="group flex cursor-pointer items-center gap-3 rounded-md px-2 py-2.5 focus:bg-rose-500/10"
-              >
-                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-gradient-to-br from-rose-500 to-red-600 text-white shadow-sm shadow-rose-500/30">
-                  <FileType2 className="h-4 w-4" />
+              {/* Summary section: KPI-level rows, one row per trip */}
+              <div className="px-2 pt-1 pb-1">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Summary
                 </div>
-                <div className="flex flex-1 flex-col">
-                  <span className="text-sm font-semibold">PDF Report</span>
-                  <span className="text-xs text-muted-foreground">
-                    Branded landscape with KPIs &amp; trips table
-                  </span>
+                <div className="text-[11px] text-muted-foreground">
+                  One row per trip with totals, margin and KPIs.
                 </div>
-              </DropdownMenuItem>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 px-1 pb-2">
+                <ExportTile
+                  disabled={!!exporting}
+                  active={exporting === "summary-pdf"}
+                  onClick={() => handleExport("pdf")}
+                  icon={<FileType2 className="h-4 w-4" />}
+                  label="PDF"
+                  hint="Branded landscape"
+                  gradient="from-rose-500 to-red-600"
+                />
+                <ExportTile
+                  disabled={!!exporting}
+                  active={exporting === "summary-xlsx"}
+                  onClick={() => handleExport("xlsx")}
+                  icon={<FileSpreadsheet className="h-4 w-4" />}
+                  label="Excel"
+                  hint="Summary + Trips + Orders"
+                  gradient="from-emerald-500 to-green-600"
+                />
+                <ExportTile
+                  disabled={!!exporting}
+                  active={exporting === "summary-csv"}
+                  onClick={() => handleExport("csv")}
+                  icon={<FileText className="h-4 w-4" />}
+                  label="CSV"
+                  hint="Trips + nested details"
+                  gradient="from-sky-500 to-blue-600"
+                />
+              </div>
 
-              <DropdownMenuItem
-                disabled={!!exporting}
-                onClick={() => handleExport("xlsx")}
-                className="group flex cursor-pointer items-center gap-3 rounded-md px-2 py-2.5 focus:bg-emerald-500/10"
-              >
-                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-sm shadow-emerald-500/30">
-                  <FileSpreadsheet className="h-4 w-4" />
-                </div>
-                <div className="flex flex-1 flex-col">
-                  <span className="text-sm font-semibold">Excel workbook</span>
-                  <span className="text-xs text-muted-foreground">
-                    Summary + Trips + Orders + Legs sheets
-                  </span>
-                </div>
-              </DropdownMenuItem>
+              <DropdownMenuSeparator />
 
-              <DropdownMenuItem
-                disabled={!!exporting}
-                onClick={() => handleExport("csv")}
-                className="group flex cursor-pointer items-center gap-3 rounded-md px-2 py-2.5 focus:bg-sky-500/10"
-              >
-                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-sm shadow-sky-500/30">
-                  <FileText className="h-4 w-4" />
+              {/* Detailed section: line-by-line itemization per trip */}
+              <div className="px-2 pt-1 pb-1">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Detailed (line-by-line)
                 </div>
-                <div className="flex flex-1 flex-col">
-                  <span className="text-sm font-semibold">CSV file</span>
-                  <span className="text-xs text-muted-foreground">
-                    Trips with summary header &amp; nested details
-                  </span>
+                <div className="text-[11px] text-muted-foreground">
+                  Itemized: fuel/AdBlue, tolls/vignettes, driver, other,
+                  allocated overhead + planned vs actual km per leg.
                 </div>
-              </DropdownMenuItem>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 px-1 pb-1">
+                <ExportTile
+                  disabled={!!exporting}
+                  active={exporting === "detailed-pdf"}
+                  onClick={() => handleExportDetailed("pdf")}
+                  icon={<FileType2 className="h-4 w-4" />}
+                  label="PDF"
+                  hint="Grouped per trip"
+                  gradient="from-rose-500 to-red-600"
+                />
+                <ExportTile
+                  disabled={!!exporting}
+                  active={exporting === "detailed-xlsx"}
+                  onClick={() => handleExportDetailed("xlsx")}
+                  icon={<FileSpreadsheet className="h-4 w-4" />}
+                  label="Excel"
+                  hint="Items + Legs km"
+                  gradient="from-emerald-500 to-green-600"
+                />
+                <ExportTile
+                  disabled={!!exporting}
+                  active={exporting === "detailed-csv"}
+                  onClick={() => handleExportDetailed("csv")}
+                  icon={<FileText className="h-4 w-4" />}
+                  label="CSV"
+                  hint="Flat items + legs"
+                  gradient="from-sky-500 to-blue-600"
+                />
+              </div>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -887,6 +956,47 @@ export default function InternalFleetPnLPage() {
 }
 
 /* ------------------------- pieces ------------------------- */
+
+function ExportTile({
+  disabled,
+  active,
+  onClick,
+  icon,
+  label,
+  hint,
+  gradient,
+}: {
+  disabled?: boolean;
+  active?: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  hint: string;
+  gradient: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex flex-col items-start gap-1.5 rounded-md border border-transparent bg-muted/30 p-2.5 text-left transition-all hover:border-amber-500/40 hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50 ${
+        active ? "ring-2 ring-amber-500/60" : ""
+      }`}
+    >
+      <div
+        className={`flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br ${gradient} text-white shadow-sm`}
+      >
+        {icon}
+      </div>
+      <div className="flex flex-col">
+        <span className="text-sm font-semibold">{label}</span>
+        <span className="text-[10px] leading-tight text-muted-foreground">
+          {hint}
+        </span>
+      </div>
+    </button>
+  );
+}
 
 function KpiCard({
   label,

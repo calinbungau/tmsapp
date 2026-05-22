@@ -181,6 +181,9 @@ export function TabPlannedVsActual({
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">(
     "idle"
   )
+  const [confirmedAt, setConfirmedAt] = useState<string | null>(
+    trip?.route_confirmed_at ?? null
+  )
 
   // Latest values keep the gpsTrack callback stable without breaking effect deps
   const onGpsTrackChangeRef = useRef(onGpsTrackChange)
@@ -317,13 +320,21 @@ export function TabPlannedVsActual({
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ from: rangeFrom, to: rangeTo }),
+          body: JSON.stringify({
+            from: rangeFrom,
+            to: rangeTo,
+            // Persist GPS-derived distance so the rest of the system
+            // (P&L, fleet reports, KPIs) reads from a confirmed value.
+            distance_km: data?.stats?.distance_km ?? null,
+          }),
         }
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
         throw new Error(j.error || "Failed to save window")
       }
+      const j = await res.json().catch(() => ({} as any))
+      if (j?.route_confirmed_at) setConfirmedAt(j.route_confirmed_at)
       setSaveStatus("saved")
       setRangeDirty(false)
       setRefreshKey((k) => k + 1)
@@ -352,6 +363,7 @@ export function TabPlannedVsActual({
       setRangeFrom(null)
       setRangeTo(null)
       setRangeDirty(false)
+      setConfirmedAt(null)
       setSaveStatus("saved")
       setRefreshKey((k) => k + 1)
       setTimeout(() => setSaveStatus("idle"), 2200)
@@ -413,6 +425,15 @@ export function TabPlannedVsActual({
           >
             {rangeBadge.label}
           </span>
+          {confirmedAt && (
+            <span
+              className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+              title={`Trip confirmed at ${new Date(confirmedAt).toLocaleString()}`}
+            >
+              <CheckCircle2 className="h-3 w-3" />
+              Confirmed
+            </span>
+          )}
           <div className="ml-auto flex items-center gap-1">
             {saveStatus === "saved" && (
               <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">

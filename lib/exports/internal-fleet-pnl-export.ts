@@ -168,6 +168,62 @@ export type FleetExportContext = {
   } | null
 }
 
+/* ---------- Detailed (line-by-line) types ---------- */
+
+export type FleetDetailedItem = {
+  trip_id: string
+  trip_ref: string | null
+  bucket: "fuel" | "toll" | "driver" | "other" | "overhead"
+  source: string
+  occurred_at: string | null
+  description: string
+  vendor: string | null
+  country: string | null
+  category: string | null
+  cost_code: string | null
+  quantity: number | null
+  unit: string | null
+  currency: string | null
+  amount_eur: number
+}
+
+export type FleetDetailedLeg = {
+  trip_id: string
+  trip_ref: string | null
+  leg_id: string
+  leg_number: number | null
+  origin: string | null
+  destination: string | null
+  planned_km: number | null
+  actual_km: number | null
+  delta_km: number | null
+}
+
+export type FleetDetailedExportContext = FleetExportContext & {
+  items: FleetDetailedItem[]
+  legs: FleetDetailedLeg[]
+}
+
+const BUCKET_LABEL: Record<FleetDetailedItem["bucket"], string> = {
+  fuel: "Fuel & AdBlue",
+  toll: "Tolls & vignettes",
+  driver: "Driver",
+  other: "Other expenses",
+  overhead: "Allocated overhead",
+}
+
+const BUCKET_COLOR: Record<FleetDetailedItem["bucket"], string> = {
+  fuel: "FFF97316", // orange
+  toll: "FF0EA5E9", // sky
+  driver: "FF8B5CF6", // violet
+  other: "FF64748B", // slate
+  overhead: "FFF59E0B", // amber
+}
+
+function fileBaseDetailed(ctx: FleetDetailedExportContext) {
+  return `internal-fleet-pnl-detailed_${ctx.from}_${ctx.to}`
+}
+
 /* ---------- column registry (shared across CSV/Excel) ---------- */
 
 type ColKey =
@@ -1013,4 +1069,473 @@ export async function exportFleetPnlPdf(ctx: FleetExportContext) {
   }
 
   doc.save(`${fileBase(ctx)}.pdf`)
+}
+
+/* ============================================================ */
+/* ============== Detailed (line-by-line) exports ============= */
+/* ============================================================ */
+
+/* ---- Detailed CSV ---- */
+
+export function exportFleetPnlDetailedCsv(ctx: FleetDetailedExportContext) {
+  const meta = [
+    `Internal Fleet P&L — Detailed`,
+    `Period,${ctx.from} to ${ctx.to}`,
+    `Generated,${fmtDateTime(new Date())}`,
+    `Trips,${ctx.totals.tripCount}`,
+    `Line items,${ctx.items.length}`,
+    `Revenue EUR,${ctx.totals.revenue.toFixed(2)}`,
+    `Actual cost EUR,${ctx.totals.actual.toFixed(2)}`,
+    `Profit EUR,${ctx.totals.profit.toFixed(2)}`,
+    "",
+  ]
+
+  const headers = [
+    "Trip Ref",
+    "Bucket",
+    "Source",
+    "Date",
+    "Description",
+    "Vendor",
+    "Country",
+    "Category",
+    "Cost code",
+    "Qty",
+    "Unit",
+    "Currency",
+    "Amount EUR",
+  ]
+  const csvEscape = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s)
+
+  const rows = ctx.items.map(it =>
+    [
+      it.trip_ref ?? it.trip_id.slice(0, 8),
+      BUCKET_LABEL[it.bucket],
+      it.source,
+      it.occurred_at ? fmtDate(it.occurred_at) : "",
+      it.description,
+      it.vendor ?? "",
+      it.country ?? "",
+      it.category ?? "",
+      it.cost_code ?? "",
+      it.quantity == null ? "" : String(it.quantity),
+      it.unit ?? "",
+      it.currency ?? "",
+      it.amount_eur.toFixed(2),
+    ]
+      .map(s => csvEscape(String(s)))
+      .join(","),
+  )
+
+  const legHeader = [
+    "",
+    "Per-leg planned vs actual km",
+    "Trip Ref,Leg #,Origin,Destination,Planned km,Actual km,Δ km",
+  ]
+  const legRows = ctx.legs.map(l =>
+    [
+      l.trip_ref ?? l.trip_id.slice(0, 8),
+      l.leg_number == null ? "" : String(l.leg_number),
+      l.origin ?? "",
+      l.destination ?? "",
+      l.planned_km == null ? "" : String(l.planned_km),
+      l.actual_km == null ? "" : String(l.actual_km),
+      l.delta_km == null ? "" : String(l.delta_km),
+    ]
+      .map(s => csvEscape(String(s)))
+      .join(","),
+  )
+
+  const csv = [...meta, headers.join(","), ...rows, ...legHeader, ...legRows].join("\r\n")
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" })
+  triggerDownload(blob, `${fileBaseDetailed(ctx)}.csv`)
+}
+
+/* ---- Detailed Excel ---- */
+
+export async function exportFleetPnlDetailedExcel(ctx: FleetDetailedExportContext) {
+  const wb = new ExcelJS.Workbook()
+  wb.creator = "BNG Track"
+  wb.created = new Date()
+
+  /* Summary sheet */
+  const summary = wb.addWorksheet("Summary", { views: [{ showGridLines: false }] })
+  summary.columns = [{ width: 32 }, { width: 22 }]
+  summary.mergeCells("A1:B1")
+  const title = summary.getCell("A1")
+  title.value = "Internal Fleet P&L — Detailed"
+  title.font = { name: "Calibri", size: 18, bold: true, color: { argb: "FFFFFFFF" } }
+  title.alignment = { vertical: "middle", horizontal: "left", indent: 1 }
+  title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } }
+  summary.getRow(1).height = 36
+
+  summary.mergeCells("A2:B2")
+  summary.getCell("A2").value = `${ctx.from}  to  ${ctx.to}`
+  summary.getCell("A2").font = { color: { argb: "FF64748B" }, italic: true }
+
+  // Bucket totals
+  const totalsByBucket = new Map<FleetDetailedItem["bucket"], number>()
+  for (const it of ctx.items) {
+    totalsByBucket.set(it.bucket, (totalsByBucket.get(it.bucket) ?? 0) + it.amount_eur)
+  }
+  const order: FleetDetailedItem["bucket"][] = ["fuel", "toll", "driver", "other", "overhead"]
+  let row = 4
+  summary.getCell(`A${row}`).value = "Cost composition"
+  summary.getCell(`A${row}`).font = { bold: true }
+  row += 1
+  for (const b of order) {
+    const r = summary.getRow(row)
+    r.getCell(1).value = BUCKET_LABEL[b]
+    r.getCell(2).value = totalsByBucket.get(b) ?? 0
+    r.getCell(2).numFmt = '"€"#,##0.00'
+    r.getCell(2).alignment = { horizontal: "right" }
+    r.getCell(2).font = { bold: true, color: { argb: BUCKET_COLOR[b] } }
+    row += 1
+  }
+  row += 1
+  summary.getCell(`A${row}`).value = "Total"
+  summary.getCell(`A${row}`).font = { bold: true }
+  summary.getCell(`B${row}`).value = ctx.totals.actual
+  summary.getCell(`B${row}`).numFmt = '"€"#,##0.00'
+  summary.getCell(`B${row}`).font = { bold: true }
+  summary.getCell(`B${row}`).alignment = { horizontal: "right" }
+
+  /* Line items sheet */
+  const ws = wb.addWorksheet("Line items", {
+    views: [{ state: "frozen", ySplit: 1, showGridLines: false }],
+  })
+  ws.columns = [
+    { key: "trip_ref", header: "Trip Ref", width: 16 },
+    { key: "bucket", header: "Bucket", width: 16 },
+    { key: "source", header: "Source", width: 18 },
+    { key: "date", header: "Date", width: 12 },
+    { key: "description", header: "Description", width: 36 },
+    { key: "vendor", header: "Vendor", width: 18 },
+    { key: "country", header: "Country", width: 8 },
+    { key: "category", header: "Category", width: 18 },
+    { key: "cost_code", header: "Cost code", width: 14 },
+    { key: "quantity", header: "Qty", width: 8, style: { numFmt: "#,##0.00" } },
+    { key: "unit", header: "Unit", width: 6 },
+    { key: "currency", header: "Cur", width: 6 },
+    { key: "amount_eur", header: "Amount EUR", width: 14, style: { numFmt: '"€"#,##0.00' } },
+  ] as any
+  const headerRow = ws.getRow(1)
+  headerRow.height = 24
+  headerRow.eachCell(cell => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } }
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } }
+    cell.alignment = { vertical: "middle", indent: 1 }
+    cell.border = { bottom: { style: "medium", color: { argb: "FFF59E0B" } } }
+  })
+
+  ctx.items.forEach((it, i) => {
+    const added = ws.addRow({
+      trip_ref: it.trip_ref ?? it.trip_id.slice(0, 8),
+      bucket: BUCKET_LABEL[it.bucket],
+      source: it.source,
+      date: it.occurred_at ? fmtDate(it.occurred_at) : "",
+      description: it.description,
+      vendor: it.vendor ?? "",
+      country: it.country ?? "",
+      category: it.category ?? "",
+      cost_code: it.cost_code ?? "",
+      quantity: it.quantity ?? "",
+      unit: it.unit ?? "",
+      currency: it.currency ?? "",
+      amount_eur: it.amount_eur,
+    })
+    added.eachCell((cell, col) => {
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: i % 2 === 0 ? "FFFFFFFF" : "FFF8FAFC" },
+      }
+      cell.alignment = cell.alignment ?? { vertical: "middle", indent: 1 }
+      if (col === 2) {
+        cell.font = { bold: true, color: { argb: BUCKET_COLOR[it.bucket] } }
+      }
+      cell.border = { bottom: { style: "thin", color: { argb: "FFE2E8F0" } } }
+    })
+  })
+
+  /* Per-leg planned vs actual km */
+  const legsWs = wb.addWorksheet("Legs km", {
+    views: [{ state: "frozen", ySplit: 1, showGridLines: false }],
+  })
+  legsWs.columns = [
+    { key: "trip_ref", header: "Trip Ref", width: 16 },
+    { key: "leg_number", header: "Leg #", width: 8, style: { alignment: { horizontal: "right" } } },
+    { key: "origin", header: "Origin", width: 28 },
+    { key: "destination", header: "Destination", width: 28 },
+    { key: "planned_km", header: "Planned km", width: 12, style: { numFmt: "#,##0.0" } },
+    { key: "actual_km", header: "Actual km", width: 12, style: { numFmt: "#,##0.0" } },
+    { key: "delta_km", header: "Δ km", width: 10, style: { numFmt: "+#,##0.0;-#,##0.0;0" } },
+  ] as any
+  legsWs.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } }
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } }
+    cell.alignment = { vertical: "middle", indent: 1 }
+  })
+  legsWs.getRow(1).height = 22
+  ctx.legs.forEach((l, i) => {
+    const added = legsWs.addRow({
+      trip_ref: l.trip_ref ?? l.trip_id.slice(0, 8),
+      leg_number: l.leg_number ?? "",
+      origin: l.origin ?? "",
+      destination: l.destination ?? "",
+      planned_km: l.planned_km ?? "",
+      actual_km: l.actual_km ?? "",
+      delta_km: l.delta_km ?? "",
+    })
+    added.eachCell((cell, col) => {
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: i % 2 === 0 ? "FFFFFFFF" : "FFF8FAFC" },
+      }
+      cell.alignment = cell.alignment ?? { vertical: "middle", indent: 1 }
+      if (col === 7 && typeof l.delta_km === "number") {
+        cell.font = {
+          bold: true,
+          color: { argb: l.delta_km > 0 ? "FFEF4444" : "FF10B981" },
+        }
+      }
+    })
+  })
+
+  const buf = await wb.xlsx.writeBuffer()
+  triggerDownload(
+    new Blob([buf], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    `${fileBaseDetailed(ctx)}.xlsx`,
+  )
+}
+
+/* ---- Detailed PDF ---- */
+
+export async function exportFleetPnlDetailedPdf(ctx: FleetDetailedExportContext) {
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" })
+  const pageW = doc.internal.pageSize.getWidth()
+  const pageH = doc.internal.pageSize.getHeight()
+
+  const ink: [number, number, number] = [15, 23, 42]
+  const accent: [number, number, number] = [245, 158, 11]
+  const muted: [number, number, number] = [100, 116, 139]
+
+  // Header band
+  const headerH = 78
+  doc.setFillColor(...ink)
+  doc.rect(0, 0, pageW, headerH, "F")
+  doc.setFillColor(...accent)
+  doc.rect(0, headerH, pageW, 3, "F")
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(18)
+  doc.text("Internal Fleet P&L — Detailed", 32, 34)
+
+  doc.setFont("helvetica", "normal")
+  doc.setFontSize(10)
+  doc.setTextColor(203, 213, 225)
+  doc.text(`Period: ${ctx.from}  to  ${ctx.to}`, 32, 54)
+  doc.setFontSize(9)
+  doc.setTextColor(148, 163, 184)
+  doc.text(
+    `Generated ${fmtDateTime(new Date())} · ${ctx.totals.tripCount} trips · ${ctx.items.length} line items`,
+    32,
+    70,
+  )
+
+  // Bucket totals strip
+  const totalsByBucket = new Map<FleetDetailedItem["bucket"], number>()
+  for (const it of ctx.items) {
+    totalsByBucket.set(it.bucket, (totalsByBucket.get(it.bucket) ?? 0) + it.amount_eur)
+  }
+  const buckets: FleetDetailedItem["bucket"][] = ["fuel", "toll", "driver", "other", "overhead"]
+  const stripY = 100
+  const stripH = 50
+  const cardGap = 10
+  const cardW = (pageW - 64 - cardGap * (buckets.length - 1)) / buckets.length
+  buckets.forEach((b, i) => {
+    const x = 32 + i * (cardW + cardGap)
+    doc.setFillColor(248, 250, 252)
+    doc.roundedRect(x, stripY, cardW, stripH, 6, 6, "F")
+    // accent bar in bucket color (parse the FF... ARGB)
+    const argb = BUCKET_COLOR[b]
+    const r = parseInt(argb.slice(2, 4), 16)
+    const g = parseInt(argb.slice(4, 6), 16)
+    const bb = parseInt(argb.slice(6, 8), 16)
+    doc.setFillColor(r, g, bb)
+    doc.rect(x, stripY, 3, stripH, "F")
+    doc.setTextColor(...muted)
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(8)
+    doc.text(BUCKET_LABEL[b].toUpperCase(), x + 12, stripY + 18)
+    doc.setTextColor(...ink)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(12)
+    doc.text(`EUR ${fmtMoney(totalsByBucket.get(b) ?? 0)}`, x + 12, stripY + 38)
+  })
+
+  // Group line items by trip for readability.
+  const byTrip = new Map<string, FleetDetailedItem[]>()
+  for (const it of ctx.items) {
+    const k = it.trip_ref ?? it.trip_id
+    const arr = byTrip.get(k) ?? []
+    arr.push(it)
+    byTrip.set(k, arr)
+  }
+
+  let cursorY = stripY + stripH + 16
+
+  // For each trip group, render a compact table.
+  const tripKeys = Array.from(byTrip.keys()).sort()
+  for (const k of tripKeys) {
+    const items = byTrip.get(k) ?? []
+    if (!items.length) continue
+    const tripTotal = items.reduce((s, it) => s + it.amount_eur, 0)
+
+    if (cursorY > pageH - 120) {
+      doc.addPage()
+      cursorY = 40
+    }
+
+    // Trip header
+    doc.setFillColor(15, 23, 42)
+    doc.rect(32, cursorY, pageW - 64, 22, "F")
+    doc.setTextColor(255, 255, 255)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(10)
+    doc.text(`Trip ${k}`, 40, cursorY + 15)
+    doc.setTextColor(245, 158, 11)
+    doc.text(
+      `EUR ${fmtMoney(tripTotal)} · ${items.length} line item${items.length === 1 ? "" : "s"}`,
+      pageW - 40,
+      cursorY + 15,
+      { align: "right" },
+    )
+    cursorY += 22
+
+    autoTable(doc, {
+      startY: cursorY,
+      theme: "grid",
+      head: [["Bucket", "Date", "Description", "Vendor", "Qty", "Unit", "Amount EUR"]],
+      body: items.map(it => [
+        BUCKET_LABEL[it.bucket],
+        it.occurred_at ? fmtDate(it.occurred_at) : "",
+        it.description,
+        it.vendor ?? "",
+        it.quantity == null ? "" : String(it.quantity),
+        it.unit ?? "",
+        `EUR ${fmtMoney(it.amount_eur)}`,
+      ]),
+      styles: {
+        font: "helvetica",
+        fontSize: 8,
+        cellPadding: 3,
+        lineColor: [226, 232, 240],
+        lineWidth: 0.5,
+        textColor: ink,
+        valign: "middle",
+      },
+      headStyles: {
+        fillColor: [30, 41, 59],
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        fontSize: 8,
+      },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      columnStyles: {
+        0: { cellWidth: 80, fontStyle: "bold" },
+        1: { cellWidth: 60 },
+        2: { cellWidth: 260 },
+        3: { cellWidth: 100 },
+        4: { halign: "right", cellWidth: 40 },
+        5: { cellWidth: 30 },
+        6: { halign: "right", cellWidth: 90, fontStyle: "bold" },
+      },
+      didParseCell: data => {
+        if (data.section !== "body" || data.column.index !== 0) return
+        const it = items[data.row.index]
+        if (!it) return
+        const argb = BUCKET_COLOR[it.bucket]
+        data.cell.styles.textColor = [
+          parseInt(argb.slice(2, 4), 16),
+          parseInt(argb.slice(4, 6), 16),
+          parseInt(argb.slice(6, 8), 16),
+        ]
+      },
+      margin: { left: 32, right: 32 },
+    })
+    // @ts-expect-error autoTable adds finalY
+    cursorY = (doc.lastAutoTable?.finalY ?? cursorY) + 14
+  }
+
+  // Per-leg planned vs actual km appendix
+  if (ctx.legs.length) {
+    if (cursorY > pageH - 120) {
+      doc.addPage()
+      cursorY = 40
+    }
+    doc.setTextColor(...ink)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(11)
+    doc.text("Per-leg planned vs actual km", 32, cursorY + 4)
+    cursorY += 12
+
+    autoTable(doc, {
+      startY: cursorY,
+      theme: "grid",
+      head: [["Trip Ref", "Leg #", "Origin", "Destination", "Planned km", "Actual km", "Δ km"]],
+      body: ctx.legs.map(l => [
+        l.trip_ref ?? l.trip_id.slice(0, 8),
+        l.leg_number == null ? "" : String(l.leg_number),
+        l.origin ?? "",
+        l.destination ?? "",
+        l.planned_km == null ? "—" : String(l.planned_km),
+        l.actual_km == null ? "—" : String(l.actual_km),
+        l.delta_km == null ? "—" : (l.delta_km > 0 ? `+${l.delta_km}` : String(l.delta_km)),
+      ]),
+      styles: {
+        font: "helvetica",
+        fontSize: 8,
+        cellPadding: 3,
+        lineColor: [226, 232, 240],
+        lineWidth: 0.5,
+      },
+      headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      columnStyles: {
+        0: { cellWidth: 70, fontStyle: "bold" },
+        1: { halign: "right", cellWidth: 40 },
+        2: { cellWidth: 180 },
+        3: { cellWidth: 180 },
+        4: { halign: "right", cellWidth: 70 },
+        5: { halign: "right", cellWidth: 70 },
+        6: { halign: "right", cellWidth: 60, fontStyle: "bold" },
+      },
+      didParseCell: data => {
+        if (data.section !== "body" || data.column.index !== 6) return
+        const l = ctx.legs[data.row.index]
+        if (!l || l.delta_km == null) return
+        data.cell.styles.textColor = l.delta_km > 0 ? [220, 38, 38] : [16, 185, 129]
+      },
+      margin: { left: 32, right: 32 },
+    })
+  }
+
+  // Footer
+  const pageCount = doc.getNumberOfPages()
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i)
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(8)
+    doc.setTextColor(...muted)
+    doc.text(`Page ${i} of ${pageCount}`, pageW - 32, pageH - 16, { align: "right" })
+    doc.setTextColor(...accent)
+    doc.text("BNG Tracking · Internal Fleet P&L (Detailed)", 32, pageH - 16)
+  }
+
+  doc.save(`${fileBaseDetailed(ctx)}.pdf`)
 }
