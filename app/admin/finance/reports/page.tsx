@@ -17,6 +17,15 @@ import Link from "next/link";
 
 const REPORT_TYPES = [
   {
+    id: "forwarding-pnl",
+    name: "Forwarding Orders P&L",
+    description:
+      "Per parent order: revenue, costs (internal + subcontract), profit, execution mix (internal/subcontracted/mixed), and customer + carrier invoice status.",
+    icon: TrendingUp,
+    ready: true,
+    href: "/admin/finance/reports/forwarding-pnl",
+  },
+  {
     id: "cost-summary",
     name: "Cost Summary Report",
     description: "Summary of all costs by group and category for a selected period",
@@ -86,12 +95,12 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Coming Soon Notice */}
-      <Card className="bg-amber-500/5 border-amber-500/20">
+      {/* Status Notice */}
+      <Card className="bg-emerald-500/5 border-emerald-500/20">
         <CardContent className="p-4">
-          <p className="text-sm text-amber-600">
-            <strong>Coming Soon:</strong> Financial reporting features are under development.
-            In the meantime, you can export cost entries from the Cost Entries page.
+          <p className="text-sm text-emerald-700 dark:text-emerald-500">
+            <strong>New:</strong> The Forwarding Orders P&amp;L report is now
+            live. More reports are on the way.
           </p>
         </CardContent>
       </Card>
@@ -117,14 +126,23 @@ export default function ReportsPage() {
               <p className="text-sm text-muted-foreground mb-4">
                 {report.description}
               </p>
-              <Button
-                variant="outline"
-                className="w-full"
-                disabled={!report.ready}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Generate Report
-              </Button>
+              {report.ready && (report as any).href ? (
+                <Link href={(report as any).href}>
+                  <Button variant="default" className="w-full">
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Open Report
+                  </Button>
+                </Link>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={!report.ready}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Generate Report
+                </Button>
+              )}
             </CardContent>
           </Card>
         ))}
