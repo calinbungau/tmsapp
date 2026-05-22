@@ -163,7 +163,7 @@ export async function GET(req: NextRequest) {
   const { data: trips } = await sb
     .from("trips")
     .select(
-      "id, reference_number, duration_minutes, distance_km, driver_id, vehicle_id, planned_start, planned_end, actual_start, actual_end, status, route_confirmed_at, planned_distance_km",
+      "id, reference_number, duration_minutes, distance_km, driver_id, vehicle_id, planned_start, planned_end, actual_start, actual_end, status, route_confirmed_at",
     )
     .eq("admin_id", adminId)
     .in("id", tripIds)
@@ -172,7 +172,6 @@ export async function GET(req: NextRequest) {
     reference_number: string | null
     duration_minutes: number | null
     distance_km: number | null
-    planned_distance_km: number | null
     driver_id: string | null
     vehicle_id: string | null
     planned_start: string | null
@@ -195,10 +194,10 @@ export async function GET(req: NextRequest) {
   if (vehicleIds.length) {
     const { data } = await sb
       .from("vehicles")
-      .select("id, license_plate")
+      .select("id, plate_number")
       .in("id", vehicleIds)
     for (const v of data ?? []) {
-      vehiclePlate.set((v as any).id as string, (v as any).license_plate as string | null)
+      vehiclePlate.set((v as any).id as string, (v as any).plate_number as string | null)
     }
   }
 
@@ -532,7 +531,7 @@ export async function GET(req: NextRequest) {
     const { data: orders } = await sb
       .from("orders")
       .select(
-        "id, reference_number, customer_id, customer_price, customer_currency, parent_order_id, carrier_cost, carrier_currency, customer:customers(id, name)",
+        "id, reference_number, customer_id, customer_price, customer_currency, parent_order_id, carrier_cost, carrier_currency",
       )
       .in("id", orderIds)
 
@@ -545,12 +544,25 @@ export async function GET(req: NextRequest) {
       parent_order_id: string | null
       carrier_cost: number | null
       carrier_currency: string | null
-      customer: { id: string; name: string | null } | null
     }
+    const ordersArr = (orders ?? []) as Ord[]
     const ordersById = new Map<string, Ord>()
-    for (const o of (orders ?? []) as any[]) {
-      const cust = Array.isArray(o.customer) ? o.customer[0] ?? null : o.customer ?? null
-      ordersById.set(o.id, { ...o, customer: cust } as Ord)
+    for (const o of ordersArr) ordersById.set(o.id, o)
+
+    // Customer names from business_partners
+    const customerIds = Array.from(
+      new Set(ordersArr.map(o => o.customer_id).filter(Boolean) as string[]),
+    )
+    const customerNameMap = new Map<string, string>()
+    if (customerIds.length) {
+      const { data: bps } = await sb
+        .from("business_partners")
+        .select("id, name")
+        .in("id", customerIds)
+      for (const r of bps ?? []) {
+        const nm = (r as any).name as string | null
+        if (nm) customerNameMap.set((r as any).id as string, nm)
+      }
     }
 
     // sub-orders deduction (parent's children that are subcontracted)
@@ -610,7 +622,7 @@ export async function GET(req: NextRequest) {
           trip_ref: tripRef(tid),
           order_id: o.id,
           order_ref: o.reference_number,
-          customer_name: o.customer?.name ?? null,
+          customer_name: o.customer_id ? customerNameMap.get(o.customer_id) ?? null : null,
           customer_price_eur: Number(customerEur.toFixed(2)),
           subcontracted_cost_eur: Number(sub.toFixed(2)),
           internal_revenue_eur: Number(internal.toFixed(2)),
@@ -632,7 +644,7 @@ export async function GET(req: NextRequest) {
       planned_end: t.planned_end,
       actual_start: t.actual_start,
       actual_end: t.actual_end,
-      planned_km: t.planned_distance_km != null ? num(t.planned_distance_km) : null,
+      planned_km: t.distance_km != null ? num(t.distance_km) : null,
       actual_km: t.distance_km != null ? num(t.distance_km) : null,
       route_confirmed_at: t.route_confirmed_at,
       status: t.status,
