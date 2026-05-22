@@ -109,6 +109,21 @@ function podSummary(subs: SubcontractInfo[] | undefined) {
   return `Partial ${received}/${subs.length}`
 }
 
+function carrierSummary(subs: SubcontractInfo[] | undefined) {
+  if (!subs || subs.length === 0) return "—"
+  const names = Array.from(
+    new Set(
+      subs
+        .map(s => (s.carrier_name ?? "").trim())
+        .filter(n => n.length > 0),
+    ),
+  )
+  if (names.length === 0) return "—"
+  if (names.length === 1) return names[0]
+  if (names.length === 2) return names.join(" + ")
+  return `${names[0]} +${names.length - 1}`
+}
+
 export type PnlTotals = {
   revenue: number
   costs: number
@@ -131,14 +146,15 @@ export type ExportContext = {
 }
 
 const COLUMNS: Array<{
-  key: keyof PnlRow | "created_date" | "pod_status"
+  key: keyof PnlRow | "created_date" | "pod_status" | "carrier_summary"
   header: string
   width: number
   numFmt?: string
   align?: "left" | "right" | "center"
 }> = [
   { key: "reference_number", header: "Order Ref", width: 18 },
-  { key: "customer_name", header: "Customer", width: 30 },
+  { key: "customer_name", header: "Customer", width: 28 },
+  { key: "carrier_summary", header: "Carrier", width: 28 },
   { key: "created_date", header: "Created", width: 12 },
   { key: "status", header: "Status", width: 16 },
   { key: "execution_mode", header: "Execution", width: 14 },
@@ -171,6 +187,9 @@ function cellValue(r: PnlRow, key: (typeof COLUMNS)[number]["key"]) {
   }
   if (key === "pod_status") {
     return podSummary(r.subcontracts)
+  }
+  if (key === "carrier_summary") {
+    return carrierSummary(r.subcontracts)
   }
   const v = (r as any)[key]
   return v === null || v === undefined ? "" : v
@@ -660,6 +679,7 @@ export function exportPnlPdf(ctx: ExportContext) {
     [
       "Order Ref",
       "Customer",
+      "Carrier",
       "Created",
       "Status",
       "Execution",
@@ -677,6 +697,7 @@ export function exportPnlPdf(ctx: ExportContext) {
   const body = ctx.rows.map(r => [
     r.reference_number ?? r.order_id.slice(0, 8),
     r.customer_name ?? "-",
+    carrierSummary(r.subcontracts),
     new Date(r.created_at).toISOString().slice(0, 10),
     r.status ?? "-",
     r.execution_mode,
@@ -715,12 +736,13 @@ export function exportPnlPdf(ctx: ExportContext) {
     alternateRowStyles: { fillColor: [248, 250, 252] },
     columnStyles: {
       0: { fontStyle: "bold" },
-      5: { halign: "right" },
+      2: { textColor: violet, fontStyle: "bold" },
       6: { halign: "right" },
-      7: { halign: "right", fontStyle: "bold" },
-      8: { halign: "right" },
-      10: { halign: "right" },
-      12: { halign: "right" },
+      7: { halign: "right" },
+      8: { halign: "right", fontStyle: "bold" },
+      9: { halign: "right" },
+      11: { halign: "right" },
+      13: { halign: "right" },
     },
     didParseCell: (data) => {
       if (data.section !== "body") return
@@ -728,11 +750,11 @@ export function exportPnlPdf(ctx: ExportContext) {
       if (!r) return
 
       // Profit color
-      if (data.column.index === 7) {
+      if (data.column.index === 8) {
         data.cell.styles.textColor = (r.profit_eur ?? 0) >= 0 ? green : red
       }
       // Execution mode pill color
-      if (data.column.index === 4) {
+      if (data.column.index === 5) {
         const map: Record<string, [number, number, number]> = {
           internal: green,
           subcontracted: violet,
@@ -743,7 +765,7 @@ export function exportPnlPdf(ctx: ExportContext) {
         data.cell.styles.fontStyle = "bold"
       }
       // Invoice status colors
-      if (data.column.index === 9) {
+      if (data.column.index === 10) {
         const map: Record<string, [number, number, number]> = {
           paid: green,
           partial: accent,
@@ -756,7 +778,7 @@ export function exportPnlPdf(ctx: ExportContext) {
           map[r.customer_invoice_status] ?? ink
         data.cell.styles.fontStyle = "bold"
       }
-      if (data.column.index === 11) {
+      if (data.column.index === 12) {
         const map: Record<string, [number, number, number]> = {
           fully_paid: green,
           partial_paid: accent,
@@ -768,7 +790,7 @@ export function exportPnlPdf(ctx: ExportContext) {
         data.cell.styles.fontStyle = "bold"
       }
       // POD column
-      if (data.column.index === 13) {
+      if (data.column.index === 14) {
         const txt = String(data.cell.raw ?? "").toLowerCase()
         if (txt === "received") data.cell.styles.textColor = green
         else if (txt.startsWith("partial")) data.cell.styles.textColor = accent
