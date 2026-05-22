@@ -357,7 +357,12 @@ export default function ForwardingPnLPage() {
   }, [data]);
 
   const rows = React.useMemo(() => {
-    let items = data?.items ?? [];
+    // This report is dedicated to forwarding orders, so we only consider
+    // parents that have at least one subcontracted leg (subcontracted or
+    // mixed). Internal-only / unassigned orders are excluded entirely.
+    let items = (data?.items ?? []).filter(
+      r => r.execution_mode === "subcontracted" || r.execution_mode === "mixed",
+    );
     const q = search.trim().toLowerCase();
 
     if (execFilter !== "all") {
@@ -813,10 +818,8 @@ export default function ForwardingPnLPage() {
                 className="h-9 rounded-md border border-input bg-background px-3 text-sm"
               >
                 <option value="all">All</option>
-                <option value="internal">Internal only</option>
                 <option value="subcontracted">Subcontracted only</option>
                 <option value="mixed">Mixed</option>
-                <option value="unassigned">Unassigned</option>
               </select>
             </div>
             <div className="space-y-1">
@@ -1482,8 +1485,8 @@ function TypeaheadSelect({
   const display = open ? query : selectedName;
   const filtered = React.useMemo(() => {
     const q = (open ? query : "").trim().toLowerCase();
-    if (!q) return options.slice(0, 50);
-    return options.filter(o => o.name.toLowerCase().includes(q)).slice(0, 50);
+    if (!q) return options;
+    return options.filter(o => o.name.toLowerCase().includes(q));
   }, [options, query, open]);
 
   return (
@@ -1553,8 +1556,7 @@ function TypeaheadSelect({
           )}
           {options.length > filtered.length && (
             <div className="px-3 py-1.5 text-[10px] text-muted-foreground border-t bg-muted/30">
-              Showing {filtered.length} of {options.length} — keep typing to
-              narrow
+              {filtered.length} of {options.length} match — keep typing to narrow
             </div>
           )}
         </div>
