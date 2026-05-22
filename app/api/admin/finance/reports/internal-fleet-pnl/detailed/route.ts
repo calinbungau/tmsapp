@@ -532,13 +532,13 @@ export async function GET(req: NextRequest) {
     const { data: orders } = await sb
       .from("orders")
       .select(
-        "id, order_reference, customer_id, customer_price, customer_currency, parent_order_id, carrier_cost, carrier_currency, customer:customers(id, name)",
+        "id, reference_number, customer_id, customer_price, customer_currency, parent_order_id, carrier_cost, carrier_currency, customer:customers(id, name)",
       )
       .in("id", orderIds)
 
     type Ord = {
       id: string
-      order_reference: string | null
+      reference_number: string | null
       customer_id: string | null
       customer_price: number | null
       customer_currency: string | null
@@ -596,7 +596,7 @@ export async function GET(req: NextRequest) {
           trip_id: tid,
           trip_ref: tripRef(tid),
           order_id: o.id,
-          order_ref: o.order_reference,
+          order_ref: o.reference_number,
           customer_name: o.customer?.name ?? null,
           customer_price_eur: Number(customerEur.toFixed(2)),
           subcontracted_cost_eur: Number(sub.toFixed(2)),
