@@ -291,9 +291,100 @@ export async function GET(req: NextRequest) {
     subsByParent.set(pid, arr);
   }
 
+  // ---- Per-order invoice lists (customer = outgoing, carrier = incoming) ----
+  // Customer invoices live on the parent order; carrier invoices on the child
+  // subcontract orders. We expose due_date + status + amounts so the UI can
+  // surface "due in 10 days", "overdue", etc.
+  type InvoiceLite = {
+    id: string;
+    invoice_number: string | null;
+    direction: "incoming" | "outgoing";
+    status: string | null;
+    issue_date: string | null;
+    due_date: string | null;
+    paid_date: string | null;
+    amount: number;
+    total_with_tax: number;
+    paid_amount: number;
+    remaining_amount: number | null;
+    currency: string | null;
+    business_partner_id: string | null;
+  };
+
+  const allInvoiceOrderIds = Array.from(
+    new Set([...parentIds, ...subIds]),
+  );
+
+  const customerInvoicesByParent = new Map<string, InvoiceLite[]>();
+  const carrierInvoicesByParent = new Map<string, InvoiceLite[]>();
+  // Map child sub order_id -> parent order_id (so we can group carrier
+  // invoices that are attached to the child onto the parent row).
+  const childToParent = new Map<string, string>();
+  for (const s of subList) {
+    childToParent.set(
+      (s as any).id as string,
+      (s as any).parent_order_id as string,
+    );
+  }
+
+  if (allInvoiceOrderIds.length) {
+    const { data: invs, error: invErr } = await sb
+      .from("order_invoices")
+      .select(
+        "id, order_id, invoice_number, direction, status, issue_date, due_date, paid_date, amount, total_with_tax, paid_amount, remaining_amount, currency, business_partner_id",
+      )
+      .in("order_id", allInvoiceOrderIds);
+
+    if (invErr) {
+      console.log("[v0] order_invoices fetch error:", invErr.message);
+    }
+
+    for (const i of (invs ?? []) as any[]) {
+      const dir = (i.direction as string) as "incoming" | "outgoing";
+      const lite: InvoiceLite = {
+        id: i.id,
+        invoice_number: i.invoice_number ?? null,
+        direction: dir,
+        status: i.status ?? null,
+        issue_date: i.issue_date ?? null,
+        due_date: i.due_date ?? null,
+        paid_date: i.paid_date ?? null,
+        amount: Number(i.amount ?? 0),
+        total_with_tax: Number(i.total_with_tax ?? i.amount ?? 0),
+        paid_amount: Number(i.paid_amount ?? 0),
+        remaining_amount:
+          i.remaining_amount == null ? null : Number(i.remaining_amount),
+        currency: i.currency ?? null,
+        business_partner_id: i.business_partner_id ?? null,
+      };
+      const oid = i.order_id as string;
+      if (parentIds.includes(oid)) {
+        if (dir === "outgoing") {
+          const arr = customerInvoicesByParent.get(oid) ?? [];
+          arr.push(lite);
+          customerInvoicesByParent.set(oid, arr);
+        } else {
+          // Edge case: incoming invoice attached directly to the parent.
+          const arr = carrierInvoicesByParent.get(oid) ?? [];
+          arr.push(lite);
+          carrierInvoicesByParent.set(oid, arr);
+        }
+      } else {
+        const parent = childToParent.get(oid);
+        if (parent && dir === "incoming") {
+          const arr = carrierInvoicesByParent.get(parent) ?? [];
+          arr.push(lite);
+          carrierInvoicesByParent.set(parent, arr);
+        }
+      }
+    }
+  }
+
   const enriched = items.map(r => ({
     ...r,
     subcontracts: subsByParent.get(r.order_id) ?? [],
+    customer_invoices: customerInvoicesByParent.get(r.order_id) ?? [],
+    carrier_invoices: carrierInvoicesByParent.get(r.order_id) ?? [],
   }));
 
   return NextResponse.json({ items: enriched });
