@@ -70,7 +70,11 @@ function tollRules(): PrebuiltRule[] {
 const T4E_SHELL_FIELDS: Partial<Record<TargetField, string | { column: string; transform: any }>> = {
   entry_date: { column: "Data", transform: "european_date" },
   posting_date: { column: "Data postarii", transform: "european_date" },
-  country_code: "Cod țară",
+  // The Toll4Europe / Shell Romanian export contains BOTH a "Țara" column
+  // (ISO alpha-2: DE, AT, HU, CZ, SK, PL, RO) and a "Cod țară" column
+  // (internal numeric: 714/732/733/134/...). We bind the ISO column so the
+  // country-aware Road tax rules (^DE$, ^AT$, …) actually match.
+  country_code: "Țara",
   vehicle_plate: { column: "Vehicul", transform: "normalize_plate" },
   external_id: { column: "Identificator tranzactie", transform: "strip_apostrophe" },
   invoice_number: "Număr factură",

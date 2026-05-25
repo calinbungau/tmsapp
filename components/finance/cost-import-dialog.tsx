@@ -397,7 +397,8 @@ function PreviewStep({
                 <th className="px-2 py-1.5">Country</th>
                 <th className="px-2 py-1.5">Product</th>
                 <th className="px-2 py-1.5">Cost code</th>
-                <th className="px-2 py-1.5 text-right">Amount</th>
+                <th className="px-2 py-1.5 text-right">Local</th>
+                <th className="px-2 py-1.5 text-right">EUR</th>
                 <th className="px-2 py-1.5">Issues</th>
               </tr>
             </thead>
@@ -428,9 +429,29 @@ function PreviewStep({
                     {r.resolved.cost_code || <span className="text-amber-500">unresolved</span>}
                   </td>
                   <td className="px-2 py-1.5 text-right tabular-nums">
-                    {r.mapped.amount_incl_vat
-                      ? `${Number(r.mapped.amount_incl_vat).toFixed(2)} ${r.mapped.currency || ""}`
-                      : "—"}
+                    {r.mapped.amount_incl_vat || r.mapped.amount_excl_vat ? (
+                      <span>
+                        {Number(r.mapped.amount_incl_vat ?? r.mapped.amount_excl_vat).toFixed(2)}{" "}
+                        <span className="text-muted-foreground">{(r.mapped.currency as string) || ""}</span>
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">
+                    {r.mapped.amount_eur ? (
+                      <span className="font-medium">
+                        {Number(r.mapped.amount_eur).toFixed(2)}{" "}
+                        <span className="text-muted-foreground">EUR</span>
+                      </span>
+                    ) : (r.mapped.currency as string) === "EUR" && r.mapped.amount_incl_vat ? (
+                      <span className="font-medium">
+                        {Number(r.mapped.amount_incl_vat).toFixed(2)}{" "}
+                        <span className="text-muted-foreground">EUR</span>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground/60">—</span>
+                    )}
                   </td>
                   <td className="px-2 py-1.5 text-amber-500 max-w-[200px] truncate" title={r.issues.join(", ")}>
                     {r.issues.join(", ") || "—"}
