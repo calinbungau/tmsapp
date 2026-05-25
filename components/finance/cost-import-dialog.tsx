@@ -394,6 +394,7 @@ function PreviewStep({
                 <th className="px-2 py-1.5">Status</th>
                 <th className="px-2 py-1.5">Date</th>
                 <th className="px-2 py-1.5">Vehicle</th>
+                <th className="px-2 py-1.5">Country</th>
                 <th className="px-2 py-1.5">Product</th>
                 <th className="px-2 py-1.5">Cost code</th>
                 <th className="px-2 py-1.5 text-right">Amount</th>
@@ -416,6 +417,9 @@ function PreviewStep({
                     ) : (
                       "—"
                     )}
+                  </td>
+                  <td className="px-2 py-1.5 font-mono text-[11px]">
+                    {(r.mapped.country_code as string) || <span className="text-muted-foreground/60">—</span>}
                   </td>
                   <td className="px-2 py-1.5 max-w-[140px] truncate">
                     {(r.mapped.product_code as string) || "—"}
