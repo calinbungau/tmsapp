@@ -16,7 +16,9 @@
 /** Our canonical target fields a supplier file can be mapped to. */
 export type TargetField =
   | "entry_date"
+  | "entry_time"
   | "posting_date"
+  | "posting_time"
   | "country_code"
   | "vehicle_plate"
   | "external_id"
@@ -49,7 +51,9 @@ export interface TargetFieldDef {
 
 export const TARGET_FIELDS: TargetFieldDef[] = [
   { key: "entry_date", label: "Transaction Date", type: "date", required: true, hint: "Date when the cost was incurred" },
+  { key: "entry_time", label: "Transaction Time", type: "string", hint: "HH:MM:SS — combined with date into occurred_at" },
   { key: "posting_date", label: "Posting Date", type: "date" },
+  { key: "posting_time", label: "Posting Time", type: "string" },
   { key: "country_code", label: "Country Code", type: "string", hint: "DE, RO, HU…" },
   { key: "vehicle_plate", label: "Vehicle Plate", type: "string", hint: "Used to resolve vehicle_id" },
   { key: "external_id", label: "External ID (transaction)", type: "string", required: true, hint: "Used for duplicate detection" },

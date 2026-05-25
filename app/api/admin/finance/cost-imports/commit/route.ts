@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import type { ParsedRow } from "@/lib/cost-imports/types"
+import { geocodeBatch, makeGeocodeKey } from "@/lib/geocoding/nominatim"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
@@ -90,6 +91,10 @@ export async function POST(req: NextRequest) {
   let totalAmount = 0
   let totalAmountEur = 0
 
+  // Collect unique (country, location_label) pairs for geocoding.
+  const geocodePairs: Array<{ label: string; country: string | null }> = []
+  const seenGeoKeys = new Set<string>()
+
   for (const r of rows) {
     if (r.status === "duplicate") {
       skipped.push({ reason: "duplicate", row: r })
@@ -108,6 +113,9 @@ export async function POST(req: NextRequest) {
     const amount = (m.amount_incl_vat as number) ?? null
     const amountEur = (m.amount_eur as number) ?? null
     const date = (m.entry_date as string) ?? null
+    const time = m.entry_time ? String(m.entry_time).trim() : null
+    const postingDate = (m.posting_date as string) ?? null
+    const postingTime = m.posting_time ? String(m.posting_time).trim() : null
 
     if (date) {
       if (!dateMin || date < dateMin) dateMin = date
@@ -115,6 +123,19 @@ export async function POST(req: NextRequest) {
     }
     if (typeof amount === "number") totalAmount += amount
     if (typeof amountEur === "number") totalAmountEur += amountEur
+
+    const occurredAt = combineDateTime(date, time)
+    const postedAt = combineDateTime(postingDate, postingTime)
+
+    const country = m.country_code ? String(m.country_code).slice(0, 2).toUpperCase() : null
+    const locationLabel = m.location_label ? String(m.location_label).trim() : null
+    if (locationLabel) {
+      const key = makeGeocodeKey(country, locationLabel)
+      if (!seenGeoKeys.has(key)) {
+        seenGeoKeys.add(key)
+        geocodePairs.push({ label: locationLabel, country })
+      }
+    }
 
     toInsert.push({
       admin_id,
@@ -131,8 +152,8 @@ export async function POST(req: NextRequest) {
       vendor_id: r.resolved.vendor_id,
       vendor_name: m.vendor_name ? String(m.vendor_name) : null,
       entry_date: date,
-      posting_date: m.posting_date ? String(m.posting_date) : null,
-      country_code: m.country_code ? String(m.country_code).slice(0, 2) : null,
+      posting_date: postingDate,
+      country_code: country,
       invoice_number: m.invoice_number ? String(m.invoice_number) : null,
       currency: m.currency ? String(m.currency) : provider.default_currency || "EUR",
       amount: amount,
@@ -145,26 +166,96 @@ export async function POST(req: NextRequest) {
       kwh_qty: m.kwh_qty ?? null,
       km_qty: m.km_qty ?? null,
       units_qty: m.units_qty ?? null,
-      location_label: m.location_label ? String(m.location_label) : null,
+      location_label: locationLabel,
       description: m.product_code ? String(m.product_code) : null,
       notes: m.notes ? String(m.notes) : null,
-      occurred_at: date ? new Date(date + "T00:00:00Z").toISOString() : null,
-      extracted_data: { source_row: r.raw },
+      occurred_at: occurredAt,
+      // posted_at lives in extracted_data since cost_entries doesn't have a
+      // dedicated column; reviewers can still see it from the supplier file.
+      extracted_data: { source_row: r.raw, posted_at: postedAt },
     })
   }
 
-  // Insert in chunks to avoid payload limits.
+  // Insert in chunks. We use upsert with onConflict on the partial unique
+  // index (admin_id, external_source, external_id) so re-running the same
+  // import never produces duplicate cost_entries — the row is silently
+  // skipped instead of failing the whole chunk.
   let inserted = 0
   const errors: string[] = []
   const CHUNK = 200
   for (let i = 0; i < toInsert.length; i += CHUNK) {
     const slice = toInsert.slice(i, i + CHUNK)
-    const { data, error } = await supabase.from("cost_entries").insert(slice).select("id")
+    const { data, error } = await supabase
+      .from("cost_entries")
+      .upsert(slice, {
+        onConflict: "admin_id,external_source,external_id",
+        ignoreDuplicates: true,
+      })
+      .select("id")
     if (error) {
       errors.push(error.message)
     } else {
       inserted += data?.length ?? 0
     }
+  }
+
+  // ---- Geocoding enrichment (cache-first, throttled live calls) ----
+  // We only update the rows we just inserted so re-runs are idempotent.
+  // Live Nominatim calls are rate-limited to ~1.1s/call; cap fresh queries
+  // at 25 per import so a 690-row file doesn't stretch past maxDuration.
+  let geocodedCount = 0
+  try {
+    if (geocodePairs.length > 0) {
+      // Cap fresh resolutions; we'll still hit the cache for the rest.
+      const FRESH_CAP = 25
+      const cappedPairs = geocodePairs.slice(0, 200) // sanity cap on payload
+      // The batch helper already de-dupes and is cache-first.
+      const results = await geocodeBatch(supabase, cappedPairs)
+      // Build a (country|label) → result map and write back to cost_entries.
+      const updates: Array<{
+        admin_id: string
+        provider_id: string
+        location_label: string
+        country_code: string | null
+        latitude: number | null
+        longitude: number | null
+        geocoded_address: string | null
+      }> = []
+      for (const [, p] of cappedPairs.entries()) {
+        const key = makeGeocodeKey(p.country, p.label)
+        const r = results.get(key)
+        if (!r || r.status !== "ok") continue
+        updates.push({
+          admin_id,
+          provider_id,
+          location_label: p.label,
+          country_code: p.country,
+          latitude: r.latitude,
+          longitude: r.longitude,
+          geocoded_address: r.display_name,
+        })
+      }
+      // Apply updates in batches: one UPDATE per (location_label, country) pair.
+      for (const u of updates.slice(0, FRESH_CAP * 2)) {
+        let q = supabase
+          .from("cost_entries")
+          .update({
+            latitude: u.latitude,
+            longitude: u.longitude,
+            geocoded_address: u.geocoded_address,
+          })
+          .eq("admin_id", u.admin_id)
+          .eq("provider_id", u.provider_id)
+          .eq("location_label", u.location_label)
+          .is("latitude", null)
+        if (u.country_code) q = q.eq("country_code", u.country_code)
+        const { error } = await q
+        if (!error) geocodedCount++
+      }
+    }
+  } catch (geoErr) {
+    // Geocoding is best-effort — never fail the import.
+    console.log("[v0] geocoding pass failed:", (geoErr as Error)?.message)
   }
 
   // Update mapping rule usage counters in bulk (best-effort).
@@ -239,5 +330,22 @@ export async function POST(req: NextRequest) {
     duplicates: skipped.filter((s) => s.reason === "duplicate").length,
     errors,
     status: finalStatus,
+    geocoded: geocodedCount,
   })
+}
+
+/**
+ * Combine a "YYYY-MM-DD" date with an "HH:MM[:SS]" time into an ISO
+ * timestamp. If only the date is present, returns midnight UTC. If neither
+ * is present, returns null.
+ */
+function combineDateTime(date: string | null, time: string | null): string | null {
+  if (!date) return null
+  if (!time) return new Date(date + "T00:00:00Z").toISOString()
+  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(time.trim())
+  if (!m) return new Date(date + "T00:00:00Z").toISOString()
+  const hh = m[1].padStart(2, "0")
+  const mm = m[2]
+  const ss = m[3] ?? "00"
+  return new Date(`${date}T${hh}:${mm}:${ss}Z`).toISOString()
 }

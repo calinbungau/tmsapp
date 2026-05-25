@@ -69,7 +69,9 @@ function tollRules(): PrebuiltRule[] {
 
 const T4E_SHELL_FIELDS: Partial<Record<TargetField, string | { column: string; transform: any }>> = {
   entry_date: { column: "Data", transform: "european_date" },
+  entry_time: "Ora",
   posting_date: { column: "Data postarii", transform: "european_date" },
+  posting_time: "Ora postarii",
   // The Toll4Europe / Shell Romanian export contains BOTH a "Țara" column
   // (ISO alpha-2: DE, AT, HU, CZ, SK, PL, RO) and a "Cod țară" column
   // (internal numeric: 714/732/733/134/...). We bind the ISO column so the

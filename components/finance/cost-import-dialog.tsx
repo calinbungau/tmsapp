@@ -422,11 +422,13 @@ function PreviewStep({
               <tr className="text-left text-muted-foreground">
                 <th className="px-2 py-1.5 w-10">#</th>
                 <th className="px-2 py-1.5">Status</th>
-                <th className="px-2 py-1.5">Date</th>
+                <th className="px-2 py-1.5">Date / Time</th>
                 <th className="px-2 py-1.5">Vehicle</th>
                 <th className="px-2 py-1.5">Country</th>
+                <th className="px-2 py-1.5">Station</th>
                 <th className="px-2 py-1.5">Product</th>
                 <th className="px-2 py-1.5">Cost code</th>
+                <th className="px-2 py-1.5">Invoice / Trx ID</th>
                 <th className="px-2 py-1.5 text-right">Local</th>
                 <th className="px-2 py-1.5 text-right">EUR</th>
                 <th className="px-2 py-1.5">Issues</th>
@@ -439,7 +441,16 @@ function PreviewStep({
                   <td className="px-2 py-1.5">
                     <StatusBadge status={r.status} />
                   </td>
-                  <td className="px-2 py-1.5">{(r.mapped.entry_date as string) || "—"}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">
+                    <div className="flex flex-col leading-tight">
+                      <span>{(r.mapped.entry_date as string) || "—"}</span>
+                      {r.mapped.entry_time ? (
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                          {String(r.mapped.entry_time)}
+                        </span>
+                      ) : null}
+                    </div>
+                  </td>
                   <td className="px-2 py-1.5">
                     {r.mapped.vehicle_plate ? (
                       <span className={r.resolved.vehicle_id ? "" : "text-amber-500"}>
@@ -452,6 +463,12 @@ function PreviewStep({
                   <td className="px-2 py-1.5 font-mono text-[11px]">
                     {(r.mapped.country_code as string) || <span className="text-muted-foreground/60">—</span>}
                   </td>
+                  <td
+                    className="px-2 py-1.5 max-w-[140px] truncate"
+                    title={(r.mapped.location_label as string) || ""}
+                  >
+                    {(r.mapped.location_label as string) || <span className="text-muted-foreground/60">—</span>}
+                  </td>
                   <td className="px-2 py-1.5 max-w-[140px] truncate">
                     {(r.mapped.product_code as string) || "—"}
                   </td>
@@ -462,6 +479,21 @@ function PreviewStep({
                       unresolved={!r.resolved.cost_code}
                       onChange={(next) => setRowCostCode(r.rowIndex, next)}
                     />
+                  </td>
+                  <td className="px-2 py-1.5 max-w-[180px]">
+                    <div className="flex flex-col leading-tight">
+                      <span className="font-mono text-[11px] truncate" title={(r.mapped.invoice_number as string) || ""}>
+                        {(r.mapped.invoice_number as string) || <span className="text-muted-foreground/60">—</span>}
+                      </span>
+                      {r.mapped.external_id ? (
+                        <span
+                          className="text-[10px] text-muted-foreground font-mono truncate"
+                          title={String(r.mapped.external_id)}
+                        >
+                          {String(r.mapped.external_id)}
+                        </span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-2 py-1.5 text-right tabular-nums">
                     {r.mapped.amount_incl_vat || r.mapped.amount_excl_vat ? (
