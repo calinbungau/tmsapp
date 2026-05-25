@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
       provider_id,
       external_id: m.external_id ? String(m.external_id) : null,
       external_source: externalSource,
-      source: "import",
+      source: "provider_import",
       status: needsReview && !auto_approve ? "pending_review" : needsReview ? "pending_review" : status,
       cost_code: r.resolved.cost_code ?? provider.default_cost_code ?? null,
       cost_catalog_id: r.resolved.cost_catalog_id ?? null,

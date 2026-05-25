@@ -37,6 +37,7 @@ import {
   Building2,
 } from "lucide-react"
 import type { ParsedRow } from "@/lib/cost-imports/types"
+import { CostCodePicker, type CatalogEntry } from "@/components/finance/cost-code-picker"
 
 interface Provider {
   id: string
@@ -52,6 +53,7 @@ interface PreviewResult {
   headers: string[]
   rows: ParsedRow[]
   summary: { total: number; ready: number; needs_attention: number; duplicate: number; error: number }
+  catalog: CatalogEntry[]
   file_name: string
   file_size_bytes: number
   provider: { id: string; name: string; code: string | null; default_currency: string | null }
@@ -205,7 +207,14 @@ export function CostImportDialog({ open, onOpenChange, adminId, onImported }: Pr
           )}
 
           {step === "preview" && preview && (
-            <PreviewStep preview={preview} autoApprove={autoApprove} onAutoApproveChange={setAutoApprove} />
+            <PreviewStep
+              preview={preview}
+              autoApprove={autoApprove}
+              onAutoApproveChange={setAutoApprove}
+              onRowsChange={(updater) =>
+                setPreview((prev) => (prev ? { ...prev, rows: updater(prev.rows) } : prev))
+              }
+            />
           )}
 
           {step === "done" && commitResult && (
@@ -356,12 +365,33 @@ function PreviewStep({
   preview,
   autoApprove,
   onAutoApproveChange,
+  onRowsChange,
 }: {
   preview: PreviewResult
   autoApprove: boolean
   onAutoApproveChange: (v: boolean) => void
+  onRowsChange: (updater: (rows: ParsedRow[]) => ParsedRow[]) => void
 }) {
-  const { summary, rows, file_name } = preview
+  const { summary, rows, file_name, catalog } = preview
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 100
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const pageStart = page * PAGE_SIZE
+  const pageRows = rows.slice(pageStart, pageStart + PAGE_SIZE)
+
+  function setRowCostCode(rowIndex: number, next: { cost_code: string; cost_catalog_id: string | null }) {
+    onRowsChange((prev) =>
+      prev.map((r) =>
+        r.rowIndex === rowIndex
+          ? {
+              ...r,
+              resolved: { ...r.resolved, cost_code: next.cost_code, cost_catalog_id: next.cost_catalog_id },
+              issues: r.issues.filter((i) => !i.toLowerCase().includes("cost code")),
+            }
+          : r,
+      ),
+    )
+  }
   return (
     <div className="space-y-3 py-2">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -403,7 +433,7 @@ function PreviewStep({
               </tr>
             </thead>
             <tbody className="divide-y">
-              {rows.slice(0, 200).map((r) => (
+              {pageRows.map((r) => (
                 <tr key={r.rowIndex} className="hover:bg-muted/20">
                   <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{r.rowIndex}</td>
                   <td className="px-2 py-1.5">
@@ -425,8 +455,13 @@ function PreviewStep({
                   <td className="px-2 py-1.5 max-w-[140px] truncate">
                     {(r.mapped.product_code as string) || "—"}
                   </td>
-                  <td className="px-2 py-1.5 font-mono">
-                    {r.resolved.cost_code || <span className="text-amber-500">unresolved</span>}
+                  <td className="px-2 py-1.5">
+                    <CostCodePicker
+                      value={r.resolved.cost_code ?? null}
+                      catalog={catalog}
+                      unresolved={!r.resolved.cost_code}
+                      onChange={(next) => setRowCostCode(r.rowIndex, next)}
+                    />
                   </td>
                   <td className="px-2 py-1.5 text-right tabular-nums">
                     {r.mapped.amount_incl_vat || r.mapped.amount_excl_vat ? (
@@ -460,9 +495,52 @@ function PreviewStep({
               ))}
             </tbody>
           </table>
-          {rows.length > 200 && (
-            <div className="px-3 py-2 text-[11px] text-muted-foreground text-center">
-              Showing first 200 of {rows.length} rows
+          {rows.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between px-3 py-2 border-t bg-muted/20 text-[11px]">
+              <span className="text-muted-foreground tabular-nums">
+                Rows {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, rows.length)} of {rows.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[11px]"
+                  disabled={page === 0}
+                  onClick={() => setPage(0)}
+                >
+                  First
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[11px]"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                >
+                  <ArrowLeft className="h-3 w-3" />
+                </Button>
+                <span className="px-1 tabular-nums">
+                  {page + 1} / {totalPages}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[11px]"
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                >
+                  <ArrowRight className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[11px]"
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage(totalPages - 1)}
+                >
+                  Last
+                </Button>
+              </div>
             </div>
           )}
         </div>

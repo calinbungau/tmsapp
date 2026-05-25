@@ -51,7 +51,12 @@ export async function POST(req: NextRequest) {
     supabase.from("vehicles").select("id, plate_number").eq("admin_id", adminId),
     supabase.from("drivers").select("id, name, driver_card_number").eq("admin_id", adminId),
     supabase.from("business_partners").select("id, name").eq("admin_id", adminId),
-    supabase.from("cost_catalog").select("id, cost_code").eq("admin_id", adminId),
+    supabase
+      .from("cost_catalog")
+      .select("id, cost_code, description, description_en, cost_line")
+      .eq("admin_id", adminId)
+      .eq("is_active", true)
+      .order("cost_code", { ascending: true }),
   ])
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 404 })
   if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 })
@@ -113,6 +118,7 @@ export async function POST(req: NextRequest) {
     headers: parsed.headers,
     rows,
     summary,
+    catalog: catalog ?? [],
     file_name: file.name,
     file_size_bytes: buf.length,
     provider: {
