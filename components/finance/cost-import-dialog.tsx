@@ -162,7 +162,7 @@ export function CostImportDialog({ open, onOpenChange, adminId, onImported }: Pr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="!max-w-[95vw] xl:!max-w-7xl max-h-[92vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-4 w-4" />
