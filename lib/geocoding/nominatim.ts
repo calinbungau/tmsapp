@@ -1,18 +1,15 @@
 /**
  * Nominatim-backed geocoding with database cache.
  *
- * Used by the cost-import pipeline to enrich cost_entries with lat/lon
- * + a normalized geocoded_address derived from `location_label` (Nume staţie).
+ * Uses the INTERNAL self-hosted Nominatim instance at rvs.bngtracking.ro
+ * (no rate limit, no public-use policy restrictions). Falls back to
+ * env NOMINATIM_URL if set.
  *
  * - Results are cached in `geocoded_locations` keyed by a normalized
  *   "country|label" hash. Cache hits cost zero HTTP traffic, so importing
  *   the same supplier file twice is essentially free.
- * - Nominatim's public endpoint is rate-limited to ~1 req/s. We batch on
- *   unique (country, label) pairs and sleep between calls.
  * - Failures are cached too (status='not_found' or 'error') so we don't
  *   re-hammer Nominatim with addresses that don't resolve.
- *
- * IMPORTANT: per Nominatim's usage policy, set a descriptive User-Agent.
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
@@ -24,10 +21,10 @@ export interface GeocodeResult {
   status: "ok" | "not_found" | "error"
 }
 
-const NOMINATIM_URL =
-  process.env.NOMINATIM_URL || "https://nominatim.openstreetmap.org/search"
-const USER_AGENT =
-  process.env.NOMINATIM_USER_AGENT || "tmsapp-fleet-cost-import/1.0 (+https://vercel.com)"
+// Use the internal self-hosted Nominatim by default (no rate limit).
+const NOMINATIM_BASE =
+  process.env.NOMINATIM_URL || "https://rvs.bngtracking.ro"
+const USER_AGENT = "BNG-TMS/1.0"
 
 function normalizeKey(country: string | null, label: string): string {
   return `${(country || "").toUpperCase().trim()}|${label.toLowerCase().replace(/\s+/g, " ").trim()}`
@@ -94,8 +91,8 @@ async function callNominatim(label: string, country: string | null): Promise<Geo
   try {
     const params = new URLSearchParams({
       q: label,
-      format: "jsonv2",
-      addressdetails: "0",
+      format: "json",
+      addressdetails: "1",
       limit: "1",
     })
     if (country && /^[A-Z]{2}$/i.test(country)) {
@@ -103,8 +100,8 @@ async function callNominatim(label: string, country: string | null): Promise<Geo
     }
     const ctrl = new AbortController()
     const t = setTimeout(() => ctrl.abort(), 5000)
-    const res = await fetch(`${NOMINATIM_URL}?${params.toString()}`, {
-      headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+    const res = await fetch(`${NOMINATIM_BASE}/search?${params.toString()}`, {
+      headers: { "User-Agent": USER_AGENT, Accept: "application/json", "Accept-Language": "en" },
       signal: ctrl.signal,
     })
     clearTimeout(t)
@@ -159,35 +156,39 @@ export async function geocodeBatch(
     })
   }
 
-  // Resolve each unique pair. Cache hit = instant; miss = throttled fetch.
-  let lastCall = 0
+  // Resolve each unique pair. Cache hit = instant; miss = parallel fetch
+  // (internal Nominatim has no rate limit, so no need to throttle).
+  const uncached: Array<[string, { label: string; country: string | null }]> = []
   for (const [k, p] of unique) {
     const hit = cachedMap.get(k)
     if (hit) {
       out.set(k, hit)
-      continue
+    } else {
+      uncached.push([k, p])
     }
-    // Rate limit Nominatim to 1.1s between live calls.
-    const now = Date.now()
-    const wait = Math.max(0, 1100 - (now - lastCall))
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait))
-    const r = await callNominatim(p.label, p.country)
-    lastCall = Date.now()
-    out.set(k, r)
-    await supabase.from("geocoded_locations").upsert(
-      {
-        query_key: k,
-        raw_query: p.label,
-        country_code: p.country || null,
-        latitude: r.latitude,
-        longitude: r.longitude,
-        display_name: r.display_name,
-        status: r.status,
-        last_used_at: new Date().toISOString(),
-      },
-      { onConflict: "query_key" },
-    )
   }
+
+  // Fetch uncached in parallel (internal instance; no rate limit).
+  await Promise.all(
+    uncached.map(async ([k, p]) => {
+      const r = await callNominatim(p.label, p.country)
+      out.set(k, r)
+      await supabase.from("geocoded_locations").upsert(
+        {
+          query_key: k,
+          raw_query: p.label,
+          country_code: p.country || null,
+          latitude: r.latitude,
+          longitude: r.longitude,
+          display_name: r.display_name,
+          status: r.status,
+          last_used_at: new Date().toISOString(),
+        },
+        { onConflict: "query_key" },
+      )
+    }),
+  )
+
   return out
 }
 
