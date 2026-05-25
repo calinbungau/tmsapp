@@ -52,6 +52,9 @@ import {
   Plus,
   Pencil,
   ExternalLink,
+  Wallet,
+  Save,
+  Loader2,
 } from "lucide-react";
 import type { Driver, Vehicle } from "@/lib/types";
 
@@ -101,6 +104,56 @@ export default function DriverDetailsPage() {
     document_number: "",
     notes: "",
   });
+
+  // Driver Pay (rate) state
+  const [payForm, setPayForm] = useState<{
+    rate_mode: "hourly" | "per_km";
+    hourly_rate: string;
+    rate_per_km: string;
+  }>({ rate_mode: "hourly", hourly_rate: "", rate_per_km: "" });
+  const [paySaving, setPaySaving] = useState(false);
+  const [paySavedAt, setPaySavedAt] = useState<number | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  // Whenever the driver record loads/refreshes, hydrate the pay form from it.
+  useEffect(() => {
+    if (!driver) return;
+    const d = driver as Driver & {
+      hourly_rate?: number | null;
+      rate_per_km?: number | null;
+      rate_mode?: "hourly" | "per_km" | null;
+    };
+    setPayForm({
+      rate_mode: (d.rate_mode as "hourly" | "per_km") || "hourly",
+      hourly_rate: d.hourly_rate != null ? String(d.hourly_rate) : "",
+      rate_per_km: d.rate_per_km != null ? String(d.rate_per_km) : "",
+    });
+  }, [driver]);
+
+  const handleSavePay = async () => {
+    if (!id) return;
+    setPaySaving(true);
+    setPayError(null);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("drivers")
+        .update({
+          rate_mode: payForm.rate_mode,
+          hourly_rate: payForm.hourly_rate === "" ? null : Number(payForm.hourly_rate),
+          rate_per_km: payForm.rate_per_km === "" ? null : Number(payForm.rate_per_km),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+      if (error) throw error;
+      setPaySavedAt(Date.now());
+      await fetchData();
+    } catch (e) {
+      setPayError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setPaySaving(false);
+    }
+  };
 
   useEffect(() => {
     if (sessionLoading) return;
@@ -353,6 +406,91 @@ export default function DriverDetailsPage() {
                 <span>License: {driver.license_number}</span>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Driver Pay */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Wallet className="h-4 w-4" />
+              Driver Pay
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Rate Mode</Label>
+              <Select
+                value={payForm.rate_mode}
+                onValueChange={(v) =>
+                  setPayForm((p) => ({ ...p, rate_mode: v as "hourly" | "per_km" }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hourly">Hourly (EUR / hour)</SelectItem>
+                  <SelectItem value="per_km">Per kilometer (EUR / km)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="dp_hourly" className="text-xs text-muted-foreground">
+                  Hourly Rate (EUR)
+                </Label>
+                <Input
+                  id="dp_hourly"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={payForm.hourly_rate}
+                  onChange={(e) =>
+                    setPayForm((p) => ({ ...p, hourly_rate: e.target.value }))
+                  }
+                  placeholder="e.g. 12.50"
+                  disabled={payForm.rate_mode !== "hourly"}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="dp_perkm" className="text-xs text-muted-foreground">
+                  Rate per km (EUR)
+                </Label>
+                <Input
+                  id="dp_perkm"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  value={payForm.rate_per_km}
+                  onChange={(e) =>
+                    setPayForm((p) => ({ ...p, rate_per_km: e.target.value }))
+                  }
+                  placeholder="e.g. 0.18"
+                  disabled={payForm.rate_mode !== "per_km"}
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              This is the default rate. It can be overridden per trip from the trip
+              editor&apos;s P&amp;L tab.
+            </p>
+            {payError && (
+              <p className="text-[11px] text-destructive">{payError}</p>
+            )}
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-muted-foreground">
+                {paySavedAt && Date.now() - paySavedAt < 4000 ? "Saved" : ""}
+              </span>
+              <Button size="sm" onClick={handleSavePay} disabled={paySaving}>
+                {paySaving ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <Save className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                Save pay
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
