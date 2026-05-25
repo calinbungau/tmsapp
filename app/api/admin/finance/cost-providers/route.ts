@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
       default_cost_code: tpl.default_cost_code ?? null,
       mapping_template: tpl.template,
       is_active: true,
-      import_method: "manual_upload",
+      import_method: tpl.file_format === "csv" ? "csv" : "excel",
       notes: tpl.notes || null,
     }
 

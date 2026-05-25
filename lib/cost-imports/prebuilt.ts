@@ -59,7 +59,7 @@ export const PREBUILT_TEMPLATES: PrebuiltTemplate[] = [
   {
     code: "TOLL4EUROPE",
     name: "Toll4Europe / Shell / AGES (combined)",
-    provider_type: "fuel_card",
+    provider_type: "fuel_toll",
     file_format: "xlsx",
     default_currency: "EUR",
     default_cost_code: "OTHER_FLEET",
@@ -83,7 +83,7 @@ export const PREBUILT_TEMPLATES: PrebuiltTemplate[] = [
   {
     code: "SHELL",
     name: "Shell Fleet (Romanian export)",
-    provider_type: "fuel_card",
+    provider_type: "fuel",
     file_format: "xlsx",
     default_currency: "EUR",
     default_cost_code: "FUEL_DIESEL",
@@ -102,7 +102,7 @@ export const PREBUILT_TEMPLATES: PrebuiltTemplate[] = [
   {
     code: "DKV",
     name: "DKV Fleet (CSV export)",
-    provider_type: "fuel_card",
+    provider_type: "fuel_toll",
     file_format: "csv",
     default_currency: "EUR",
     default_cost_code: "FUEL_DIESEL",
@@ -139,7 +139,7 @@ export const PREBUILT_TEMPLATES: PrebuiltTemplate[] = [
   {
     code: "OMV_PETROM",
     name: "OMV Petrom Fleet",
-    provider_type: "fuel_card",
+    provider_type: "fuel",
     file_format: "xlsx",
     default_currency: "RON",
     default_cost_code: "FUEL_DIESEL",
