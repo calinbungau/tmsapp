@@ -29,9 +29,25 @@ export async function POST(
   if (!admin_id) return NextResponse.json({ error: "admin_id required" }, { status: 400 })
 
   const supabase = service()
+  // external_code is NOT NULL; if the user didn't supply one, derive a
+  // deterministic synthetic key from the rule shape so the unique constraint
+  // (admin_id, provider_id, external_code) doesn't reject same-name rules
+  // that differ only by their conditional filter.
+  const synthetic =
+    rule.external_code ??
+    [rule.external_name, rule.vehicle_match_field, rule.vehicle_match_pattern]
+      .filter(Boolean)
+      .join("|") ??
+    `rule_${Date.now()}`
   const { data, error } = await supabase
     .from("cost_provider_mappings")
-    .insert({ admin_id, provider_id: id, is_active: true, ...rule })
+    .insert({
+      admin_id,
+      provider_id: id,
+      is_active: true,
+      ...rule,
+      external_code: synthetic,
+    })
     .select("*")
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

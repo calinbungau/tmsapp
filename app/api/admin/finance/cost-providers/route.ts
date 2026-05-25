@@ -103,20 +103,43 @@ export async function POST(req: NextRequest) {
       ;(catalog ?? []).forEach((c) => {
         if (c.cost_code) codeToId.set(c.cost_code, c.id)
       })
-      const ruleRows = tpl.rules.map((r) => ({
-        admin_id,
-        provider_id: provider.id,
-        external_name: r.external_name,
-        external_code: r.external_code ?? null,
-        cost_code: r.cost_code,
-        cost_catalog_id: codeToId.get(r.cost_code) ?? null,
-        // Reuse vehicle_match_field/pattern as a generic conditional filter
-        // (e.g. country_code = "DE" so "Road tax" → A1-010 only when DE).
-        vehicle_match_field: r.match_field ?? null,
-        vehicle_match_pattern: r.match_pattern ?? null,
-        is_active: true,
-      }))
-      await supabase.from("cost_provider_mappings").insert(ruleRows)
+      // external_code is NOT NULL + UNIQUE (admin_id, provider_id, external_code).
+      // Build a deterministic synthetic key so two rules with the same external_name
+      // (but different conditional filters, e.g. "Road tax" + DE vs "Road tax" + AT)
+      // don't collide on the unique constraint.
+      const seen = new Set<string>()
+      const ruleRows = tpl.rules.map((r, idx) => {
+        const base =
+          r.external_code ||
+          [r.external_name, r.match_field, r.match_pattern].filter(Boolean).join("|") ||
+          `rule_${idx}`
+        let key = base
+        let i = 1
+        while (seen.has(key)) key = `${base}#${i++}`
+        seen.add(key)
+        return {
+          admin_id,
+          provider_id: provider.id,
+          external_name: r.external_name,
+          external_code: key,
+          cost_code: r.cost_code,
+          cost_catalog_id: codeToId.get(r.cost_code) ?? null,
+          // Reuse vehicle_match_field/pattern as a generic conditional filter
+          // (e.g. country_code = "DE" so "Road tax" → A1-010 only when DE).
+          vehicle_match_field: r.match_field ?? null,
+          vehicle_match_pattern: r.match_pattern ?? null,
+          is_active: true,
+        }
+      })
+      const { error: ruleErr } = await supabase
+        .from("cost_provider_mappings")
+        .insert(ruleRows)
+      if (ruleErr) {
+        return NextResponse.json(
+          { error: `Provider created, but rule seeding failed: ${ruleErr.message}` },
+          { status: 500 },
+        )
+      }
     }
     return NextResponse.json({ provider })
   }
