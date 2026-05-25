@@ -110,6 +110,10 @@ export async function POST(req: NextRequest) {
         external_code: r.external_code ?? null,
         cost_code: r.cost_code,
         cost_catalog_id: codeToId.get(r.cost_code) ?? null,
+        // Reuse vehicle_match_field/pattern as a generic conditional filter
+        // (e.g. country_code = "DE" so "Road tax" → A1-010 only when DE).
+        vehicle_match_field: r.match_field ?? null,
+        vehicle_match_pattern: r.match_pattern ?? null,
         is_active: true,
       }))
       await supabase.from("cost_provider_mappings").insert(ruleRows)

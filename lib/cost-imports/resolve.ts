@@ -103,7 +103,7 @@ export function applyTemplate(
     let resolvedCatalogId: string | null = null
     const productCode = String(mapped.product_code ?? "").trim()
     if (productCode) {
-      const rule = matchRule(ctx.rules, productCode)
+      const rule = matchRule(ctx.rules, productCode, mapped)
       if (rule) {
         resolvedCostCode = rule.cost_code
         resolvedCatalogId = rule.cost_catalog_id
@@ -293,28 +293,55 @@ function parseEuropeanDate(s: string): string | null {
 
 /**
  * Match a product code/name against the provider's mapping rules.
- * Rules are matched in this order:
- *   1. Exact case-insensitive equality on external_code.
- *   2. Exact case-insensitive equality on external_name.
- *   3. Substring match on external_name.
+ *
+ * Rules are matched in this priority order:
+ *   1. Rules WITH a conditional filter (vehicle_match_field+pattern) that
+ *      passes — these are most specific (e.g. "Road tax" + country=DE).
+ *      Among them, exact equality > substring.
+ *   2. Rules WITHOUT a conditional filter — generic fallbacks.
+ *
+ * The conditional filter reuses cost_provider_mappings.vehicle_match_field /
+ * vehicle_match_pattern as a generic "match if this mapped target field
+ * matches this regex" filter (case-insensitive).
  */
 export function matchRule(
   rules: MappingRuleRecord[],
   value: string,
+  mapped?: Partial<Record<TargetField, string | number | null>>,
 ): MappingRuleRecord | null {
   const v = value.trim().toLowerCase()
   if (!v) return null
   const active = rules.filter((r) => r.is_active !== false)
 
-  for (const r of active) {
-    if (r.external_code && r.external_code.trim().toLowerCase() === v) return r
+  const passesCondition = (r: MappingRuleRecord): boolean => {
+    if (!r.vehicle_match_field || !r.vehicle_match_pattern) return true
+    if (!mapped) return false
+    const cell = mapped[r.vehicle_match_field as TargetField]
+    if (cell == null) return false
+    try {
+      const re = new RegExp(r.vehicle_match_pattern, "i")
+      return re.test(String(cell))
+    } catch {
+      return String(cell).toLowerCase() === r.vehicle_match_pattern.toLowerCase()
+    }
   }
-  for (const r of active) {
-    if (r.external_name && r.external_name.trim().toLowerCase() === v) return r
-  }
-  for (const r of active) {
+
+  const nameMatches = (r: MappingRuleRecord, mode: "equals" | "contains"): boolean => {
+    if (r.external_code && r.external_code.trim().toLowerCase() === v) return true
     const en = (r.external_name || "").trim().toLowerCase()
-    if (en && v.includes(en)) return r
+    if (!en) return false
+    return mode === "equals" ? en === v : v.includes(en)
   }
+
+  // Pass A: rules WITH a conditional filter (more specific).
+  const conditional = active.filter((r) => r.vehicle_match_field && r.vehicle_match_pattern)
+  for (const r of conditional) if (passesCondition(r) && nameMatches(r, "equals")) return r
+  for (const r of conditional) if (passesCondition(r) && nameMatches(r, "contains")) return r
+
+  // Pass B: rules WITHOUT a conditional filter (generic fallbacks).
+  const generic = active.filter((r) => !r.vehicle_match_field || !r.vehicle_match_pattern)
+  for (const r of generic) if (nameMatches(r, "equals")) return r
+  for (const r of generic) if (nameMatches(r, "contains")) return r
+
   return null
 }
