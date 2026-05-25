@@ -132,7 +132,9 @@ export const PREBUILT_TEMPLATES: PrebuiltTemplate[] = [
     default_currency: "EUR",
     default_cost_code: "A1-001",
     template: { version: 1, header_row_index: 0, fields: T4E_SHELL_FIELDS },
-    rules: FUEL_PRODUCT_RULES,
+    rules: [...FUEL_PRODUCT_RULES, ...tollRules()],
+    notes:
+      "Includes country-aware toll rules so combined Shell + Toll4Europe exports route Road tax rows to the correct per-country cost code (DE→A1-010, AT→A1-011, …). Falls back to A1-017 when country is unknown.",
   },
   {
     code: "DKV",
