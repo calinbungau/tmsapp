@@ -41,7 +41,7 @@ interface NavItem {
   icon: React.ElementType;
   badge?: number;
   module?: string;
-  children?: { href: string; label: string; icon: React.ElementType }[];
+  children?: { href: string; label: string; icon: React.ElementType; badge?: number }[];
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -415,11 +415,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { href: "/admin/tms/orders/new", label: "New Order", icon: Plus },
         { href: "/admin/tms/planning", label: "Dispatch Board", icon: Radio },
         { href: "/admin/tms/forwarding", label: "Forwarder Board", icon: ArrowLeftRight },
-  { href: "/admin/tms/toll-rates", label: "Toll Rates", icon: Calculator },
-  { href: "/admin/tms/reports", label: "Reports", icon: BarChart3 },
-  { href: "/admin/tms/ai-usage", label: "AI Usage", icon: Sparkles },
-  ],
-  }] : []),
+        { href: "/admin/action-center", label: "Action Center", icon: AlertCircle, badge: actionCenterAlerts },
+        ...(isModuleEnabled("finance") && (canAccess("finance") || hasFullAccess()) ? [
+          { href: "/admin/finance/dashboard", label: "Finance", icon: Wallet },
+          { href: "/admin/finance/review", label: "Review Queue", icon: Sparkles },
+          { href: "/admin/finance/cost-catalog", label: "Cost Catalog", icon: BookOpen },
+          { href: "/admin/finance/cost-entries", label: "Cost Entries", icon: Receipt },
+          { href: "/admin/finance/budgets", label: "Budgets", icon: PiggyBank },
+          { href: "/admin/finance/kpis", label: "KPIs", icon: Target },
+          { href: "/admin/finance/reports", label: "Reports", icon: BarChart3 },
+        ] : []),
+        { href: "/admin/tms/toll-rates", label: "Toll Rates", icon: Calculator },
+        { href: "/admin/tms/reports", label: "Reports", icon: BarChart3 },
+        { href: "/admin/tms/ai-usage", label: "AI Usage", icon: Sparkles },
+      ],
+    }] : []),
     ...(isModuleEnabled("telematic") && (canAccess("telematic") || hasFullAccess()) ? [{
       href: "/admin/telematic/live",
       label: "Telematic",
@@ -451,23 +461,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     ...(isModuleEnabled("documents") && (canAccess("documents") || hasFullAccess()) ? [{ href: "/admin/documents", label: "Documents", icon: FileText, module: "documents", badge: documentAlerts }] : []),
     ...(isModuleEnabled("maintenance") && (canAccess("maintenance") || hasFullAccess()) ? [{ href: "/admin/maintenance", label: "Maintenance", icon: Wrench, module: "maintenance", badge: maintenanceAlerts }] : []),
     ...(isModuleEnabled("hr") && (canAccess("hr") || hasFullAccess()) ? [{ href: "/admin/hr", label: "HR", icon: CalendarDays, module: "hr" }] : []),
-    ...(isModuleEnabled("finance") && (canAccess("finance") || hasFullAccess()) ? [{
-      href: "/admin/finance/dashboard",
-      label: "Finance",
-      icon: Wallet,
-      module: "finance",
-      children: [
-        { href: "/admin/finance/dashboard", label: "Dashboard", icon: LineChart },
-        { href: "/admin/finance/review", label: "Review Queue", icon: Sparkles },
-        { href: "/admin/finance/cost-catalog", label: "Cost Catalog", icon: BookOpen },
-        { href: "/admin/finance/cost-entries", label: "Cost Entries", icon: Receipt },
-        { href: "/admin/finance/budgets", label: "Budgets", icon: PiggyBank },
-        { href: "/admin/finance/kpis", label: "KPIs", icon: Target },
-        { href: "/admin/finance/reports", label: "Reports", icon: BarChart3 },
-      ],
-    }] : []),
-    // Action Center - always visible for all users
-    { href: "/admin/action-center", label: "Action Center", icon: AlertCircle, badge: actionCenterAlerts },
     ...(isModuleEnabled("masterdata") && (canAccess("vehicles") || canAccess("drivers") || canAccess("employees") || hasFullAccess()) ? [{
       href: "/admin/drivers",
       label: "Master Data",
@@ -585,9 +578,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                           }`}
                         >
                           <child.icon className="h-3.5 w-3.5 flex-shrink-0" />
-                          <span className={`truncate whitespace-nowrap transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 group-hover/sidebar:opacity-100"}`}>
+                          <span className={`flex-1 truncate whitespace-nowrap transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 group-hover/sidebar:opacity-100"}`}>
                             {child.label}
                           </span>
+                          {child.badge && child.badge > 0 ? (
+                            <span className={`flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 group-hover/sidebar:opacity-100"}`}>
+                              {child.badge > 99 ? "99+" : child.badge}
+                            </span>
+                          ) : null}
                         </Link>
                       ))}
                     </div>
