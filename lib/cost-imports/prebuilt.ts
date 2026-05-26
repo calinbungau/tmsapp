@@ -262,11 +262,13 @@ export const PREBUILT_TEMPLATES: PrebuiltTemplate[] = [
         amount_incl_vat: { column: "Valoare Bruta", transform: "european_number" },
         amount_excl_vat: { column: "Valoare", transform: "european_number" },
         tax_amount: { column: "TVA", transform: "european_number" },
-        // Every Cargobox row is a toll — hard-code the Product label so the
-        // import preview and ledger always show "Toll" instead of the
-        // underlying technology code (DSRC / GNSS / CHARGE). The original
-        // Tip serviciu value is preserved in `notes` for traceability.
-        product_code: { literal: "Toll" },
+        // Every Cargobox row is a road tax — hard-code the Product label so
+        // the import preview and ledger always show "Road tax" (matching the
+        // cost catalog's "Taxă rutieră" labels for A1-010..017 and the
+        // Shell / Toll4Europe convention) instead of the underlying
+        // technology code (DSRC / GNSS / CHARGE). The original Tip serviciu
+        // value is preserved in `notes` for traceability.
+        product_code: { literal: "Road tax" },
         notes: { column: "Tip serviciu" },
         // The route segment ("ROVIGO SUD - VILLAMARZANA") is the most useful
         // human label for the station column.
@@ -274,19 +276,20 @@ export const PREBUILT_TEMPLATES: PrebuiltTemplate[] = [
       } as MappingTemplate["fields"],
     },
     rules: [
-      // Single product label "Toll" with country-driven cost code routing.
-      { external_name: "Toll", cost_code: "A1-010", match_field: "country_code", match_pattern: "^DE$" },
-      { external_name: "Toll", cost_code: "A1-011", match_field: "country_code", match_pattern: "^AT$" },
-      { external_name: "Toll", cost_code: "A1-012", match_field: "country_code", match_pattern: "^HU$" },
-      { external_name: "Toll", cost_code: "A1-013", match_field: "country_code", match_pattern: "^PL$" },
-      { external_name: "Toll", cost_code: "A1-014", match_field: "country_code", match_pattern: "^CZ$" },
-      { external_name: "Toll", cost_code: "A1-015", match_field: "country_code", match_pattern: "^SK$" },
-      { external_name: "Toll", cost_code: "A1-016", match_field: "country_code", match_pattern: "^RO$" },
-      // Italy, Slovenia and any other country fall back to "Other tolls".
-      { external_name: "Toll", cost_code: "A1-017" },
+      // Single product label "Road tax" with country-driven cost code routing,
+      // identical to the Shell / Toll4Europe convention so reports group cleanly.
+      { external_name: "Road tax", cost_code: "A1-010", match_field: "country_code", match_pattern: "^DE$" },
+      { external_name: "Road tax", cost_code: "A1-011", match_field: "country_code", match_pattern: "^AT$" },
+      { external_name: "Road tax", cost_code: "A1-012", match_field: "country_code", match_pattern: "^HU$" },
+      { external_name: "Road tax", cost_code: "A1-013", match_field: "country_code", match_pattern: "^PL$" },
+      { external_name: "Road tax", cost_code: "A1-014", match_field: "country_code", match_pattern: "^CZ$" },
+      { external_name: "Road tax", cost_code: "A1-015", match_field: "country_code", match_pattern: "^SK$" },
+      { external_name: "Road tax", cost_code: "A1-016", match_field: "country_code", match_pattern: "^RO$" },
+      // Italy, Slovenia, France and any other country fall back to "alte țări UE".
+      { external_name: "Road tax", cost_code: "A1-017" },
     ],
     notes:
-      "Matches the Cargobox EETS toll export. Every row is mapped to product 'Toll' regardless of underlying DSRC/GNSS/CHARGE technology, then routed by country (DE→A1-010, AT→A1-011, HU→A1-012, CZ→A1-014, RO→A1-016…). Italy, Slovenia and any other country use A1-017 (Other tolls).",
+      "Matches the Cargobox EETS toll export. Every row is normalized to product 'Road tax' (matching the Shell / Toll4Europe convention and the cost catalog's 'Taxă rutieră' lines), regardless of underlying DSRC/GNSS/CHARGE technology, then routed by country (DE→A1-010, AT→A1-011, HU→A1-012, CZ→A1-014, RO→A1-016…). Italy, Slovenia, France and any other country use A1-017 (alte țări UE).",
   },
 ]
 
