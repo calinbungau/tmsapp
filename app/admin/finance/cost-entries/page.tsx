@@ -1577,7 +1577,7 @@ function CostEntryDetailDialog({ entry, onClose, onEdit }: DetailDialogProps) {
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="!max-w-[1100px] w-[92vw] max-h-[92vh] overflow-y-auto">
+      <DialogContent className="!max-w-[1100px] w-[92vw] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Receipt className="h-5 w-5" />
