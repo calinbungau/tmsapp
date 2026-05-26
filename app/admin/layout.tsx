@@ -496,7 +496,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   };
 
   const isGroupActive = (item: NavItem) => {
-    if (item.children) return item.children.some(c => isActive(c.href));
+    if (item.children) return item.children.some(c => "group" in c && c.group ? c.items.some(i => isActive(i.href)) : isActive((c as any).href));
     return isActive(item.href);
   };
 
@@ -575,7 +575,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     </span>
                     <ChevronRight className={`h-3 w-3 flex-shrink-0 transition-all duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 group-hover/sidebar:opacity-100"} ${isExpanded ? "rotate-90" : ""}`} />
                   </button>
-                  <div className={`overflow-hidden transition-all duration-200 ${isExpanded ? "max-h-60 opacity-100" : "max-h-0 opacity-0"}`}>
+                  <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"}`}>
                     <div className="pl-3 pt-0.5 space-y-0.5">
                       {item.children!.map((child) => {
                         // Nested sub-group (e.g. Finance under TMS)
