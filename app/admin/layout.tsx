@@ -41,7 +41,10 @@ interface NavItem {
   icon: React.ElementType;
   badge?: number;
   module?: string;
-  children?: { href: string; label: string; icon: React.ElementType; badge?: number }[];
+  children?: Array<
+    | { href: string; label: string; icon: React.ElementType; badge?: number }
+    | { label: string; icon: React.ElementType; group: true; key: string; items: { href: string; label: string; icon: React.ElementType; badge?: number }[] }
+  >;
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -53,6 +56,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [chatUnread, setChatUnread] = useState(0);
   const [emailUnread, setEmailUnread] = useState(0);
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  const [expandedSubGroup, setExpandedSubGroup] = useState<string | null>(null);
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isTouch, setIsTouch] = useState(false);
@@ -416,15 +420,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { href: "/admin/tms/planning", label: "Dispatch Board", icon: Radio },
         { href: "/admin/tms/forwarding", label: "Forwarder Board", icon: ArrowLeftRight },
         { href: "/admin/action-center", label: "Action Center", icon: AlertCircle, badge: actionCenterAlerts },
-        ...(isModuleEnabled("finance") && (canAccess("finance") || hasFullAccess()) ? [
-          { href: "/admin/finance/dashboard", label: "Finance", icon: Wallet },
-          { href: "/admin/finance/review", label: "Review Queue", icon: Sparkles },
-          { href: "/admin/finance/cost-catalog", label: "Cost Catalog", icon: BookOpen },
-          { href: "/admin/finance/cost-entries", label: "Cost Entries", icon: Receipt },
-          { href: "/admin/finance/budgets", label: "Budgets", icon: PiggyBank },
-          { href: "/admin/finance/kpis", label: "KPIs", icon: Target },
-          { href: "/admin/finance/reports", label: "Reports", icon: BarChart3 },
-        ] : []),
+        ...(isModuleEnabled("finance") && (canAccess("finance") || hasFullAccess()) ? [{
+          group: true as const,
+          key: "finance",
+          label: "Finance",
+          icon: Wallet,
+          items: [
+            { href: "/admin/finance/dashboard", label: "Dashboard", icon: LineChart },
+            { href: "/admin/finance/review", label: "Review Queue", icon: Sparkles },
+            { href: "/admin/finance/cost-catalog", label: "Cost Catalog", icon: BookOpen },
+            { href: "/admin/finance/cost-entries", label: "Cost Entries", icon: Receipt },
+            { href: "/admin/finance/budgets", label: "Budgets", icon: PiggyBank },
+            { href: "/admin/finance/kpis", label: "KPIs", icon: Target },
+            { href: "/admin/finance/reports", label: "Reports", icon: BarChart3 },
+          ],
+        }] : []),
         { href: "/admin/tms/toll-rates", label: "Toll Rates", icon: Calculator },
         { href: "/admin/tms/reports", label: "Reports", icon: BarChart3 },
         { href: "/admin/tms/ai-usage", label: "AI Usage", icon: Sparkles },
@@ -567,27 +577,74 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   </button>
                   <div className={`overflow-hidden transition-all duration-200 ${isExpanded ? "max-h-60 opacity-100" : "max-h-0 opacity-0"}`}>
                     <div className="pl-3 pt-0.5 space-y-0.5">
-                      {item.children!.map((child) => (
-                        <Link
-                          key={child.href}
-                          href={child.href}
-                          className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-[13px] transition-colors ${
-                            isActive(child.href)
-                              ? "text-primary bg-primary/8 font-medium"
-                              : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                          }`}
-                        >
-                          <child.icon className="h-3.5 w-3.5 flex-shrink-0" />
-                          <span className={`flex-1 truncate whitespace-nowrap transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 group-hover/sidebar:opacity-100"}`}>
-                            {child.label}
-                          </span>
-                          {child.badge && child.badge > 0 ? (
-                            <span className={`flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 group-hover/sidebar:opacity-100"}`}>
-                              {child.badge > 99 ? "99+" : child.badge}
+                      {item.children!.map((child) => {
+                        // Nested sub-group (e.g. Finance under TMS)
+                        if ("group" in child && child.group) {
+                          const subActive = child.items.some((i) => isActive(i.href));
+                          const subExpanded = expandedSubGroup === child.key || subActive;
+                          return (
+                            <div key={child.key} className="space-y-0.5">
+                              <button
+                                onClick={() => setExpandedSubGroup(subExpanded && expandedSubGroup === child.key ? null : child.key)}
+                                className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-[13px] transition-colors ${
+                                  subActive
+                                    ? "text-primary bg-primary/8 font-medium"
+                                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                                }`}
+                              >
+                                <child.icon className="h-3.5 w-3.5 flex-shrink-0" />
+                                <span className={`flex-1 text-left truncate whitespace-nowrap transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 group-hover/sidebar:opacity-100"}`}>
+                                  {child.label}
+                                </span>
+                                <ChevronRight className={`h-3 w-3 flex-shrink-0 transition-all duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 group-hover/sidebar:opacity-100"} ${subExpanded ? "rotate-90" : ""}`} />
+                              </button>
+                              <div className={`overflow-hidden transition-all duration-200 ${subExpanded ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}`}>
+                                <div className="pl-3 space-y-0.5">
+                                  {child.items.map((sub) => (
+                                    <Link
+                                      key={sub.href}
+                                      href={sub.href}
+                                      className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-[12.5px] transition-colors ${
+                                        isActive(sub.href)
+                                          ? "text-primary bg-primary/8 font-medium"
+                                          : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                                      }`}
+                                    >
+                                      <sub.icon className="h-3.5 w-3.5 flex-shrink-0" />
+                                      <span className={`flex-1 truncate whitespace-nowrap transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 group-hover/sidebar:opacity-100"}`}>
+                                        {sub.label}
+                                      </span>
+                                    </Link>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        // Regular leaf child
+                        return (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-[13px] transition-colors ${
+                              isActive(child.href)
+                                ? "text-primary bg-primary/8 font-medium"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                            }`}
+                          >
+                            <child.icon className="h-3.5 w-3.5 flex-shrink-0" />
+                            <span className={`flex-1 truncate whitespace-nowrap transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 group-hover/sidebar:opacity-100"}`}>
+                              {child.label}
                             </span>
-                          ) : null}
-                        </Link>
-                      ))}
+                            {child.badge && child.badge > 0 ? (
+                              <span className={`flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 group-hover/sidebar:opacity-100"}`}>
+                                {child.badge > 99 ? "99+" : child.badge}
+                              </span>
+                            ) : null}
+                          </Link>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
