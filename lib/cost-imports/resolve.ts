@@ -147,6 +147,18 @@ export function applyTemplate(
     if (mapped.currency == null && ctx.defaultCurrency) {
       mapped.currency = ctx.defaultCurrency
     }
+    // Some supplier exports (e.g. OMV Petrom / Routex) only ship the net
+    // amount + VAT in local currency, no "total with VAT" column. Derive
+    // the gross from those when the file didn't map amount_incl_vat.
+    if (
+      mapped.amount_incl_vat == null &&
+      typeof mapped.amount_excl_vat === "number" &&
+      typeof mapped.tax_amount === "number"
+    ) {
+      mapped.amount_incl_vat = round2(
+        (mapped.amount_excl_vat as number) + (mapped.tax_amount as number),
+      )
+    }
     if (mapped.amount_incl_vat == null) {
       issues.push("Missing amount")
     }
@@ -193,6 +205,10 @@ export function normalizePlate(v: string): string {
     .replace(/^['"`]+/, "") // strip Excel apostrophe prefix
     .replace(/[\s-]/g, "")
     .toUpperCase()
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
 }
 
 function transformValue(

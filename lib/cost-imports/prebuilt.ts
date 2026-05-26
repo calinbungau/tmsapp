@@ -176,7 +176,7 @@ export const PREBUILT_TEMPLATES: PrebuiltTemplate[] = [
   },
   {
     code: "OMV_PETROM",
-    name: "OMV Petrom Fleet",
+    name: "OMV Petrom / Routex (Romanian export)",
     provider_type: "fuel",
     file_format: "xlsx",
     default_currency: "RON",
@@ -185,24 +185,124 @@ export const PREBUILT_TEMPLATES: PrebuiltTemplate[] = [
       version: 1,
       header_row_index: 0,
       fields: {
-        entry_date: { column: "Data", transform: "european_date" },
-        country_code: "Tara",
-        vehicle_plate: { column: "Numar inmatriculare", transform: "normalize_plate" },
-        external_id: "Numar tranzactie",
-        invoice_number: "Numar factura",
-        vendor_name: "Statie",
-        currency: "Moneda",
-        amount_incl_vat: { column: "Valoare cu TVA", transform: "european_number" },
-        amount_excl_vat: { column: "Valoare fara TVA", transform: "european_number" },
+        // "Data TRX " comes as "2026-03-30 11:36:00" (ISO with trailing space).
+        entry_date: { column: "Data TRX ", transform: "european_date" },
+        country_code: "tara de livrare",
+        vehicle_plate: { column: "numar de inmatriculare", transform: "normalize_plate" },
+        // bon tranzactie is the per-transaction receipt id — unique enough for dedup.
+        external_id: { column: "bon tranzactie", transform: "strip_apostrophe" },
+        invoice_number: "factura nr.",
+        vendor_name: "furnizor",
+        // SC = transaction currency (RON, HUF, EUR, CZK…)
+        currency: "SC",
+        // The OMV export does NOT include a "total with VAT" column in
+        // local currency: it gives Valoare SC (net) + TVA (vat). The resolver
+        // computes amount_incl_vat = amount_excl_vat + tax_amount when the
+        // gross column is missing, so this still produces correct totals.
+        amount_excl_vat: { column: "Valoare SC", transform: "european_number" },
         tax_amount: { column: "TVA", transform: "european_number" },
-        tax_rate: "Cota TVA",
-        liters_qty: { column: "Cantitate", transform: "european_number" },
-        location_label: "Adresa statie",
-        product_code: "Produs",
-        driver_card: { column: "Card", transform: "strip_apostrophe" },
+        liters_qty: { column: "cantitate", transform: "european_number" },
+        location_label: "punct de acceptanta",
+        // Produs (com.) = normalized product category (DIESEL, VIGNETTE,
+        // ROAD TOLL/BRIGDE/TUNNEL (VAT), ADBLUE (PUMP), OTHER LUBRICANTS…).
+        // This is what mapping rules match against.
+        product_code: "Produs (com.)",
+        driver_card: { column: "card", transform: "strip_apostrophe" },
+        notes: "Produs INV",
       } as MappingTemplate["fields"],
     },
-    rules: FUEL_PRODUCT_RULES,
+    rules: [
+      // Routex-specific product categories (uppercase, hyphenated).
+      { external_name: "DIESEL", cost_code: "A1-001" },
+      { external_name: "GASOLINE", cost_code: "A1-001" },
+      { external_name: "PETROL", cost_code: "A1-001" },
+      { external_name: "ADBLUE (PUMP)", cost_code: "A1-002" },
+      { external_name: "ADBLUE", cost_code: "A1-002" },
+      { external_name: "LNG", cost_code: "A1-003" },
+      { external_name: "CNG", cost_code: "A1-003" },
+      { external_name: "VIGNETTE", cost_code: "A1-016", match_field: "country_code", match_pattern: "^RO$" },
+      { external_name: "VIGNETTE", cost_code: "A1-012", match_field: "country_code", match_pattern: "^HU$" },
+      { external_name: "VIGNETTE", cost_code: "A1-011", match_field: "country_code", match_pattern: "^AT$" },
+      { external_name: "VIGNETTE", cost_code: "A1-017" },
+      // "ROAD TOLL\t BRIGDE\t TUNNEL (VAT)" — match by substring "ROAD TOLL".
+      { external_name: "ROAD TOLL", cost_code: "A1-010", match_field: "country_code", match_pattern: "^DE$" },
+      { external_name: "ROAD TOLL", cost_code: "A1-011", match_field: "country_code", match_pattern: "^AT$" },
+      { external_name: "ROAD TOLL", cost_code: "A1-012", match_field: "country_code", match_pattern: "^HU$" },
+      { external_name: "ROAD TOLL", cost_code: "A1-013", match_field: "country_code", match_pattern: "^PL$" },
+      { external_name: "ROAD TOLL", cost_code: "A1-014", match_field: "country_code", match_pattern: "^CZ$" },
+      { external_name: "ROAD TOLL", cost_code: "A1-015", match_field: "country_code", match_pattern: "^SK$" },
+      { external_name: "ROAD TOLL", cost_code: "A1-016", match_field: "country_code", match_pattern: "^RO$" },
+      { external_name: "ROAD TOLL", cost_code: "A1-017" },
+      // Ancillary card / service fees go to "Other service fees".
+      { external_name: "OTHER SITE SERVICES", cost_code: "A1-040" },
+      { external_name: "OTHER LUBRICANTS PRODUCTS", cost_code: "A1-041" },
+      { external_name: "OTHER LUBRICANTS PRO", cost_code: "A1-041" },
+      { external_name: "CARWASH", cost_code: "A1-031" },
+      { external_name: "PARKING", cost_code: "A1-030" },
+    ],
+    notes:
+      "Matches the OMV Petrom / Routex Romanian export. Local-currency gross is derived from Valoare SC + TVA. Tolls and vignettes route per-country (RO→A1-016, HU→A1-012, AT→A1-011…).",
+  },
+  {
+    code: "CARGOBOX",
+    name: "Cargobox (multi-country tolls)",
+    provider_type: "toll",
+    file_format: "xlsx",
+    default_currency: "EUR",
+    default_cost_code: "A1-017",
+    template: {
+      version: 1,
+      header_row_index: 0,
+      fields: {
+        // "Data inceput" arrives as "2026-05-15 08:26" — parseFlexibleDate
+        // handles both date-only and date+time, extracting YYYY-MM-DD.
+        entry_date: { column: "Data inceput", transform: "european_date" },
+        // "Domeniu Taxabil" is the ISO-2 country of the toll segment.
+        country_code: "Domeniu Taxabil",
+        vehicle_plate: { column: "Vehicul", transform: "normalize_plate" },
+        // Cargobox files have no explicit transaction ID. Dedup is best
+        // effort and relies on (occurred_at + vehicle + country) matching.
+        currency: "Moneda",
+        amount_incl_vat: { column: "Valoare Bruta", transform: "european_number" },
+        amount_excl_vat: { column: "Valoare", transform: "european_number" },
+        tax_amount: { column: "TVA", transform: "european_number" },
+        // "Tip serviciu" is DSRC / GNSS / CHARGE — used by mapping rules.
+        product_code: "Tip serviciu",
+        // The route segment ("ROVIGO SUD - VILLAMARZANA") is the most useful
+        // human label; fall back is in the resolver.
+        location_label: "Descrierea traseului",
+        notes: "Descriere serviciu",
+      } as MappingTemplate["fields"],
+    },
+    rules: [
+      // All Cargobox rows are tolls — route per country using "Tip serviciu"
+      // as the trigger (DSRC = barrier-based, GNSS = satellite, CHARGE =
+      // monthly EETS service charge).
+      { external_name: "DSRC", cost_code: "A1-010", match_field: "country_code", match_pattern: "^DE$" },
+      { external_name: "DSRC", cost_code: "A1-011", match_field: "country_code", match_pattern: "^AT$" },
+      { external_name: "DSRC", cost_code: "A1-012", match_field: "country_code", match_pattern: "^HU$" },
+      { external_name: "DSRC", cost_code: "A1-013", match_field: "country_code", match_pattern: "^PL$" },
+      { external_name: "DSRC", cost_code: "A1-014", match_field: "country_code", match_pattern: "^CZ$" },
+      { external_name: "DSRC", cost_code: "A1-015", match_field: "country_code", match_pattern: "^SK$" },
+      { external_name: "DSRC", cost_code: "A1-016", match_field: "country_code", match_pattern: "^RO$" },
+      { external_name: "DSRC", cost_code: "A1-018", match_field: "country_code", match_pattern: "^IT$" },
+      { external_name: "DSRC", cost_code: "A1-019", match_field: "country_code", match_pattern: "^SI$" },
+      { external_name: "DSRC", cost_code: "A1-017" },
+      { external_name: "GNSS", cost_code: "A1-010", match_field: "country_code", match_pattern: "^DE$" },
+      { external_name: "GNSS", cost_code: "A1-011", match_field: "country_code", match_pattern: "^AT$" },
+      { external_name: "GNSS", cost_code: "A1-012", match_field: "country_code", match_pattern: "^HU$" },
+      { external_name: "GNSS", cost_code: "A1-013", match_field: "country_code", match_pattern: "^PL$" },
+      { external_name: "GNSS", cost_code: "A1-014", match_field: "country_code", match_pattern: "^CZ$" },
+      { external_name: "GNSS", cost_code: "A1-015", match_field: "country_code", match_pattern: "^SK$" },
+      { external_name: "GNSS", cost_code: "A1-016", match_field: "country_code", match_pattern: "^RO$" },
+      { external_name: "GNSS", cost_code: "A1-018", match_field: "country_code", match_pattern: "^IT$" },
+      { external_name: "GNSS", cost_code: "A1-019", match_field: "country_code", match_pattern: "^SI$" },
+      { external_name: "GNSS", cost_code: "A1-017" },
+      // CHARGE rows are the monthly EETS service fee — book under fees.
+      { external_name: "CHARGE", cost_code: "A1-040" },
+    ],
+    notes:
+      "Matches the Cargobox EETS toll export. Cost code is resolved by country (Domeniu Taxabil): DE→A1-010, AT→A1-011, HU→A1-012, IT→A1-018, SI→A1-019…  Monthly CHARGE rows (the EETS service fee) are booked under A1-040.",
   },
 ]
 
