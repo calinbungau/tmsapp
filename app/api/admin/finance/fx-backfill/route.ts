@@ -35,11 +35,9 @@ export async function POST() {
   const log: string[] = []
   const t0 = Date.now()
 
-  // 1) Collect every distinct date we have a non-EUR amount for
-  const { data: teDates } = await sb
-    .from("trip_expenses")
-    .select("occurred_at, currency")
-    .not("currency", "is", null)
+  // 1) Collect every distinct date we have a non-EUR amount for.
+  //    Post-consolidation, cost_entries is the single source of truth for
+  //    trip/order/manual/AI receipts; trip_expenses is being retired.
   const { data: ceDates } = await sb
     .from("cost_entries")
     .select("occurred_at, currency")
@@ -50,9 +48,6 @@ export async function POST() {
     .not("currency", "is", null)
 
   const dateSet = new Set<string>()
-  for (const r of teDates ?? []) {
-    if (r.occurred_at) dateSet.add(String(r.occurred_at).slice(0, 10))
-  }
   for (const r of ceDates ?? []) {
     if (r.occurred_at) dateSet.add(String(r.occurred_at).slice(0, 10))
   }
@@ -120,19 +115,14 @@ export async function POST() {
   }
   log.push(`rate rows inserted/upserted: ${inserted}`)
 
-  // 5) Touch trip_expenses + cost_entries to refire BEFORE triggers that recompute amount_eur
-  const { error: te } = await sb
-    .from("trip_expenses")
-    .update({ updated_at: new Date().toISOString() })
-    .not("currency", "is", null)
-    .neq("currency", "EUR")
-  if (te) log.push(`trip_expenses touch error: ${te.message}`)
+  // 5) Touch cost_entries to refire the BEFORE trigger that recomputes amount_eur.
+  //    The previous separate trip_expenses path is gone — its rows are now
+  //    cost_entries with external_source='trip_expenses' and are covered here.
   const { error: ce } = await sb
     .from("cost_entries")
     .update({ updated_at: new Date().toISOString() })
     .not("currency", "is", null)
     .neq("currency", "EUR")
-    .is("external_source", null) // source-driven rows already synced via te touch
   if (ce) log.push(`cost_entries touch error: ${ce.message}`)
 
   log.push(`done in ${Date.now() - t0}ms`)

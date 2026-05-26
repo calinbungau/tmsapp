@@ -261,13 +261,10 @@ export async function GET(req: NextRequest) {
     )
     .in("trip_id", tripIds)
 
-  // 4. trip_expenses
-  const { data: te } = await sb
-    .from("trip_expenses")
-    .select(
-      "id, trip_id, category, occurred_at, vendor, country, currency, amount_eur_excl_vat, amount_eur, quantity, unit, description, notes",
-    )
-    .in("trip_id", tripIds)
+  // 4. trip_expenses — REMOVED post-consolidation. Its rows now live in
+  //    cost_entries (with external_source='trip_expenses'), so they're already
+  //    surfaced by the cost_entries loop above. Reading both would double-count.
+  const te: any[] = []
 
   // 5. cost_allocations (allocated overhead)
   const { data: ca } = await sb
