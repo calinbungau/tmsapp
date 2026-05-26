@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, Fragment } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminSession } from "@/hooks/use-admin-session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -57,6 +57,7 @@ import {
   Upload,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Eye,
   Link as LinkIcon,
   MapPin,
@@ -169,6 +170,9 @@ export default function CostEntriesPage() {
 
   // Detail (read-only) view
   const [detailEntry, setDetailEntry] = useState<CostEntry | null>(null);
+
+  // Import history dialog (cost_provider_imports)
+  const [historyOpen, setHistoryOpen] = useState(false);
   
   // Reference data
   const [costCatalog, setCostCatalog] = useState<CostCatalogItem[]>([]);
@@ -744,6 +748,10 @@ export default function CostEntriesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setHistoryOpen(true)}>
+            <Clock className="h-4 w-4 mr-2" />
+            Import history
+          </Button>
           <Button variant="outline">
             <Download className="h-4 w-4 mr-2" />
             Export
@@ -1493,6 +1501,13 @@ export default function CostEntriesPage() {
           openDialog(e);
         }}
       />
+
+      {/* Import history (cost_provider_imports) */}
+      <ImportHistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        adminId={adminSession?.id}
+      />
     </div>
   );
 }
@@ -1809,6 +1824,389 @@ function DetailRow({
       >
         {value ?? "—"}
       </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// Import history: lists every supplier file that was uploaded, with
+// who ran it, when, status, row counts, totals and any error log.
+// Backed by cost_provider_imports (already populated by the import
+// commit route).
+// =====================================================================
+
+interface ImportRun {
+  id: string;
+  provider_id: string | null;
+  file_name: string | null;
+  file_url: string | null;
+  file_size_bytes: number | null;
+  status: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  total_rows: number | null;
+  imported_count: number | null;
+  skipped_count: number | null;
+  duplicate_count: number | null;
+  error_count: number | null;
+  total_amount: number | null;
+  total_amount_eur: number | null;
+  period_from: string | null;
+  period_to: string | null;
+  notes: string | null;
+  error_log: any;
+  unmapped_rows: any;
+  cost_provider: { id: string; name: string; code: string | null } | null;
+}
+
+function ImportHistoryDialog({
+  open,
+  onOpenChange,
+  adminId,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  adminId: string | undefined;
+}) {
+  const [runs, setRuns] = useState<ImportRun[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [providerFilter, setProviderFilter] = useState<string>("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !adminId) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("cost_provider_imports")
+        .select(
+          `
+          id, provider_id, file_name, file_url, file_size_bytes, status,
+          started_at, completed_at, total_rows, imported_count, skipped_count,
+          duplicate_count, error_count, total_amount, total_amount_eur,
+          period_from, period_to, notes, error_log, unmapped_rows,
+          cost_provider:cost_providers(id, name, code)
+          `,
+        )
+        .eq("admin_id", adminId)
+        .order("started_at", { ascending: false, nullsFirst: false })
+        .limit(200);
+      if (cancelled) return;
+      if (!error && data) setRuns(data as unknown as ImportRun[]);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, adminId]);
+
+  const providers = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    for (const r of runs) {
+      if (r.cost_provider) map.set(r.cost_provider.id, { id: r.cost_provider.id, name: r.cost_provider.name });
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [runs]);
+
+  const filtered = useMemo(
+    () => (providerFilter === "all" ? runs : runs.filter((r) => r.provider_id === providerFilter)),
+    [runs, providerFilter],
+  );
+
+  const fmtDateTime = (v: string | null) => {
+    if (!v) return "—";
+    try {
+      const d = new Date(v);
+      return `${d.toLocaleDateString("en-GB")} ${d.toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`;
+    } catch {
+      return v;
+    }
+  };
+  const fmtSize = (n: number | null) => {
+    if (!n) return "—";
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(2)} MB`;
+  };
+  const fmtMoney = (v: number | null, ccy = "EUR") => {
+    if (v == null) return "—";
+    try {
+      return new Intl.NumberFormat("en-EU", {
+        style: "currency",
+        currency: ccy,
+        minimumFractionDigits: 2,
+      }).format(Number(v));
+    } catch {
+      return `${v}`;
+    }
+  };
+
+  const statusBadge = (status: string | null) => {
+    const s = (status || "").toLowerCase();
+    let cls = "border-muted-foreground/30 text-muted-foreground";
+    if (s === "completed" || s === "ok" || s === "success") {
+      cls = "border-emerald-500/40 text-emerald-300 bg-emerald-500/10";
+    } else if (s === "failed" || s === "error") {
+      cls = "border-red-500/40 text-red-300 bg-red-500/10";
+    } else if (s === "partial" || s === "warning") {
+      cls = "border-amber-500/40 text-amber-300 bg-amber-500/10";
+    } else if (s === "running" || s === "processing" || s === "pending") {
+      cls = "border-sky-500/40 text-sky-300 bg-sky-500/10";
+    }
+    return (
+      <Badge variant="outline" className={cls}>
+        {status || "—"}
+      </Badge>
+    );
+  };
+
+  const errorList = (run: ImportRun): string[] => {
+    const out: string[] = [];
+    const e = run.error_log;
+    if (Array.isArray(e)) {
+      for (const item of e) {
+        if (typeof item === "string") out.push(item);
+        else if (item && typeof item === "object") {
+          out.push(item.message || item.error || JSON.stringify(item));
+        }
+      }
+    } else if (e && typeof e === "object") {
+      if (Array.isArray(e.errors)) {
+        for (const item of e.errors) out.push(typeof item === "string" ? item : JSON.stringify(item));
+      } else {
+        out.push(JSON.stringify(e));
+      }
+    } else if (typeof e === "string") {
+      out.push(e);
+    }
+    return out;
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-6xl w-[95vw] max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5" />
+            Import history
+            <span className="text-xs font-normal text-muted-foreground">
+              {runs.length} run{runs.length === 1 ? "" : "s"}
+            </span>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex items-center gap-2 pt-1">
+          <span className="text-xs text-muted-foreground">Provider:</span>
+          <Select value={providerFilter} onValueChange={setProviderFilter}>
+            <SelectTrigger className="h-8 w-[220px]">
+              <SelectValue placeholder="All providers" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All providers</SelectItem>
+              {providers.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {loading ? (
+          <div className="py-12 text-center text-muted-foreground text-sm">Loading…</div>
+        ) : filtered.length === 0 ? (
+          <div className="py-12 text-center text-muted-foreground text-sm">
+            No imports yet. When you upload a supplier file from a Cost Provider, it will show up here.
+          </div>
+        ) : (
+          <div className="rounded-md border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[150px]">When</TableHead>
+                  <TableHead>Provider</TableHead>
+                  <TableHead>File</TableHead>
+                  <TableHead className="w-[110px]">Status</TableHead>
+                  <TableHead className="text-right w-[90px]">Rows</TableHead>
+                  <TableHead className="text-right w-[90px]">Inserted</TableHead>
+                  <TableHead className="text-right w-[90px]">Skipped</TableHead>
+                  <TableHead className="text-right w-[90px]">Duplicates</TableHead>
+                  <TableHead className="text-right w-[80px]">Errors</TableHead>
+                  <TableHead className="text-right w-[120px]">Total (EUR)</TableHead>
+                  <TableHead className="w-[40px]" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((run) => {
+                  const isOpen = expandedId === run.id;
+                  const errors = errorList(run);
+                  return (
+                    <Fragment key={run.id}>
+                      <TableRow
+                        className="cursor-pointer hover:bg-muted/40"
+                        data-state={isOpen ? "selected" : undefined}
+                        onClick={() => setExpandedId(isOpen ? null : run.id)}
+                      >
+                        <TableCell className="text-xs tabular-nums whitespace-nowrap">
+                          {fmtDateTime(run.started_at)}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {run.cost_provider?.name || (
+                            <span className="text-muted-foreground italic">unknown</span>
+                          )}
+                          {run.cost_provider?.code && (
+                            <span className="ml-1 text-[10px] font-mono text-muted-foreground">
+                              {run.cost_provider.code}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <span className="block truncate max-w-[260px]" title={run.file_name || ""}>
+                            {run.file_name || "—"}
+                          </span>
+                          {run.file_size_bytes != null && (
+                            <span className="text-[10px] text-muted-foreground">
+                              {fmtSize(run.file_size_bytes)}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>{statusBadge(run.status)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{run.total_rows ?? "—"}</TableCell>
+                        <TableCell className="text-right tabular-nums text-emerald-300">
+                          {run.imported_count ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {run.skipped_count ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {run.duplicate_count ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {run.error_count ? (
+                            <span className="text-red-300">{run.error_count}</span>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {fmtMoney(run.total_amount_eur, "EUR")}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <ChevronDown
+                            className={`h-4 w-4 inline-block transition ${
+                              isOpen ? "rotate-180" : ""
+                            }`}
+                          />
+                        </TableCell>
+                      </TableRow>
+                      {isOpen && (
+                        <TableRow className="bg-muted/20 hover:bg-muted/20">
+                          <TableCell colSpan={11} className="p-4">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                              <DetailKV label="Started" value={fmtDateTime(run.started_at)} />
+                              <DetailKV label="Completed" value={fmtDateTime(run.completed_at)} />
+                              <DetailKV
+                                label="Period"
+                                value={
+                                  run.period_from || run.period_to
+                                    ? `${run.period_from || "?"} → ${run.period_to || "?"}`
+                                    : "—"
+                                }
+                              />
+                              <DetailKV
+                                label="Total amount"
+                                value={fmtMoney(run.total_amount, "EUR")}
+                              />
+                              {run.file_url && (
+                                <DetailKV
+                                  label="Source file"
+                                  value={
+                                    <a
+                                      href={run.file_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-primary inline-flex items-center gap-1 hover:underline"
+                                    >
+                                      Download
+                                      <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                  }
+                                />
+                              )}
+                              {run.notes && (
+                                <DetailKV label="Notes" value={run.notes} className="md:col-span-4" />
+                              )}
+                            </div>
+
+                            {errors.length > 0 && (
+                              <div className="mt-3">
+                                <div className="text-[11px] uppercase tracking-wider text-red-300 mb-1">
+                                  Errors
+                                </div>
+                                <ul className="text-xs space-y-1 max-h-40 overflow-y-auto rounded-md border border-red-500/30 bg-red-500/5 p-2">
+                                  {errors.slice(0, 50).map((e, i) => (
+                                    <li key={i} className="text-red-200 break-words">
+                                      • {e}
+                                    </li>
+                                  ))}
+                                  {errors.length > 50 && (
+                                    <li className="text-red-200/70 italic">
+                                      …and {errors.length - 50} more
+                                    </li>
+                                  )}
+                                </ul>
+                              </div>
+                            )}
+
+                            {Array.isArray(run.unmapped_rows) && run.unmapped_rows.length > 0 && (
+                              <div className="mt-3">
+                                <div className="text-[11px] uppercase tracking-wider text-amber-300 mb-1">
+                                  Unmapped rows ({run.unmapped_rows.length})
+                                </div>
+                                <pre className="text-[10px] leading-snug bg-muted/40 rounded-md p-2 overflow-x-auto max-h-40">
+                                  {JSON.stringify(run.unmapped_rows.slice(0, 20), null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DetailKV({
+  label,
+  value,
+  className = "",
+}: {
+  label: string;
+  value: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-xs">{value}</div>
     </div>
   );
 }
