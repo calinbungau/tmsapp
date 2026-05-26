@@ -800,97 +800,92 @@ export default function CostEntriesPage() {
               </SelectContent>
             </Select>
 
-            <Select value={providerFilter} onValueChange={setProviderFilter}>
-              <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="Supplier (provider)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All suppliers</SelectItem>
-                {providers.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    <span className="flex items-center gap-2">
-                      <span className="truncate">{p.name}</span>
-                      {p.last_import_at && (
-                        <span className="text-[10px] text-muted-foreground tabular-nums">
-                          · {new Date(p.last_import_at).toLocaleDateString("en-GB")}
-                        </span>
-                      )}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* All non-trivial filters are searchable comboboxes so the
+                user can type to filter — e.g. type a plate fragment to
+                find a vehicle or trailer, or part of a driver name. The
+                first option in each list ("All …") clears that filter. */}
+            <SearchableSelect
+              className="w-[220px]"
+              value={providerFilter}
+              onValueChange={setProviderFilter}
+              placeholder="All suppliers"
+              searchPlaceholder="Search supplier…"
+              options={[
+                { value: "all", label: "All suppliers" },
+                ...providers.map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                  sublabel: p.last_import_at
+                    ? `Last import ${new Date(p.last_import_at).toLocaleDateString("en-GB")}${
+                        p.last_import_status ? ` · ${p.last_import_status}` : ""
+                      }`
+                    : "Never imported",
+                })),
+              ]}
+            />
 
-            <Select value={vehicleFilter} onValueChange={setVehicleFilter}>
-              <SelectTrigger className="w-[170px]">
-                <SelectValue placeholder="Vehicle" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All vehicles</SelectItem>
-                {vehicles.map((v) => (
-                  <SelectItem key={v.id} value={v.id} className="font-mono text-xs">
-                    {v.plate_number}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              className="w-[170px]"
+              value={vehicleFilter}
+              onValueChange={setVehicleFilter}
+              placeholder="All vehicles"
+              searchPlaceholder="Search plate…"
+              options={[
+                { value: "all", label: "All vehicles" },
+                ...vehicles.map((v) => ({ value: v.id, label: v.plate_number })),
+              ]}
+            />
 
-            <Select value={trailerFilter} onValueChange={setTrailerFilter}>
-              <SelectTrigger className="w-[170px]">
-                <SelectValue placeholder="Trailer" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All trailers</SelectItem>
-                {trailers.map((t) => (
-                  <SelectItem key={t.id} value={t.id} className="font-mono text-xs">
-                    {t.plate_number}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              className="w-[170px]"
+              value={trailerFilter}
+              onValueChange={setTrailerFilter}
+              placeholder="All trailers"
+              searchPlaceholder="Search plate…"
+              options={[
+                { value: "all", label: "All trailers" },
+                ...trailers.map((t) => ({ value: t.id, label: t.plate_number })),
+              ]}
+            />
 
-            <Select value={driverFilter} onValueChange={setDriverFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Driver" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All drivers</SelectItem>
-                {drivers.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              className="w-[180px]"
+              value={driverFilter}
+              onValueChange={setDriverFilter}
+              placeholder="All drivers"
+              searchPlaceholder="Search driver…"
+              options={[
+                { value: "all", label: "All drivers" },
+                ...drivers.map((d) => ({ value: d.id, label: d.name })),
+              ]}
+            />
 
-            <Select value={partnerFilter} onValueChange={setPartnerFilter}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Counterparty" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All counterparties</SelectItem>
-                {suppliers.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              className="w-[200px]"
+              value={partnerFilter}
+              onValueChange={setPartnerFilter}
+              placeholder="All counterparties"
+              searchPlaceholder="Search counterparty…"
+              options={[
+                { value: "all", label: "All counterparties" },
+                ...suppliers.map((s) => ({ value: s.id, label: s.name })),
+              ]}
+            />
 
-            <Select value={costCodeFilter} onValueChange={setCostCodeFilter}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Cost code" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All cost codes</SelectItem>
-                {costCatalog.map((c) => (
-                  <SelectItem key={c.id} value={c.code}>
-                    <span className="font-mono text-[11px] mr-2">{c.code}</span>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              className="w-[220px]"
+              value={costCodeFilter}
+              onValueChange={setCostCodeFilter}
+              placeholder="All cost codes"
+              searchPlaceholder="Search code or name…"
+              options={[
+                { value: "all", label: "All cost codes" },
+                ...costCatalog.map((c) => ({
+                  value: c.code,
+                  label: `${c.code} — ${c.name}`,
+                })),
+              ]}
+            />
 
             {(providerFilter !== "all" ||
               vehicleFilter !== "all" ||
