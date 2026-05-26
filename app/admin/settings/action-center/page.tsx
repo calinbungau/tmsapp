@@ -28,9 +28,11 @@ import {
   AlertTriangle,
   ArrowLeft,
   Bell,
+  CalendarDays,
   Check,
   Clock,
   FileWarning,
+  Globe,
   Info,
   Loader2,
   Mail,
@@ -61,6 +63,18 @@ interface ActionCenterDefinition {
   notify_channels: string[];
   email_recipients: string[];
   escalation_after_hours: number | null;
+  // Reminder schedule fields
+  reminder_offsets_before: number[];
+  reminder_daily_after_due: boolean;
+  reminder_daily_max_days: number;
+  send_window: "immediate" | "business_hours";
+  business_hours_start: string;
+  business_hours_end: string;
+  skip_weekends: boolean;
+  timezone: string;
+  digest_mode: boolean;
+  escalation_role: string | null;
+  min_hours_between_emails: number;
   created_at: string;
 }
 
@@ -88,6 +102,19 @@ const ROLE_OPTIONS = [
   { value: "compliance", label: "Compliance" },
 ];
 
+const TIMEZONE_OPTIONS = [
+  { value: "Europe/Bucharest", label: "Bucharest (EET/EEST)" },
+  { value: "Europe/London", label: "London (GMT/BST)" },
+  { value: "Europe/Paris", label: "Paris (CET/CEST)" },
+  { value: "Europe/Berlin", label: "Berlin (CET/CEST)" },
+  { value: "America/New_York", label: "New York (EST/EDT)" },
+  { value: "America/Chicago", label: "Chicago (CST/CDT)" },
+  { value: "America/Los_Angeles", label: "Los Angeles (PST/PDT)" },
+  { value: "UTC", label: "UTC" },
+];
+
+const DEFAULT_OFFSETS = [30, 14, 7, 3, 1, 0];
+
 export default function ActionCenterSettingsPage() {
   const { session: adminSession, loading: sessionLoading } = useAdminSession();
   const [definitions, setDefinitions] = useState<ActionCenterDefinition[]>([]);
@@ -101,6 +128,8 @@ export default function ActionCenterSettingsPage() {
   // so multiple rules can be edited independently without one rule's pending
   // text leaking into another.
   const [emailInputs, setEmailInputs] = useState<Record<string, string>>({});
+  // Local state for the offset-day input per rule
+  const [offsetInputs, setOffsetInputs] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const fetchDefinitions = useCallback(async () => {
@@ -265,6 +294,40 @@ export default function ActionCenterSettingsPage() {
     } finally {
       setRunning(false);
     }
+  };
+
+  // ----- Reminder offset helpers -----------------------------------
+  const offsetsOf = (def: ActionCenterDefinition): number[] => {
+    const r = def.reminder_offsets_before as any;
+    if (Array.isArray(r)) return r.filter((n) => typeof n === "number").sort((a, b) => b - a);
+    return DEFAULT_OFFSETS;
+  };
+
+  const handleAddOffset = async (def: ActionCenterDefinition) => {
+    const raw = (offsetInputs[def.id] || "").trim();
+    const num = parseInt(raw, 10);
+    if (isNaN(num) || num < 0 || num > 365) {
+      setMessage({ type: "error", text: "Enter a valid number of days (0-365)" });
+      setTimeout(() => setMessage(null), 3000);
+      return;
+    }
+    const existing = offsetsOf(def);
+    if (existing.includes(num)) {
+      setOffsetInputs((prev) => ({ ...prev, [def.id]: "" }));
+      return;
+    }
+    const next = [...existing, num].sort((a, b) => b - a);
+    setOffsetInputs((prev) => ({ ...prev, [def.id]: "" }));
+    await handleUpdate(def.id, { reminder_offsets_before: next });
+  };
+
+  const handleRemoveOffset = async (def: ActionCenterDefinition, offset: number) => {
+    const next = offsetsOf(def).filter((n) => n !== offset);
+    await handleUpdate(def.id, { reminder_offsets_before: next });
+  };
+
+  const handleResetOffsets = async (def: ActionCenterDefinition) => {
+    await handleUpdate(def.id, { reminder_offsets_before: DEFAULT_OFFSETS });
   };
 
   // Group definitions by category
@@ -797,7 +860,268 @@ export default function ActionCenterSettingsPage() {
                                 : "Disabled"}
                             </span>
                           </div>
+                          {def.escalation_after_hours && def.escalation_after_hours > 0 && (
+                            <div className="space-y-2">
+                              <Label className="text-xs">Escalation role (CC&apos;d after timeout)</Label>
+                              <Select
+                                value={def.escalation_role || "__none__"}
+                                onValueChange={(v) =>
+                                  handleUpdate(def.id, { escalation_role: v === "__none__" ? null : v })
+                                }
+                                disabled={!def.is_enabled}
+                              >
+                                <SelectTrigger className="w-[200px]">
+                                  <SelectValue placeholder="Select role" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__">No escalation role</SelectItem>
+                                  {ROLE_OPTIONS.map((role) => (
+                                    <SelectItem key={role.value} value={role.value}>
+                                      {role.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
                         </div>
+
+                        {/* Reminder Schedule */}
+                        {channelsOf(def).includes("email") && (
+                          <div className="space-y-4 pt-4 border-t">
+                            <div className="flex items-center gap-2">
+                              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                              <Label className="text-base font-medium">Reminder Schedule</Label>
+                            </div>
+                            
+                            {/* Reminder offsets */}
+                            <div className="space-y-3">
+                              <Label className="text-sm">Days before due to send reminders</Label>
+                              <div className="flex flex-wrap gap-2">
+                                {offsetsOf(def).map((offset) => (
+                                  <Badge
+                                    key={offset}
+                                    variant="secondary"
+                                    className="gap-1 pl-2 pr-1 py-1"
+                                  >
+                                    <span className="text-xs">
+                                      {offset === 0 ? "On due day" : `${offset}d before`}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveOffset(def, offset)}
+                                      disabled={!def.is_enabled || saving === def.id}
+                                      className="ml-0.5 rounded-sm hover:bg-muted-foreground/20 disabled:opacity-50"
+                                      aria-label={`Remove ${offset} day offset`}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </Badge>
+                                ))}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={365}
+                                  placeholder="Days"
+                                  value={offsetInputs[def.id] || ""}
+                                  onChange={(e) =>
+                                    setOffsetInputs((prev) => ({ ...prev, [def.id]: e.target.value }))
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      handleAddOffset(def);
+                                    }
+                                  }}
+                                  disabled={!def.is_enabled || saving === def.id}
+                                  className="h-9 w-20"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleAddOffset(def)}
+                                  disabled={!def.is_enabled || saving === def.id || !(offsetInputs[def.id] || "").trim()}
+                                >
+                                  <Plus className="h-4 w-4 mr-1" />
+                                  Add
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleResetOffsets(def)}
+                                  disabled={!def.is_enabled || saving === def.id}
+                                >
+                                  Reset
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Daily overdue reminders */}
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <Label className="text-sm">Daily reminders after overdue</Label>
+                                <p className="text-xs text-muted-foreground">
+                                  Send daily emails once item is past due
+                                </p>
+                              </div>
+                              <Switch
+                                checked={def.reminder_daily_after_due ?? true}
+                                onCheckedChange={(checked) =>
+                                  handleUpdate(def.id, { reminder_daily_after_due: checked })
+                                }
+                                disabled={!def.is_enabled}
+                              />
+                            </div>
+
+                            {(def.reminder_daily_after_due ?? true) && (
+                              <div className="space-y-2 pl-4 border-l-2 border-muted">
+                                <Label className="text-xs">Stop daily reminders after</Label>
+                                <div className="flex items-center gap-4">
+                                  <Slider
+                                    value={[def.reminder_daily_max_days ?? 14]}
+                                    min={1}
+                                    max={30}
+                                    step={1}
+                                    onValueCommit={(v) =>
+                                      handleUpdate(def.id, { reminder_daily_max_days: v[0] })
+                                    }
+                                    className="flex-1 max-w-[150px]"
+                                    disabled={!def.is_enabled}
+                                  />
+                                  <span className="text-sm w-20">
+                                    {def.reminder_daily_max_days ?? 14} days
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Business hours */}
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <Label className="text-sm">Respect business hours</Label>
+                                  <p className="text-xs text-muted-foreground">
+                                    Only send emails during work hours
+                                  </p>
+                                </div>
+                                <Switch
+                                  checked={def.send_window === "business_hours"}
+                                  onCheckedChange={(checked) =>
+                                    handleUpdate(def.id, { send_window: checked ? "business_hours" : "immediate" })
+                                  }
+                                  disabled={!def.is_enabled}
+                                />
+                              </div>
+
+                              {def.send_window === "business_hours" && (
+                                <div className="space-y-3 pl-4 border-l-2 border-muted">
+                                  <div className="flex items-center gap-3">
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">Start</Label>
+                                      <Input
+                                        type="time"
+                                        value={def.business_hours_start || "08:00"}
+                                        onChange={(e) =>
+                                          handleUpdate(def.id, { business_hours_start: e.target.value })
+                                        }
+                                        disabled={!def.is_enabled}
+                                        className="w-28 h-8"
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">End</Label>
+                                      <Input
+                                        type="time"
+                                        value={def.business_hours_end || "18:00"}
+                                        onChange={(e) =>
+                                          handleUpdate(def.id, { business_hours_end: e.target.value })
+                                        }
+                                        disabled={!def.is_enabled}
+                                        className="w-28 h-8"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-xs">Skip weekends</Label>
+                                    <Switch
+                                      checked={def.skip_weekends ?? true}
+                                      onCheckedChange={(checked) =>
+                                        handleUpdate(def.id, { skip_weekends: checked })
+                                      }
+                                      disabled={!def.is_enabled}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs flex items-center gap-1">
+                                      <Globe className="h-3 w-3" /> Timezone
+                                    </Label>
+                                    <Select
+                                      value={def.timezone || "Europe/Bucharest"}
+                                      onValueChange={(v) => handleUpdate(def.id, { timezone: v })}
+                                      disabled={!def.is_enabled}
+                                    >
+                                      <SelectTrigger className="w-[200px] h-8 text-xs">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {TIMEZONE_OPTIONS.map((tz) => (
+                                          <SelectItem key={tz.value} value={tz.value}>
+                                            {tz.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Email cooldown */}
+                            <div className="space-y-2">
+                              <Label className="text-sm">Minimum hours between emails</Label>
+                              <div className="flex items-center gap-4">
+                                <Slider
+                                  value={[def.min_hours_between_emails ?? 20]}
+                                  min={1}
+                                  max={48}
+                                  step={1}
+                                  onValueCommit={(v) =>
+                                    handleUpdate(def.id, { min_hours_between_emails: v[0] })
+                                  }
+                                  className="flex-1 max-w-[150px]"
+                                  disabled={!def.is_enabled}
+                                />
+                                <span className="text-sm w-20">
+                                  {def.min_hours_between_emails ?? 20}h
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Prevents multiple emails on the same day for the same item
+                              </p>
+                            </div>
+
+                            {/* Digest mode */}
+                            <div className="flex items-center justify-between pt-2 border-t">
+                              <div>
+                                <Label className="text-sm">Daily digest mode</Label>
+                                <p className="text-xs text-muted-foreground">
+                                  Batch all items into one daily summary at 09:00
+                                </p>
+                              </div>
+                              <Switch
+                                checked={def.digest_mode ?? false}
+                                onCheckedChange={(checked) =>
+                                  handleUpdate(def.id, { digest_mode: checked })
+                                }
+                                disabled={!def.is_enabled}
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </AccordionContent>
                   </AccordionItem>
