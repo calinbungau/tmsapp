@@ -137,6 +137,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // The Toll4Europe / Shell file populates "Cantitate" with 1.00 even for
+    // toll rows (it represents a transaction count, not liters). Only treat
+    // it as liters when the resolved cost code is an actual fuel/AdBlue line
+    // (A1-001..A1-005 in the BNG catalog).
+    const resolvedCode = r.resolved.cost_code ?? provider.default_cost_code ?? null
+    const isFuelCode = typeof resolvedCode === "string" && /^A1-00[1-5]$/i.test(resolvedCode)
+    const liters = isFuelCode && m.liters_qty != null ? m.liters_qty : null
+
     toInsert.push({
       admin_id,
       provider_id,
@@ -144,7 +152,7 @@ export async function POST(req: NextRequest) {
       external_source: externalSource,
       source: "provider_import",
       status: needsReview && !auto_approve ? "pending_review" : needsReview ? "pending_review" : status,
-      cost_code: r.resolved.cost_code ?? provider.default_cost_code ?? null,
+      cost_code: resolvedCode,
       cost_catalog_id: r.resolved.cost_catalog_id ?? null,
       vehicle_id: r.resolved.vehicle_id,
       driver_id: r.resolved.driver_id,
@@ -162,7 +170,7 @@ export async function POST(req: NextRequest) {
       tax_amount: m.tax_amount ?? null,
       tax_rate: m.tax_rate ?? null,
       amount_eur: amountEur,
-      liters_qty: m.liters_qty ?? null,
+      liters_qty: liters,
       kwh_qty: m.kwh_qty ?? null,
       km_qty: m.km_qty ?? null,
       units_qty: m.units_qty ?? null,

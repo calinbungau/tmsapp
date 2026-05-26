@@ -255,7 +255,8 @@ export default function CostEntriesPage() {
         cost_catalog:cost_catalog(id, cost_code, cost_line, description),
         vehicle:vehicles(id, plate_number),
         driver:drivers(id, name),
-        trip:trips(id, reference_number)
+        trip:trips(id, reference_number),
+        cost_provider:cost_providers(id, name, code)
       `, { count: "exact" })
       .eq("admin_id", adminSession.id)
       .order("entry_date", { ascending: false });
@@ -292,7 +293,15 @@ export default function CostEntriesPage() {
         vat_rate: e.tax_rate ?? null,
         invoice_number: e.invoice_number ?? null,
         supplier_id: e.vendor_id ?? null,
-        supplier: e.vendor_name ? { id: e.vendor_id ?? "", name: e.vendor_name } : null,
+        // Prefer the cost provider (Shell, AGES, DKV, ...) over the merchant
+        // vendor name (Toll4Europe G…/Shell CZ…) — those merchant strings come
+        // from the supplier file and belong in `vendor_name`, not the
+        // Supplier column. Falls back to vendor_name for legacy/manual rows.
+        supplier: e.cost_provider
+          ? { id: e.cost_provider.id, name: e.cost_provider.name }
+          : e.vendor_name
+            ? { id: e.vendor_id ?? "", name: e.vendor_name }
+            : null,
         cost_catalog: e.cost_catalog
           ? {
               code: e.cost_catalog.cost_code,
