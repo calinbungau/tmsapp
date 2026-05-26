@@ -11,7 +11,7 @@ import {
   Menu, X, Search, ChevronDown, MessageSquare, Mail,
   Truck, Package, CalendarRange, BarChart3, Sparkles, Calculator, ArrowLeftRight,
   Satellite, Gauge, History, FolderKanban, BellRing, Wallet, Receipt, PiggyBank,
-  Target, LineChart, BookOpen,
+  Target, LineChart, BookOpen, AlertCircle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { AdminNotificationsBell } from "@/components/admin-notifications-bell";
@@ -49,6 +49,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [adminSession, setAdminSession] = useState<AdminSession | null>(null);
   const [documentAlerts, setDocumentAlerts] = useState(0);
   const [maintenanceAlerts, setMaintenanceAlerts] = useState(0);
+  const [actionCenterAlerts, setActionCenterAlerts] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
   const [emailUnread, setEmailUnread] = useState(0);
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
@@ -236,6 +237,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   setEmailUnread(emailData.count || 0);
   } catch {}
 
+  // Fetch action center stats
+  try {
+    const acParams = new URLSearchParams({ admin_id: adminSession.id });
+    if (adminSession.user_id) acParams.set("user_id", adminSession.user_id);
+    const acRes = await fetch(`/api/admin/action-center/stats?${acParams}`);
+    const acData = await acRes.json();
+    // Count critical + high severity items as "alerts"
+    const acCount = (acData.stats?.by_severity?.critical || 0) + (acData.stats?.by_severity?.high || 0);
+    setActionCenterAlerts(acCount);
+  } catch {}
+
   // Background email sync (fire-and-forget) so new emails appear in DB
   fetch("/api/email/sync", {
     method: "POST",
@@ -317,10 +329,36 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   )
   .subscribe();
 
+  // Realtime: update action center badge on item changes
+  const acChannel = supabase
+    .channel("action-center-badge")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "action_center_items",
+        filter: `admin_id=eq.${adminSession?.id}`,
+      },
+      async () => {
+        // Re-fetch action center stats
+        try {
+          const acParams = new URLSearchParams({ admin_id: adminSession.id });
+          if (adminSession.user_id) acParams.set("user_id", adminSession.user_id);
+          const acRes = await fetch(`/api/admin/action-center/stats?${acParams}`);
+          const acData = await acRes.json();
+          const acCount = (acData.stats?.by_severity?.critical || 0) + (acData.stats?.by_severity?.high || 0);
+          setActionCenterAlerts(acCount);
+        } catch {}
+      }
+    )
+    .subscribe();
+
   return () => {
   clearInterval(interval);
   supabase.removeChannel(chatChannel);
   supabase.removeChannel(emailChannel);
+  supabase.removeChannel(acChannel);
   };
   }, [adminSession?.id]);
 
@@ -349,6 +387,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       departments: "Departments", "business-partners": "Partners",
       notifications: "Notifications", new: "New", email: "Email",
       telematic: "Telematic", live: "Live", history: "History", groups: "Groups", notifications: "Notifications", reports: "Reports",
+      "action-center": "Action Center",
     };
     let path = "/admin";
     for (const seg of segments) {
@@ -427,6 +466,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { href: "/admin/finance/reports", label: "Reports", icon: BarChart3 },
       ],
     }] : []),
+    // Action Center - always visible for all users
+    { href: "/admin/action-center", label: "Action Center", icon: AlertCircle, badge: actionCenterAlerts },
     ...(isModuleEnabled("masterdata") && (canAccess("vehicles") || canAccess("drivers") || canAccess("employees") || hasFullAccess()) ? [{
       href: "/admin/drivers",
       label: "Master Data",
