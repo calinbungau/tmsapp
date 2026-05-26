@@ -149,6 +149,14 @@ export default function CostEntriesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  // New filters: provider (Shell/AGES/DKV…), vehicle, driver, trailer,
+  // counterparty (business partner / merchant), cost code.
+  const [providerFilter, setProviderFilter] = useState<string>("all");
+  const [vehicleFilter, setVehicleFilter] = useState<string>("all");
+  const [driverFilter, setDriverFilter] = useState<string>("all");
+  const [trailerFilter, setTrailerFilter] = useState<string>("all");
+  const [partnerFilter, setPartnerFilter] = useState<string>("all");
+  const [costCodeFilter, setCostCodeFilter] = useState<string>("all");
   
   // Form state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -167,6 +175,10 @@ export default function CostEntriesPage() {
   const [vehicles, setVehicles] = useState<{ id: string; plate_number: string }[]>([]);
   const [drivers, setDrivers] = useState<{ id: string; name: string }[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  const [trailers, setTrailers] = useState<{ id: string; plate_number: string }[]>([]);
+  const [providers, setProviders] = useState<
+    { id: string; name: string; code: string | null; last_import_at: string | null; last_import_status: string | null }[]
+  >([]);
   
   const { toast } = useToast();
 
@@ -200,7 +212,19 @@ export default function CostEntriesPage() {
   useEffect(() => {
     if (!adminSession?.id) return;
     fetchEntries();
-  }, [adminSession?.id, currentPage, statusFilter, dateFrom, dateTo]);
+  }, [
+    adminSession?.id,
+    currentPage,
+    statusFilter,
+    dateFrom,
+    dateTo,
+    providerFilter,
+    vehicleFilter,
+    driverFilter,
+    trailerFilter,
+    partnerFilter,
+    costCodeFilter,
+  ]);
 
   const fetchReferenceData = async () => {
     if (!adminSession?.id) return;
@@ -257,6 +281,27 @@ export default function CostEntriesPage() {
       .in("partner_type", ["supplier", "both"])
       .order("name");
     if (suppliersData) setSuppliers(suppliersData);
+
+    // Fetch trailers
+    const { data: trailersData } = await supabase
+      .from("trailers")
+      .select("id, plate_number")
+      .eq("admin_id", adminSession.id)
+      .eq("is_active", true)
+      .order("plate_number");
+    if (trailersData) setTrailers(trailersData);
+
+    // Fetch cost providers (Shell / AGES / DKV / …) so we can filter by
+    // the supplier file the cost was imported from. Also surfaces
+    // "last imported at / status" so the user knows the freshness of
+    // each provider's data without leaving the page.
+    const { data: providersData } = await supabase
+      .from("cost_providers")
+      .select("id, name, code, last_import_at, last_import_status")
+      .eq("admin_id", adminSession.id)
+      .eq("is_active", true)
+      .order("name");
+    if (providersData) setProviders(providersData);
   };
 
   const fetchEntries = useCallback(async () => {
@@ -281,6 +326,24 @@ export default function CostEntriesPage() {
     if (statusFilter !== "all") {
       query = query.eq("status", statusFilter);
     }
+    if (providerFilter !== "all") {
+      query = query.eq("provider_id", providerFilter);
+    }
+    if (vehicleFilter !== "all") {
+      query = query.eq("vehicle_id", vehicleFilter);
+    }
+    if (driverFilter !== "all") {
+      query = query.eq("driver_id", driverFilter);
+    }
+    if (trailerFilter !== "all") {
+      query = query.eq("trailer_id", trailerFilter);
+    }
+    if (partnerFilter !== "all") {
+      query = query.eq("vendor_id", partnerFilter);
+    }
+    if (costCodeFilter !== "all") {
+      query = query.eq("cost_code", costCodeFilter);
+    }
     if (dateFrom) {
       query = query.gte("entry_date", dateFrom);
     }
@@ -288,7 +351,9 @@ export default function CostEntriesPage() {
       query = query.lte("entry_date", dateTo);
     }
     if (searchQuery) {
-      query = query.or(`description.ilike.%${searchQuery}%,invoice_number.ilike.%${searchQuery}%,cost_code.ilike.%${searchQuery}%`);
+      query = query.or(
+        `description.ilike.%${searchQuery}%,invoice_number.ilike.%${searchQuery}%,cost_code.ilike.%${searchQuery}%,location_label.ilike.%${searchQuery}%,vendor_name.ilike.%${searchQuery}%,external_id.ilike.%${searchQuery}%`,
+      );
     }
 
     // Pagination
@@ -343,7 +408,20 @@ export default function CostEntriesPage() {
     }
 
     setLoading(false);
-  }, [adminSession?.id, currentPage, statusFilter, dateFrom, dateTo, searchQuery]);
+  }, [
+    adminSession?.id,
+    currentPage,
+    statusFilter,
+    dateFrom,
+    dateTo,
+    searchQuery,
+    providerFilter,
+    vehicleFilter,
+    driverFilter,
+    trailerFilter,
+    partnerFilter,
+    costCodeFilter,
+  ]);
 
   // Debounced search
   useEffect(() => {
@@ -561,7 +639,19 @@ export default function CostEntriesPage() {
   // Clear stale selection any time the visible page changes.
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [currentPage, statusFilter, dateFrom, dateTo, searchQuery]);
+  }, [
+    currentPage,
+    statusFilter,
+    dateFrom,
+    dateTo,
+    searchQuery,
+    providerFilter,
+    vehicleFilter,
+    driverFilter,
+    trailerFilter,
+    partnerFilter,
+    costCodeFilter,
+  ]);
 
   const toggleRow = (id: string) => {
     setSelectedIds((prev) => {
@@ -667,30 +757,17 @@ export default function CostEntriesPage() {
 
       {/* Filters */}
       <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="relative flex-1 min-w-[200px]">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[220px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search entries..."
+                placeholder="Search description, invoice, code, station, transaction id…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
               />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[160px]">
-                <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending_review">Pending Review</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-                <SelectItem value="posted">Posted</SelectItem>
-              </SelectContent>
-            </Select>
             <div className="flex items-center gap-2">
               <Input
                 type="date"
@@ -707,6 +784,187 @@ export default function CostEntriesPage() {
               />
             </div>
           </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[150px]">
+                <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="pending_review">Pending review</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="posted">Posted</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={providerFilter} onValueChange={setProviderFilter}>
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="Supplier (provider)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All suppliers</SelectItem>
+                {providers.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    <span className="flex items-center gap-2">
+                      <span className="truncate">{p.name}</span>
+                      {p.last_import_at && (
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                          · {new Date(p.last_import_at).toLocaleDateString("en-GB")}
+                        </span>
+                      )}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={vehicleFilter} onValueChange={setVehicleFilter}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder="Vehicle" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All vehicles</SelectItem>
+                {vehicles.map((v) => (
+                  <SelectItem key={v.id} value={v.id} className="font-mono text-xs">
+                    {v.plate_number}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={trailerFilter} onValueChange={setTrailerFilter}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder="Trailer" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All trailers</SelectItem>
+                {trailers.map((t) => (
+                  <SelectItem key={t.id} value={t.id} className="font-mono text-xs">
+                    {t.plate_number}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={driverFilter} onValueChange={setDriverFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Driver" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All drivers</SelectItem>
+                {drivers.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={partnerFilter} onValueChange={setPartnerFilter}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Counterparty" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All counterparties</SelectItem>
+                {suppliers.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={costCodeFilter} onValueChange={setCostCodeFilter}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Cost code" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All cost codes</SelectItem>
+                {costCatalog.map((c) => (
+                  <SelectItem key={c.id} value={c.code}>
+                    <span className="font-mono text-[11px] mr-2">{c.code}</span>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {(providerFilter !== "all" ||
+              vehicleFilter !== "all" ||
+              driverFilter !== "all" ||
+              trailerFilter !== "all" ||
+              partnerFilter !== "all" ||
+              costCodeFilter !== "all" ||
+              statusFilter !== "all" ||
+              dateFrom ||
+              dateTo ||
+              searchQuery) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8"
+                onClick={() => {
+                  setProviderFilter("all");
+                  setVehicleFilter("all");
+                  setDriverFilter("all");
+                  setTrailerFilter("all");
+                  setPartnerFilter("all");
+                  setCostCodeFilter("all");
+                  setStatusFilter("all");
+                  setDateFrom("");
+                  setDateTo("");
+                  setSearchQuery("");
+                }}
+              >
+                <X className="h-3.5 w-3.5 mr-1" />
+                Clear filters
+              </Button>
+            )}
+          </div>
+
+          {/* Per-provider freshness panel: tells the user when each
+              cost provider's data was last imported, so they know
+              whether to re-upload a file. */}
+          {providers.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground mr-1">
+                Last imports:
+              </span>
+              {providers.map((p) => {
+                const ok = p.last_import_status === "completed" || p.last_import_status === "ok";
+                const tone = !p.last_import_at
+                  ? "border-muted-foreground/30 text-muted-foreground"
+                  : ok
+                    ? "border-emerald-500/40 text-emerald-300 bg-emerald-500/10"
+                    : "border-amber-500/40 text-amber-300 bg-amber-500/10";
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setProviderFilter(p.id)}
+                    className={`text-[11px] px-2 py-0.5 rounded-md border ${tone} hover:opacity-80 transition`}
+                    title={
+                      p.last_import_at
+                        ? `Last import ${new Date(p.last_import_at).toLocaleString("en-GB")}${
+                            p.last_import_status ? ` (${p.last_import_status})` : ""
+                          }`
+                        : "Never imported"
+                    }
+                  >
+                    {p.name}
+                    <span className="ml-1.5 tabular-nums opacity-80">
+                      {p.last_import_at
+                        ? new Date(p.last_import_at).toLocaleDateString("en-GB")
+                        : "never"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1309,7 +1567,7 @@ function CostEntryDetailDialog({ entry, onClose, onEdit }: DetailDialogProps) {
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl w-[95vw] max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Receipt className="h-5 w-5" />
