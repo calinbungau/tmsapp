@@ -404,15 +404,15 @@ export default function ActionCenterSettingsPage() {
                         <div className="space-y-3">
                           <Label>Default Assignee Role</Label>
                           <Select
-                            value={def.default_assignee_role || ""}
-                            onValueChange={(v) => handleRoleChange(def, v)}
+                            value={def.default_assignee_role || "__none__"}
+                            onValueChange={(v) => handleRoleChange(def, v === "__none__" ? "" : v)}
                             disabled={!def.is_enabled}
                           >
                             <SelectTrigger className="w-[200px]">
                               <SelectValue placeholder="No default role" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">No default role</SelectItem>
+                              <SelectItem value="__none__">No default role</SelectItem>
                               {ROLE_OPTIONS.map((role) => (
                                 <SelectItem key={role.value} value={role.value}>
                                   {role.label}
