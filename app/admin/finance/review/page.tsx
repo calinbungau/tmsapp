@@ -41,8 +41,10 @@ import {
   AlertCircle,
   Sparkles,
   RefreshCw,
+  FileSpreadsheet,
 } from "lucide-react"
 import { CatalogPicker, type CatalogItem } from "@/components/finance/catalog-picker"
+import { CostImportDialog } from "@/components/finance/cost-import-dialog"
 
 interface PendingExpense {
   id: string
@@ -115,6 +117,8 @@ export default function ReviewQueuePage() {
   // by cost_catalog_id rather than the legacy free-text `category` enum so
   // the filter dropdown can mirror the picker used elsewhere in the app.
   const [filterItem, setFilterItem] = useState<CatalogItem | null>(null)
+  // Import-from-file dialog (supplier Excel/CSV imports)
+  const [showImport, setShowImport] = useState(false)
 
   /**
    * Resolve the calling admin's id from the localStorage session bag the
@@ -289,6 +293,15 @@ export default function ReviewQueuePage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setShowImport(true)}
+            className="gap-1.5"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Import from file
+          </Button>
           <Badge variant="outline" className="font-mono">
             {expenses.length} pending
           </Badge>
@@ -297,6 +310,13 @@ export default function ReviewQueuePage() {
           </Button>
         </div>
       </header>
+
+      <CostImportDialog
+        open={showImport}
+        onOpenChange={setShowImport}
+        adminId={getAdminId()}
+        onImported={fetchPending}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] flex-1 min-h-0 overflow-hidden">
         {/* LEFT: queue list */}

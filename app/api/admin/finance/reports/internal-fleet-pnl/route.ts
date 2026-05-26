@@ -472,21 +472,10 @@ export async function GET(req: NextRequest) {
     ceByTrip.set(e.trip_id, arr);
   }
 
-  // 9. trip_expenses
-  const { data: tExpenses } = await sb
-    .from("trip_expenses")
-    .select(
-      "id, trip_id, leg_id, order_id, amount_eur_excl_vat, amount_eur, category, occurred_at",
-    )
-    .in("trip_id", filteredTripIds);
-  const teArr = (tExpenses ?? []) as TripExpenseRow[];
-  const teByTrip = new Map<string, TripExpenseRow[]>();
-  for (const e of teArr) {
-    if (!e.trip_id) continue;
-    const arr = teByTrip.get(e.trip_id) || [];
-    arr.push(e);
-    teByTrip.set(e.trip_id, arr);
-  }
+  // 9. trip_expenses — REMOVED post-consolidation. cost_entries is now the
+  //    single source of truth for trip costs (driver/admin/AI/provider rows
+  //    were backfilled there and the legacy table is being retired).
+  const teByTrip = new Map<string, never[]>();
 
   // 10. Cost budgets (only when planned costs are requested)
   let budgets: BudgetRow[] = [];
@@ -605,21 +594,14 @@ export async function GET(req: NextRequest) {
       0,
     );
 
-    // Actual cost: prefer cost_entries (they include allocated recurring costs)
-    // and add trip_expenses on top — but cost_entries should already capture
-    // them. To avoid double-counting, sum cost_entries first; if none exist for
-    // the trip, fall back to trip_expenses.
+    // Actual cost: cost_entries is the single source of truth post-consolidation
+    // (it now includes the rows that used to live in trip_expenses).
     const ce = ceByTrip.get(t.id) ?? [];
-    const te = teByTrip.get(t.id) ?? [];
     const sumCe = ce.reduce(
       (s, e) => s + Number(e.amount_eur_excl_vat ?? e.amount_eur ?? 0),
       0,
     );
-    const sumTe = te.reduce(
-      (s, e) => s + Number(e.amount_eur_excl_vat ?? e.amount_eur ?? 0),
-      0,
-    );
-    const actual_cost_eur = sumCe > 0 ? sumCe : sumTe;
+    const actual_cost_eur = sumCe;
 
     // Cost breakdown taken from trip_pnl when available (already classified)
     const p = pnlMap.get(t.id);

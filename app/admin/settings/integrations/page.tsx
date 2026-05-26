@@ -14,8 +14,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Settings, Link2, CheckCircle2, XCircle, Loader2, Save, Plus, Trash2,
   Eye, EyeOff, RefreshCw, FileText, CreditCard, Building2, ExternalLink,
-  AlertTriangle, Check, ChevronRight,
+  AlertTriangle, Check, ChevronRight, FileSpreadsheet,
 } from "lucide-react";
+import { CostProvidersTab } from "@/components/finance/cost-providers-tab";
 
 interface BillingIntegration {
   id: string;
@@ -363,12 +364,20 @@ export default function IntegrationsPage() {
             <CreditCard className="h-4 w-4" />
             Billing
           </TabsTrigger>
+          <TabsTrigger value="cost-providers" className="text-xs md:text-sm gap-1.5">
+            <FileSpreadsheet className="h-4 w-4" />
+            Cost Providers
+          </TabsTrigger>
           <TabsTrigger value="other" className="text-xs md:text-sm gap-1.5" disabled>
             <Link2 className="h-4 w-4" />
             Other
             <Badge variant="outline" className="text-[9px] ml-1">Soon</Badge>
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="cost-providers" className="space-y-4">
+          <CostProvidersTab adminId={adminSession?.id ?? null} />
+        </TabsContent>
 
         <TabsContent value="billing" className="space-y-4">
           {/* Smartbill Card */}
@@ -437,7 +446,7 @@ export default function IntegrationsPage() {
                       type={showApiToken ? "text" : "password"}
                       value={formData.api_token}
                       onChange={(e) => setFormData({ ...formData, api_token: e.target.value })}
-                      placeholder={integration ? "••••••••••••" : "Your API token"}
+                      placeholder={integration ? "•••••••••••���" : "Your API token"}
                       className="h-9 text-sm pr-10"
                     />
                     <button

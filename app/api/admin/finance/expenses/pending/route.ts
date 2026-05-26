@@ -4,17 +4,12 @@ import { createClient as createServiceClient } from "@supabase/supabase-js"
 export const runtime = "nodejs"
 
 /**
- * Lists every trip_expense currently in `pending_review` for the calling
- * admin's trips. Used by the finance Review Queue page.
+ * Finance Review Queue — lists every cost_entries row currently in
+ * `pending_review` for the calling admin. Post-consolidation, the queue
+ * reads directly from cost_entries (legacy trip_expenses is being retired).
  *
- * Tenant isolation: trip_expenses has no admin_id column, so we must scope
- * via the parent trips.admin_id. This app uses a localStorage-based session
- * (admins.id stored as `admin_session.id` on the client) — there is no
- * Supabase Auth cookie to read on the server. The convention used by every
- * other admin write route (see /finance/seed-cost-catalog, /users, etc.)
- * is for the client to pass `admin_id` explicitly. We require it here and
- * fail closed (empty list) when it's missing so we never leak other
- * tenants' rows the way the previous unscoped service-role query did.
+ * Tenant isolation: cost_entries has its own admin_id column, so we no
+ * longer need the trip-id round-trip.
  */
 function serviceClient() {
   return createServiceClient(
@@ -27,41 +22,21 @@ function serviceClient() {
 export async function GET(req: NextRequest) {
   const adminId = req.nextUrl.searchParams.get("admin_id")
   if (!adminId) {
-    // Fail closed: unauthenticated callers must not see any rows.
     return NextResponse.json({ expenses: [], count: 0 }, { status: 200 })
   }
 
   const supabase = serviceClient()
 
-  // Step 1: find the trip ids owned by this admin. We use a separate query
-  // (rather than a !inner filter) because PostgREST embed filters silently
-  // return ALL rows when the join filter is malformed — exactly the bug
-  // that leaked other tenants' expenses into this queue.
-  const { data: trips, error: tripsErr } = await supabase
-    .from("trips")
-    .select("id")
-    .eq("admin_id", adminId)
-
-  if (tripsErr) {
-    console.log("[v0] /finance/expenses/pending trips lookup:", tripsErr.message)
-    return NextResponse.json({ error: tripsErr.message }, { status: 500 })
-  }
-  const tripIds = (trips ?? []).map((t) => t.id)
-  if (!tripIds.length) {
-    return NextResponse.json({ expenses: [], count: 0 })
-  }
-
-  // Step 2: fetch pending expenses ONLY for those trips.
   const { data, error } = await supabase
-    .from("trip_expenses")
-    .select(
-      `
+    .from("cost_entries")
+    .select(`
       id,
       trip_id,
-      leg_id,
+      trip_leg_id,
       category,
+      cost_code,
       cost_catalog_id,
-      vendor,
+      vendor_name,
       description,
       amount,
       currency,
@@ -73,13 +48,13 @@ export async function GET(req: NextRequest) {
       amount_eur_excl_vat,
       amount_eur_incl_vat,
       occurred_at,
-      country,
+      country_code,
       location_label,
       latitude,
       longitude,
       receipt_url,
-      quantity,
-      unit,
+      liters_qty,
+      units_qty,
       source,
       driver_id,
       recorded_by,
@@ -92,10 +67,9 @@ export async function GET(req: NextRequest) {
       ),
       trip:trip_id ( id, reference_number, vehicle_id, driver_id ),
       driver:driver_id ( id, name, email )
-      `,
-    )
+    `)
+    .eq("admin_id", adminId)
     .eq("status", "pending_review")
-    .in("trip_id", tripIds)
     .order("created_at", { ascending: false })
     .limit(200)
 
@@ -104,5 +78,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ expenses: data ?? [], count: data?.length ?? 0 })
+  // Reshape to the legacy field names the Review Queue UI expects.
+  const expenses = (data ?? []).map((r: any) => ({
+    ...r,
+    leg_id: r.trip_leg_id ?? null,
+    vendor: r.vendor_name ?? null,
+    country: r.country_code ?? null,
+    quantity: r.liters_qty ?? r.units_qty ?? null,
+    unit: r.liters_qty != null ? "L" : null,
+  }))
+
+  return NextResponse.json({ expenses, count: expenses.length })
 }

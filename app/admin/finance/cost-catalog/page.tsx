@@ -432,10 +432,12 @@ export default function CostCatalogPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleSeedDefaultCatalog} disabled={saving}>
-            <Upload className="h-4 w-4 mr-2" />
-            {saving ? "Loading..." : "Load Default Catalog"}
-          </Button>
+          {catalog.length === 0 && (
+            <Button variant="outline" onClick={handleSeedDefaultCatalog} disabled={saving}>
+              <Upload className="h-4 w-4 mr-2" />
+              {saving ? "Loading..." : "Load Default Catalog"}
+            </Button>
+          )}
           <Button onClick={() => openEditDialog()}>
             <Plus className="h-4 w-4 mr-2" />
             Add Cost Code

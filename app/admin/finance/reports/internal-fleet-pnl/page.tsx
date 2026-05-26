@@ -416,8 +416,8 @@ export default function InternalFleetPnLPage() {
               </h1>
               <p className="text-sm text-muted-foreground">
                 One row per trip. Revenue allocated to internal legs (customer
-                price minus subcontracted cost). Costs from cost_entries and
-                trip_expenses, EUR ex VAT.
+                price minus subcontracted cost). Costs from cost_entries
+                (driver, admin, supplier imports, AI), EUR ex VAT.
               </p>
             </div>
           </div>

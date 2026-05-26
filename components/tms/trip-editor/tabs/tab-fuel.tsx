@@ -14,6 +14,14 @@ interface FuelEntry {
   category: string;
   amount: number;
   currency: string;
+  // EUR-normalised total. Populated by:
+  //   - the trip_expense_apply_fx trigger (manual/AI rows)
+  //   - the /expenses GET shaping for cost_entries (supplier imports)
+  // We use this for KPIs so totals match the Trip P&L tab and the
+  // Internal Fleet P&L report exactly. The previous implementation used
+  // `amount * 0.2` as a fake FX which produced wildly wrong totals for
+  // RON/HUF/PLN fuel slips.
+  amount_eur: number | null;
   quantity: number | null;
   unit: string | null;
   vendor: string | null;
@@ -99,9 +107,13 @@ export function TabFuel({ tripId, trip, onChange }: TabFuelProps) {
 
   // Calculations
   const totalLiters = fuelEntries.reduce((sum, e) => sum + (e.quantity ?? 0), 0);
+  // Sum in EUR using the trigger-/server-supplied amount_eur. Fall back to
+  // the raw amount only when it's already EUR (so we don't silently double
+  // for legacy rows missing the FX value).
   const totalEur = fuelEntries.reduce((sum, e) => {
-    // Simple EUR assumption; real app would use FX
-    return sum + (e.currency === "EUR" ? e.amount : e.amount * 0.2);
+    if (e.amount_eur != null) return sum + Number(e.amount_eur);
+    if ((e.currency || "EUR") === "EUR") return sum + Number(e.amount || 0);
+    return sum; // Unknown FX — exclude rather than fabricate.
   }, 0);
   const distanceKm = trip.distance_km ?? 0;
   const actualConsumption = distanceKm > 0 && totalLiters > 0 ? (totalLiters / distanceKm) * 100 : null;
@@ -557,7 +569,21 @@ export function TabFuel({ tripId, trip, onChange }: TabFuelProps) {
                       AI {Math.round(entry.extraction_confidence)}%
                     </Badge>
                   )}
-                  {entry.status === "pending_review" ? (
+                  {/*
+                    Imported supplier fuel rows (Shell, OMV, \u2026) come back from the
+                    /expenses route with read_only = true and source = the provider
+                    code. They share the same Fuel tab so consumption math stays in
+                    one place, but they never expose approve / reject / delete \u2014
+                    the supplier file is the source of truth.
+                  */}
+                  {(entry as any).read_only ? (
+                    <Badge
+                      variant="outline"
+                      className="border-blue-500/50 bg-blue-500/10 text-[10px] uppercase tracking-wide text-blue-300"
+                    >
+                      {entry.source}
+                    </Badge>
+                  ) : entry.status === "pending_review" ? (
                     <>
                       <Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-400 hover:bg-emerald-500/20" onClick={() => handleApprove(entry.id)}>
                         <Check className="h-4 w-4" />
@@ -575,9 +601,11 @@ export function TabFuel({ tripId, trip, onChange }: TabFuelProps) {
                       {entry.status}
                     </Badge>
                   )}
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-red-400" onClick={() => handleDelete(entry.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {!(entry as any).read_only && (
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-red-400" onClick={() => handleDelete(entry.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </Card>
             );

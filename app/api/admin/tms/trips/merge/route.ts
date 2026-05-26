@@ -97,10 +97,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4) trip_expenses: re-parent (preserves receipts, AI badge, status, coords)
+    // 4) cost_entries: re-parent (preserves receipts, AI badge, status, coords).
+    //    Post-consolidation this is the single source of truth for trip costs;
+    //    legacy trip_expenses is being retired.
     {
       const { error } = await s
-        .from("trip_expenses")
+        .from("cost_entries")
         .update({ trip_id: primaryId })
         .in("trip_id", others)
       if (error) throw error
@@ -223,7 +225,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 9) Finally delete source trips. trip_legs are already gone; remaining FKs
-    //    (trip_orders/trip_stops/trip_expenses/trip_events) were re-parented above.
+    //    (trip_orders/trip_stops/cost_entries/trip_events) were re-parented above.
     const { error: delErr } = await s.from("trips").delete().in("id", others)
     if (delErr) throw delErr
 

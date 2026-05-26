@@ -120,7 +120,11 @@ interface TripRow {
   trip_legs: TripLeg[];
   trip_orders: TripOrderLink[];
   expenses_total: number;
-}
+  // Pre-computed totals from trip_pnl view (already in EUR).
+  _pnl_revenue_eur?: number;
+  _pnl_carrier_cost_eur?: number;
+  _pnl_expenses_eur?: number;
+  }
 
 // ─── Helpers ───────────────────────────────────────────────
 function fmtCurrency(amount: number | null | undefined, currency: string = "EUR") {
@@ -169,6 +173,11 @@ export default function TripsIndexPage() {
   const [dateRange, setDateRange] = useState<string>("30d"); // 7d / 30d / 90d / all
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [merging, setMerging] = useState(false);
+  // Pagination — applied client-side after the server-side filters (date /
+  // status / assignment) so the user keeps the snappy filter UX. Page is
+  // reset to 1 whenever filters change (effect below).
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [page, setPage] = useState<number>(1);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -233,29 +242,45 @@ export default function TripsIndexPage() {
       return;
     }
 
-    // Compute trip-scoped expenses by joining order_expenses on trip_orders.order_id
-    const allOrderIds = Array.from(
-      new Set((data || []).flatMap((t: any) => (t.trip_orders || []).map((to: any) => to.order_id))),
-    );
-    let expensesByOrder = new Map<string, number>();
-    if (allOrderIds.length > 0) {
-      const { data: expenses } = await s
-        .from("order_expenses")
-        .select("order_id, amount")
-        .in("order_id", allOrderIds);
-      (expenses || []).forEach((e: any) => {
-        expensesByOrder.set(e.order_id, (expensesByOrder.get(e.order_id) || 0) + Number(e.amount || 0));
+    // Trip-scoped costs come from the `trip_pnl` view, which is the single
+    // source of truth used by the Trip P&L tab and the Internal Fleet P&L
+    // report. Post-consolidation it aggregates cost_entries (driver receipts,
+    // admin entries, supplier imports like Shell/Cargobox/OMV, AI-extracted
+    // rows) and normalises every amount to EUR using fx_rates @ occurred_at.
+    // The previous implementation only looked at order_expenses, which excluded
+    // supplier imports entirely — a trip whose only cost was an imported
+    // Shell fuel slip showed cost = €0.
+    const tripIds = (data || []).map((t: any) => t.id);
+    let pnlByTrip = new Map<string, { revenue: number; carrier: number; expenses: number }>();
+    if (tripIds.length > 0) {
+      const { data: pnlRows } = await s
+        .from("trip_pnl")
+        .select("trip_id, revenue_amount, carrier_cost_amount, expenses_amount")
+        .in("trip_id", tripIds);
+      (pnlRows || []).forEach((p: any) => {
+        pnlByTrip.set(p.trip_id, {
+          revenue: Number(p.revenue_amount || 0),
+          carrier: Number(p.carrier_cost_amount || 0),
+          expenses: Number(p.expenses_amount || 0),
+        });
       });
     }
 
     const rows: TripRow[] = (data || []).map((t: any) => {
-      const expenses_total = (t.trip_orders || []).reduce(
-        (sum: number, to: any) => sum + (expensesByOrder.get(to.order_id) || 0),
-        0,
-      );
+      const pnl = pnlByTrip.get(t.id);
       // Sort stops
       const sortedStops = [...(t.trip_stops || [])].sort((a: any, b: any) => (a.sequence_order || 0) - (b.sequence_order || 0));
-      return { ...t, trip_stops: sortedStops, expenses_total };
+      return {
+        ...t,
+        trip_stops: sortedStops,
+        expenses_total: pnl?.expenses ?? 0,
+        // Stash the EUR-normalised totals so the row component doesn't have
+        // to reconstruct them. Currency is forced to EUR because trip_pnl
+        // already converted everything.
+        _pnl_revenue_eur: pnl?.revenue ?? 0,
+        _pnl_carrier_cost_eur: pnl?.carrier ?? 0,
+        _pnl_expenses_eur: pnl?.expenses ?? 0,
+      };
     });
 
     // Apply search filter on the client (covers trip ref, vehicle plate, driver name, carrier name, order refs)
@@ -290,11 +315,11 @@ export default function TripsIndexPage() {
     trips.forEach((t) => {
       if (["planned", "dispatched", "in_transit", "in_progress"].includes(t.status)) active++;
       totalKm += Number(t.distance_km || 0);
-      const rev = (t.trip_orders || []).reduce((sum, to) => sum + Number(to.order?.customer_price || 0), 0);
-      totalRevenue += rev;
-      const legCosts = (t.trip_legs || []).reduce((sum, l) => sum + Number(l.carrier_cost || 0), 0);
-      const cost = legCosts || Number(t.carrier_cost || 0);
-      totalCost += cost + Number(t.expenses_total || 0);
+      // Use the same EUR-normalised totals as tripFinancials so the KPI
+      // strip and the per-row Cost/Margin columns can never disagree.
+      const fin = tripFinancials(t);
+      totalRevenue += fin.revenue;
+      totalCost += fin.cost;
       ordersCount += (t.trip_orders || []).length;
     });
     const margin = totalRevenue - totalCost;
@@ -302,9 +327,22 @@ export default function TripsIndexPage() {
     return { total, active, totalKm, totalRevenue, totalCost, margin, marginPct, ordersCount };
   }, [trips]);
 
+  // ─── Pagination ────────────────────────────────────────────
+  // Reset to page 1 whenever the underlying list changes (filter/refresh).
+  useEffect(() => {
+    setPage(1);
+  }, [trips.length, search, statusFilter, assignmentFilter, dateRange]);
+  const pageCount = Math.max(1, Math.ceil(trips.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pageStart = (safePage - 1) * pageSize;
+  const pageEnd = Math.min(pageStart + pageSize, trips.length);
+  const visibleTrips = useMemo(
+    () => trips.slice(pageStart, pageEnd),
+    [trips, pageStart, pageEnd],
+  );
+
   // ─── Selection / merge eligibility ─────────────────────────
-  const selectedTrips = useMemo(
-    () => trips.filter((t) => selectedIds.has(t.id)),
+  const selectedTrips = useMemo(    () => trips.filter((t) => selectedIds.has(t.id)),
     [trips, selectedIds],
   );
   const mergeEligibility = useMemo(() => {
@@ -342,7 +380,7 @@ export default function TripsIndexPage() {
 
   // ─── Merge action ─────────────────────────────────────────
   // Delegates to /api/admin/tms/trips/merge which performs an atomic, RLS-safe
-  // re-parent of every dependent row (trip_orders, trip_stops, trip_expenses,
+  // re-parent of every dependent row (trip_orders, trip_stops, cost_entries,
   // trip_events, documents, orders.execution_trip_id) before deleting the
   // source trips. The previous client-side implementation hit cookie/anon
   // mismatches in nested PostgREST writes which left source trips orphaned.
@@ -561,7 +599,7 @@ export default function TripsIndexPage() {
           <>
             {/* Mobile cards */}
             <div className="md:hidden divide-y divide-border/30">
-              {trips.map((t) => (
+              {visibleTrips.map((t) => (
                 <TripCard
                   key={t.id}
                   trip={t}
@@ -580,13 +618,29 @@ export default function TripsIndexPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          if (selectedIds.size === trips.length) clearSelection();
-                          else setSelectedIds(new Set(trips.map((t) => t.id)));
+                          // Select-all operates on the current page only so
+                          // bulk actions stay predictable when the list is
+                          // paginated.
+                          const visibleIds = visibleTrips.map((t) => t.id);
+                          const allVisibleSelected = visibleIds.every((id) => selectedIds.has(id));
+                          if (allVisibleSelected) {
+                            const next = new Set(selectedIds);
+                            visibleIds.forEach((id) => next.delete(id));
+                            setSelectedIds(next);
+                          } else {
+                            const next = new Set(selectedIds);
+                            visibleIds.forEach((id) => next.add(id));
+                            setSelectedIds(next);
+                          }
                         }}
                         className="text-muted-foreground hover:text-foreground"
-                        title={selectedIds.size === trips.length ? "Clear selection" : "Select all"}
+                        title={
+                          visibleTrips.every((t) => selectedIds.has(t.id))
+                            ? "Clear page selection"
+                            : "Select all on page"
+                        }
                       >
-                        {selectedIds.size === trips.length && trips.length > 0 ? (
+                        {visibleTrips.length > 0 && visibleTrips.every((t) => selectedIds.has(t.id)) ? (
                           <CheckSquare className="h-3.5 w-3.5" />
                         ) : (
                           <Square className="h-3.5 w-3.5" />
@@ -607,7 +661,7 @@ export default function TripsIndexPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
-                  {trips.map((t) => (
+                  {visibleTrips.map((t) => (
                     <TripDesktopRow
                       key={t.id}
                       trip={t}
@@ -618,6 +672,81 @@ export default function TripsIndexPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination footer (shared across mobile + desktop). Hidden
+                when everything fits on one page so it stays out of the way
+                for tiny lists. */}
+            {trips.length > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-4 md:px-6 py-3 border-t border-border/30 bg-background/40 text-xs">
+                <div className="text-muted-foreground">
+                  Showing <span className="text-foreground font-medium">{pageStart + 1}</span>
+                  {"–"}
+                  <span className="text-foreground font-medium">{pageEnd}</span> of{" "}
+                  <span className="text-foreground font-medium">{trips.length}</span> round trips
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-muted-foreground">
+                    Rows per page
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        setPageSize(Number(e.target.value));
+                        setPage(1);
+                      }}
+                      className="bg-background border border-border/50 rounded px-1.5 py-1 text-xs text-foreground"
+                    >
+                      {[10, 25, 50, 100].map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2"
+                      disabled={safePage <= 1}
+                      onClick={() => setPage(1)}
+                    >
+                      ‹‹
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2"
+                      disabled={safePage <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      ‹
+                    </Button>
+                    <span className="px-2 text-muted-foreground">
+                      Page <span className="text-foreground font-medium">{safePage}</span> /{" "}
+                      {pageCount}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2"
+                      disabled={safePage >= pageCount}
+                      onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                    >
+                      ›
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2"
+                      disabled={safePage >= pageCount}
+                      onClick={() => setPage(pageCount)}
+                    >
+                      ››
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -728,17 +857,32 @@ function pickLastStop(stops: TripStop[]) {
 }
 
 function tripFinancials(trip: TripRow) {
-  const revenue = (trip.trip_orders || []).reduce(
-    (sum, to) => sum + Number(to.order?.customer_price || 0),
-    0,
-  );
+  // Always prefer the EUR-normalised totals from trip_pnl. They include
+  // supplier-imported cost_entries (fuel, tolls) and apply FX at occurred_at,
+  // matching what the Trip P&L tab and Internal Fleet P&L report show.
+  // Fall back to the raw trip/leg values only when trip_pnl returned nothing
+  // (e.g. legacy trips with no orders attached).
+  const revenue = trip._pnl_revenue_eur != null
+    ? trip._pnl_revenue_eur
+    : (trip.trip_orders || []).reduce(
+        (sum, to) => sum + Number(to.order?.customer_price || 0),
+        0,
+      );
   const legCosts = (trip.trip_legs || []).reduce((sum, l) => sum + Number(l.carrier_cost || 0), 0);
-  const carrierCost = legCosts || Number(trip.carrier_cost || 0);
-  const expenses = Number(trip.expenses_total || 0);
+  const carrierCost = trip._pnl_carrier_cost_eur != null
+    ? trip._pnl_carrier_cost_eur
+    : (legCosts || Number(trip.carrier_cost || 0));
+  const expenses = trip._pnl_expenses_eur != null
+    ? trip._pnl_expenses_eur
+    : Number(trip.expenses_total || 0);
   const cost = carrierCost + expenses;
   const margin = revenue - cost;
   const marginPct = revenue > 0 ? (margin / revenue) * 100 : 0;
-  const currency = trip.trip_orders?.[0]?.order?.customer_currency || trip.carrier_currency || "EUR";
+  // trip_pnl normalises everything to EUR, so when we sourced totals from it
+  // we display in EUR. Otherwise fall back to the trip's customer/carrier ccy.
+  const currency = trip._pnl_revenue_eur != null
+    ? "EUR"
+    : (trip.trip_orders?.[0]?.order?.customer_currency || trip.carrier_currency || "EUR");
   return { revenue, carrierCost, expenses, cost, margin, marginPct, currency };
 }
 
