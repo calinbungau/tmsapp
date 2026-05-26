@@ -109,9 +109,9 @@ interface CostEntry {
   receipt_url: string | null;
   status: string;
   source: string;
-  /** When the row was created from another table (e.g. trip_expenses), this names it. */
+  /** When the row was migrated from the legacy trip_expenses table, this names it. */
   external_source: string | null;
-  /** Total fuel volume in litres for fuel entries; populated by the trip_expenses sync. */
+  /** Total fuel volume in litres for fuel entries; populated on driver/admin trip-expense ingest. */
   liters_qty: number | null;
   /** Generic quantity (e.g. parcare hours, AdBlue litres). */
   units_qty: number | null;

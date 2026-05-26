@@ -186,8 +186,8 @@ export function TabExpenses({ tripId, trip, linkedOrders, onChange }: Props) {
 
     // Same payload for create + update; the server's whitelist drops anything
     // it doesn't recognize. amount_eur is intentionally excluded — the FX
-    // BEFORE-trigger on trip_expenses owns it on every UPDATE, and it then
-    // propagates to cost_entries via the existing forward sync trigger.
+    // BEFORE-trigger on cost_entries (the consolidated single source of truth)
+    // owns it on every INSERT/UPDATE using fx_rates @ occurred_at.
     const payload = {
       category: form.category,
       cost_catalog_id: form.cost_catalog_id,

@@ -244,10 +244,10 @@ export default function TripsIndexPage() {
 
     // Trip-scoped costs come from the `trip_pnl` view, which is the single
     // source of truth used by the Trip P&L tab and the Internal Fleet P&L
-    // report. It aggregates BOTH driver-entered trip_expenses AND
-    // supplier-imported cost_entries (Shell, Cargobox, OMV) and normalises
-    // every amount to EUR using fx_rates @ occurred_at. The previous
-    // implementation only looked at order_expenses, which excluded
+    // report. Post-consolidation it aggregates cost_entries (driver receipts,
+    // admin entries, supplier imports like Shell/Cargobox/OMV, AI-extracted
+    // rows) and normalises every amount to EUR using fx_rates @ occurred_at.
+    // The previous implementation only looked at order_expenses, which excluded
     // supplier imports entirely — a trip whose only cost was an imported
     // Shell fuel slip showed cost = €0.
     const tripIds = (data || []).map((t: any) => t.id);
@@ -380,7 +380,7 @@ export default function TripsIndexPage() {
 
   // ─── Merge action ─────────────────────────────────────────
   // Delegates to /api/admin/tms/trips/merge which performs an atomic, RLS-safe
-  // re-parent of every dependent row (trip_orders, trip_stops, trip_expenses,
+  // re-parent of every dependent row (trip_orders, trip_stops, cost_entries,
   // trip_events, documents, orders.execution_trip_id) before deleting the
   // source trips. The previous client-side implementation hit cookie/anon
   // mismatches in nested PostgREST writes which left source trips orphaned.
