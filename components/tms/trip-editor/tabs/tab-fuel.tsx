@@ -14,6 +14,14 @@ interface FuelEntry {
   category: string;
   amount: number;
   currency: string;
+  // EUR-normalised total. Populated by:
+  //   - the trip_expense_apply_fx trigger (manual/AI rows)
+  //   - the /expenses GET shaping for cost_entries (supplier imports)
+  // We use this for KPIs so totals match the Trip P&L tab and the
+  // Internal Fleet P&L report exactly. The previous implementation used
+  // `amount * 0.2` as a fake FX which produced wildly wrong totals for
+  // RON/HUF/PLN fuel slips.
+  amount_eur: number | null;
   quantity: number | null;
   unit: string | null;
   vendor: string | null;
@@ -99,9 +107,13 @@ export function TabFuel({ tripId, trip, onChange }: TabFuelProps) {
 
   // Calculations
   const totalLiters = fuelEntries.reduce((sum, e) => sum + (e.quantity ?? 0), 0);
+  // Sum in EUR using the trigger-/server-supplied amount_eur. Fall back to
+  // the raw amount only when it's already EUR (so we don't silently double
+  // for legacy rows missing the FX value).
   const totalEur = fuelEntries.reduce((sum, e) => {
-    // Simple EUR assumption; real app would use FX
-    return sum + (e.currency === "EUR" ? e.amount : e.amount * 0.2);
+    if (e.amount_eur != null) return sum + Number(e.amount_eur);
+    if ((e.currency || "EUR") === "EUR") return sum + Number(e.amount || 0);
+    return sum; // Unknown FX — exclude rather than fabricate.
   }, 0);
   const distanceKm = trip.distance_km ?? 0;
   const actualConsumption = distanceKm > 0 && totalLiters > 0 ? (totalLiters / distanceKm) * 100 : null;

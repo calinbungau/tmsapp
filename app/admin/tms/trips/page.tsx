@@ -120,7 +120,11 @@ interface TripRow {
   trip_legs: TripLeg[];
   trip_orders: TripOrderLink[];
   expenses_total: number;
-}
+  // Pre-computed totals from trip_pnl view (already in EUR).
+  _pnl_revenue_eur?: number;
+  _pnl_carrier_cost_eur?: number;
+  _pnl_expenses_eur?: number;
+  }
 
 // ─── Helpers ───────────────────────────────────────────────
 function fmtCurrency(amount: number | null | undefined, currency: string = "EUR") {
@@ -233,29 +237,45 @@ export default function TripsIndexPage() {
       return;
     }
 
-    // Compute trip-scoped expenses by joining order_expenses on trip_orders.order_id
-    const allOrderIds = Array.from(
-      new Set((data || []).flatMap((t: any) => (t.trip_orders || []).map((to: any) => to.order_id))),
-    );
-    let expensesByOrder = new Map<string, number>();
-    if (allOrderIds.length > 0) {
-      const { data: expenses } = await s
-        .from("order_expenses")
-        .select("order_id, amount")
-        .in("order_id", allOrderIds);
-      (expenses || []).forEach((e: any) => {
-        expensesByOrder.set(e.order_id, (expensesByOrder.get(e.order_id) || 0) + Number(e.amount || 0));
+    // Trip-scoped costs come from the `trip_pnl` view, which is the single
+    // source of truth used by the Trip P&L tab and the Internal Fleet P&L
+    // report. It aggregates BOTH driver-entered trip_expenses AND
+    // supplier-imported cost_entries (Shell, Cargobox, OMV) and normalises
+    // every amount to EUR using fx_rates @ occurred_at. The previous
+    // implementation only looked at order_expenses, which excluded
+    // supplier imports entirely — a trip whose only cost was an imported
+    // Shell fuel slip showed cost = €0.
+    const tripIds = (data || []).map((t: any) => t.id);
+    let pnlByTrip = new Map<string, { revenue: number; carrier: number; expenses: number }>();
+    if (tripIds.length > 0) {
+      const { data: pnlRows } = await s
+        .from("trip_pnl")
+        .select("trip_id, revenue_amount, carrier_cost_amount, expenses_amount")
+        .in("trip_id", tripIds);
+      (pnlRows || []).forEach((p: any) => {
+        pnlByTrip.set(p.trip_id, {
+          revenue: Number(p.revenue_amount || 0),
+          carrier: Number(p.carrier_cost_amount || 0),
+          expenses: Number(p.expenses_amount || 0),
+        });
       });
     }
 
     const rows: TripRow[] = (data || []).map((t: any) => {
-      const expenses_total = (t.trip_orders || []).reduce(
-        (sum: number, to: any) => sum + (expensesByOrder.get(to.order_id) || 0),
-        0,
-      );
+      const pnl = pnlByTrip.get(t.id);
       // Sort stops
       const sortedStops = [...(t.trip_stops || [])].sort((a: any, b: any) => (a.sequence_order || 0) - (b.sequence_order || 0));
-      return { ...t, trip_stops: sortedStops, expenses_total };
+      return {
+        ...t,
+        trip_stops: sortedStops,
+        expenses_total: pnl?.expenses ?? 0,
+        // Stash the EUR-normalised totals so the row component doesn't have
+        // to reconstruct them. Currency is forced to EUR because trip_pnl
+        // already converted everything.
+        _pnl_revenue_eur: pnl?.revenue ?? 0,
+        _pnl_carrier_cost_eur: pnl?.carrier ?? 0,
+        _pnl_expenses_eur: pnl?.expenses ?? 0,
+      };
     });
 
     // Apply search filter on the client (covers trip ref, vehicle plate, driver name, carrier name, order refs)
@@ -290,11 +310,11 @@ export default function TripsIndexPage() {
     trips.forEach((t) => {
       if (["planned", "dispatched", "in_transit", "in_progress"].includes(t.status)) active++;
       totalKm += Number(t.distance_km || 0);
-      const rev = (t.trip_orders || []).reduce((sum, to) => sum + Number(to.order?.customer_price || 0), 0);
-      totalRevenue += rev;
-      const legCosts = (t.trip_legs || []).reduce((sum, l) => sum + Number(l.carrier_cost || 0), 0);
-      const cost = legCosts || Number(t.carrier_cost || 0);
-      totalCost += cost + Number(t.expenses_total || 0);
+      // Use the same EUR-normalised totals as tripFinancials so the KPI
+      // strip and the per-row Cost/Margin columns can never disagree.
+      const fin = tripFinancials(t);
+      totalRevenue += fin.revenue;
+      totalCost += fin.cost;
       ordersCount += (t.trip_orders || []).length;
     });
     const margin = totalRevenue - totalCost;
@@ -728,17 +748,32 @@ function pickLastStop(stops: TripStop[]) {
 }
 
 function tripFinancials(trip: TripRow) {
-  const revenue = (trip.trip_orders || []).reduce(
-    (sum, to) => sum + Number(to.order?.customer_price || 0),
-    0,
-  );
+  // Always prefer the EUR-normalised totals from trip_pnl. They include
+  // supplier-imported cost_entries (fuel, tolls) and apply FX at occurred_at,
+  // matching what the Trip P&L tab and Internal Fleet P&L report show.
+  // Fall back to the raw trip/leg values only when trip_pnl returned nothing
+  // (e.g. legacy trips with no orders attached).
+  const revenue = trip._pnl_revenue_eur != null
+    ? trip._pnl_revenue_eur
+    : (trip.trip_orders || []).reduce(
+        (sum, to) => sum + Number(to.order?.customer_price || 0),
+        0,
+      );
   const legCosts = (trip.trip_legs || []).reduce((sum, l) => sum + Number(l.carrier_cost || 0), 0);
-  const carrierCost = legCosts || Number(trip.carrier_cost || 0);
-  const expenses = Number(trip.expenses_total || 0);
+  const carrierCost = trip._pnl_carrier_cost_eur != null
+    ? trip._pnl_carrier_cost_eur
+    : (legCosts || Number(trip.carrier_cost || 0));
+  const expenses = trip._pnl_expenses_eur != null
+    ? trip._pnl_expenses_eur
+    : Number(trip.expenses_total || 0);
   const cost = carrierCost + expenses;
   const margin = revenue - cost;
   const marginPct = revenue > 0 ? (margin / revenue) * 100 : 0;
-  const currency = trip.trip_orders?.[0]?.order?.customer_currency || trip.carrier_currency || "EUR";
+  // trip_pnl normalises everything to EUR, so when we sourced totals from it
+  // we display in EUR. Otherwise fall back to the trip's customer/carrier ccy.
+  const currency = trip._pnl_revenue_eur != null
+    ? "EUR"
+    : (trip.trip_orders?.[0]?.order?.customer_currency || trip.carrier_currency || "EUR");
   return { revenue, carrierCost, expenses, cost, margin, marginPct, currency };
 }
 
