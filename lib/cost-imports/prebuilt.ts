@@ -220,10 +220,8 @@ export const PREBUILT_TEMPLATES: PrebuiltTemplate[] = [
       { external_name: "ADBLUE", cost_code: "A1-002" },
       { external_name: "LNG", cost_code: "A1-003" },
       { external_name: "CNG", cost_code: "A1-003" },
-      { external_name: "VIGNETTE", cost_code: "A1-016", match_field: "country_code", match_pattern: "^RO$" },
-      { external_name: "VIGNETTE", cost_code: "A1-012", match_field: "country_code", match_pattern: "^HU$" },
-      { external_name: "VIGNETTE", cost_code: "A1-011", match_field: "country_code", match_pattern: "^AT$" },
-      { external_name: "VIGNETTE", cost_code: "A1-017" },
+      // Vignettes have a dedicated catalog code (A1-022).
+      { external_name: "VIGNETTE", cost_code: "A1-022" },
       // "ROAD TOLL\t BRIGDE\t TUNNEL (VAT)" — match by substring "ROAD TOLL".
       { external_name: "ROAD TOLL", cost_code: "A1-010", match_field: "country_code", match_pattern: "^DE$" },
       { external_name: "ROAD TOLL", cost_code: "A1-011", match_field: "country_code", match_pattern: "^AT$" },
@@ -232,16 +230,14 @@ export const PREBUILT_TEMPLATES: PrebuiltTemplate[] = [
       { external_name: "ROAD TOLL", cost_code: "A1-014", match_field: "country_code", match_pattern: "^CZ$" },
       { external_name: "ROAD TOLL", cost_code: "A1-015", match_field: "country_code", match_pattern: "^SK$" },
       { external_name: "ROAD TOLL", cost_code: "A1-016", match_field: "country_code", match_pattern: "^RO$" },
+      // Italy / Slovenia / others fall back to "Other tolls" (A1-017).
       { external_name: "ROAD TOLL", cost_code: "A1-017" },
-      // Ancillary card / service fees go to "Other service fees".
-      { external_name: "OTHER SITE SERVICES", cost_code: "A1-040" },
-      { external_name: "OTHER LUBRICANTS PRODUCTS", cost_code: "A1-041" },
-      { external_name: "OTHER LUBRICANTS PRO", cost_code: "A1-041" },
+      // Ancillary site services route to the available service codes.
       { external_name: "CARWASH", cost_code: "A1-031" },
       { external_name: "PARKING", cost_code: "A1-030" },
     ],
     notes:
-      "Matches the OMV Petrom / Routex Romanian export. Local-currency gross is derived from Valoare SC + TVA. Tolls and vignettes route per-country (RO→A1-016, HU→A1-012, AT→A1-011…).",
+      "Matches the OMV Petrom / Routex Romanian export. Local-currency gross is derived from Valoare SC + TVA. Tolls route per-country (RO→A1-016, HU→A1-012, AT→A1-011…), vignettes go to A1-022. Italy/Slovenia and any other country fall back to A1-017.",
   },
   {
     code: "CARGOBOX",
@@ -266,43 +262,31 @@ export const PREBUILT_TEMPLATES: PrebuiltTemplate[] = [
         amount_incl_vat: { column: "Valoare Bruta", transform: "european_number" },
         amount_excl_vat: { column: "Valoare", transform: "european_number" },
         tax_amount: { column: "TVA", transform: "european_number" },
-        // "Tip serviciu" is DSRC / GNSS / CHARGE — used by mapping rules.
-        product_code: "Tip serviciu",
+        // Every Cargobox row is a toll — hard-code the Product label so the
+        // import preview and ledger always show "Toll" instead of the
+        // underlying technology code (DSRC / GNSS / CHARGE). The original
+        // Tip serviciu value is preserved in `notes` for traceability.
+        product_code: { literal: "Toll" },
+        notes: { column: "Tip serviciu" },
         // The route segment ("ROVIGO SUD - VILLAMARZANA") is the most useful
-        // human label; fall back is in the resolver.
+        // human label for the station column.
         location_label: "Descrierea traseului",
-        notes: "Descriere serviciu",
       } as MappingTemplate["fields"],
     },
     rules: [
-      // All Cargobox rows are tolls — route per country using "Tip serviciu"
-      // as the trigger (DSRC = barrier-based, GNSS = satellite, CHARGE =
-      // monthly EETS service charge).
-      { external_name: "DSRC", cost_code: "A1-010", match_field: "country_code", match_pattern: "^DE$" },
-      { external_name: "DSRC", cost_code: "A1-011", match_field: "country_code", match_pattern: "^AT$" },
-      { external_name: "DSRC", cost_code: "A1-012", match_field: "country_code", match_pattern: "^HU$" },
-      { external_name: "DSRC", cost_code: "A1-013", match_field: "country_code", match_pattern: "^PL$" },
-      { external_name: "DSRC", cost_code: "A1-014", match_field: "country_code", match_pattern: "^CZ$" },
-      { external_name: "DSRC", cost_code: "A1-015", match_field: "country_code", match_pattern: "^SK$" },
-      { external_name: "DSRC", cost_code: "A1-016", match_field: "country_code", match_pattern: "^RO$" },
-      { external_name: "DSRC", cost_code: "A1-018", match_field: "country_code", match_pattern: "^IT$" },
-      { external_name: "DSRC", cost_code: "A1-019", match_field: "country_code", match_pattern: "^SI$" },
-      { external_name: "DSRC", cost_code: "A1-017" },
-      { external_name: "GNSS", cost_code: "A1-010", match_field: "country_code", match_pattern: "^DE$" },
-      { external_name: "GNSS", cost_code: "A1-011", match_field: "country_code", match_pattern: "^AT$" },
-      { external_name: "GNSS", cost_code: "A1-012", match_field: "country_code", match_pattern: "^HU$" },
-      { external_name: "GNSS", cost_code: "A1-013", match_field: "country_code", match_pattern: "^PL$" },
-      { external_name: "GNSS", cost_code: "A1-014", match_field: "country_code", match_pattern: "^CZ$" },
-      { external_name: "GNSS", cost_code: "A1-015", match_field: "country_code", match_pattern: "^SK$" },
-      { external_name: "GNSS", cost_code: "A1-016", match_field: "country_code", match_pattern: "^RO$" },
-      { external_name: "GNSS", cost_code: "A1-018", match_field: "country_code", match_pattern: "^IT$" },
-      { external_name: "GNSS", cost_code: "A1-019", match_field: "country_code", match_pattern: "^SI$" },
-      { external_name: "GNSS", cost_code: "A1-017" },
-      // CHARGE rows are the monthly EETS service fee — book under fees.
-      { external_name: "CHARGE", cost_code: "A1-040" },
+      // Single product label "Toll" with country-driven cost code routing.
+      { external_name: "Toll", cost_code: "A1-010", match_field: "country_code", match_pattern: "^DE$" },
+      { external_name: "Toll", cost_code: "A1-011", match_field: "country_code", match_pattern: "^AT$" },
+      { external_name: "Toll", cost_code: "A1-012", match_field: "country_code", match_pattern: "^HU$" },
+      { external_name: "Toll", cost_code: "A1-013", match_field: "country_code", match_pattern: "^PL$" },
+      { external_name: "Toll", cost_code: "A1-014", match_field: "country_code", match_pattern: "^CZ$" },
+      { external_name: "Toll", cost_code: "A1-015", match_field: "country_code", match_pattern: "^SK$" },
+      { external_name: "Toll", cost_code: "A1-016", match_field: "country_code", match_pattern: "^RO$" },
+      // Italy, Slovenia and any other country fall back to "Other tolls".
+      { external_name: "Toll", cost_code: "A1-017" },
     ],
     notes:
-      "Matches the Cargobox EETS toll export. Cost code is resolved by country (Domeniu Taxabil): DE→A1-010, AT→A1-011, HU→A1-012, IT→A1-018, SI→A1-019…  Monthly CHARGE rows (the EETS service fee) are booked under A1-040.",
+      "Matches the Cargobox EETS toll export. Every row is mapped to product 'Toll' regardless of underlying DSRC/GNSS/CHARGE technology, then routed by country (DE→A1-010, AT→A1-011, HU→A1-012, CZ→A1-014, RO→A1-016…). Italy, Slovenia and any other country use A1-017 (Other tolls).",
   },
 ]
 

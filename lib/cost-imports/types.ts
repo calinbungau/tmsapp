@@ -102,9 +102,17 @@ export interface MappingTemplate {
 }
 
 export interface MappingFieldConfig {
-  column: string
+  /** Source column header in the file. Optional when `literal` is set. */
+  column?: string
   /** Optional transform applied to the raw cell value. */
   transform?: ValueTransform
+  /**
+   * Constant value to use when no column is present (or the column cell
+   * is empty). Useful for suppliers whose files don't carry a column we
+   * still want set on every row — e.g. Cargobox where every row is a
+   * "Toll" so we want product_code = "Toll" regardless of Tip serviciu.
+   */
+  literal?: string
 }
 
 export type ValueTransform =

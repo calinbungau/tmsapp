@@ -92,10 +92,22 @@ export function applyTemplate(
     for (const [targetKey, conf] of Object.entries(fields)) {
       if (!conf) continue
       const cfg: MappingFieldConfig = typeof conf === "string" ? { column: conf } : conf
-      if (!cfg.column) continue
-      const cell = raw[cfg.column]
       const target = targetKey as TargetField
-      mapped[target] = transformValue(cell, cfg.transform, target)
+      // Literal-only mapping (no column): always emit the constant.
+      if (!cfg.column) {
+        if (cfg.literal != null) mapped[target] = cfg.literal
+        continue
+      }
+      const cell = raw[cfg.column]
+      const transformed = transformValue(cell, cfg.transform, target)
+      // If the file cell is empty but a literal fallback is provided,
+      // use the literal so providers like Cargobox can guarantee a
+      // value (e.g. product_code = "Toll") even when the column is
+      // sparse.
+      mapped[target] =
+        (transformed == null || transformed === "") && cfg.literal != null
+          ? cfg.literal
+          : transformed
     }
 
     // --- 2. Resolve cost code via mapping rules.
