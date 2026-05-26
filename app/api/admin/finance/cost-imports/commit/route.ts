@@ -176,22 +176,54 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // Insert in chunks. We use upsert with onConflict on the partial unique
-  // index (admin_id, external_source, external_id) so re-running the same
-  // import never produces duplicate cost_entries — the row is silently
-  // skipped instead of failing the whole chunk.
+  // Pre-filter duplicates against the partial unique index
+  // (admin_id, external_source, external_id) — we can't use ON CONFLICT
+  // because PostgREST can't infer a partial unique index, so we query
+  // existing external_ids first and drop them from the insert payload.
+  // Rows without an external_id can never be deduped this way (manual /
+  // recurring costs are allowed to repeat), so they always pass through.
+  const externalIds = Array.from(
+    new Set(toInsert.map((r) => r.external_id).filter((v): v is string => typeof v === "string" && v.length > 0)),
+  )
+  let preexistingIds = new Set<string>()
+  if (externalIds.length > 0) {
+    // Chunk the IN list to stay under URL/length limits.
+    const ID_CHUNK = 500
+    for (let i = 0; i < externalIds.length; i += ID_CHUNK) {
+      const idsSlice = externalIds.slice(i, i + ID_CHUNK)
+      const { data: existing, error: dupErr } = await supabase
+        .from("cost_entries")
+        .select("external_id")
+        .eq("admin_id", admin_id)
+        .eq("external_source", externalSource)
+        .in("external_id", idsSlice)
+      if (dupErr) {
+        // Don't fail the import on a dedup-lookup hiccup — just log and proceed.
+        console.log("[v0] dedup lookup failed:", dupErr.message)
+        continue
+      }
+      for (const row of existing ?? []) {
+        if (row.external_id) preexistingIds.add(row.external_id as string)
+      }
+    }
+  }
+
+  let dbDuplicates = 0
+  const filteredInsert = toInsert.filter((r) => {
+    if (typeof r.external_id === "string" && preexistingIds.has(r.external_id)) {
+      dbDuplicates++
+      return false
+    }
+    return true
+  })
+
+  // Plain INSERT in chunks now that duplicates are removed up-front.
   let inserted = 0
   const errors: string[] = []
   const CHUNK = 200
-  for (let i = 0; i < toInsert.length; i += CHUNK) {
-    const slice = toInsert.slice(i, i + CHUNK)
-    const { data, error } = await supabase
-      .from("cost_entries")
-      .upsert(slice, {
-        onConflict: "admin_id,external_source,external_id",
-        ignoreDuplicates: true,
-      })
-      .select("id")
+  for (let i = 0; i < filteredInsert.length; i += CHUNK) {
+    const slice = filteredInsert.slice(i, i + CHUNK)
+    const { data, error } = await supabase.from("cost_entries").insert(slice).select("id")
     if (error) {
       errors.push(error.message)
     } else {
@@ -326,8 +358,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     import_id: importId,
     inserted,
-    skipped: skipped.length,
-    duplicates: skipped.filter((s) => s.reason === "duplicate").length,
+    skipped: skipped.length + dbDuplicates,
+    duplicates: skipped.filter((s) => s.reason === "duplicate").length + dbDuplicates,
     errors,
     status: finalStatus,
     geocoded: geocodedCount,
