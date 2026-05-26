@@ -46,7 +46,10 @@ import {
   EyeOff,
   FileWarning,
   Filter,
+  History,
   Inbox,
+  Loader2,
+  Mail,
   MoreVertical,
   Package,
   Receipt,
@@ -55,6 +58,7 @@ import {
   Search,
   Settings,
   ShieldAlert,
+  Smartphone,
   Truck,
   User,
   Wrench,
@@ -118,6 +122,39 @@ export default function ActionCenterPage() {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [snoozeDialogOpen, setSnoozeDialogOpen] = useState(false);
   const [snoozeTarget, setSnoozeTarget] = useState<string | "bulk" | null>(null);
+
+  // Per-item history viewer ("Notification log").
+  // The detail endpoint at /api/admin/action-center/items/[itemId]
+  // returns the item plus its event history (created, snoozed,
+  // dismissed, notification.sent, notification.failed, etc.) — we
+  // surface that as a timeline so admins can answer "did the email
+  // actually go out, and to whom?" without reading server logs.
+  const [historyItem, setHistoryItem] = useState<ActionCenterItem | null>(null);
+  const [historyEvents, setHistoryEvents] = useState<any[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const openHistory = useCallback(
+    async (item: ActionCenterItem) => {
+      if (!adminSession?.id) return;
+      setHistoryItem(item);
+      setHistoryEvents(null);
+      setHistoryLoading(true);
+      try {
+        const res = await fetch(
+          `/api/admin/action-center/items/${item.id}?admin_id=${adminSession.id}`,
+          { cache: "no-store" }
+        );
+        const data = await res.json();
+        setHistoryEvents(Array.isArray(data.events) ? data.events : []);
+      } catch (err) {
+        console.error("[ActionCenter] failed to load history", err);
+        setHistoryEvents([]);
+      } finally {
+        setHistoryLoading(false);
+      }
+    },
+    [adminSession?.id]
+  );
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -579,6 +616,7 @@ export default function ActionCenterPage() {
                         setSnoozeTarget(item.id);
                         setSnoozeDialogOpen(true);
                       }}
+                      onHistory={() => openHistory(item)}
                     />
                   ))}
 
@@ -709,8 +747,159 @@ export default function ActionCenterPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* History / Notification Log Dialog */}
+      <Dialog open={!!historyItem} onOpenChange={(open) => !open && setHistoryItem(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Activity & notification log
+            </DialogTitle>
+            <DialogDescription>
+              {historyItem?.title}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto pr-1">
+            {historyLoading ? (
+              <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Loading history...
+              </div>
+            ) : !historyEvents || historyEvents.length === 0 ? (
+              <div className="text-center py-12 text-sm text-muted-foreground">
+                No history yet for this item.
+              </div>
+            ) : (
+              <ol className="relative border-l border-border ml-3 space-y-5 py-2">
+                {historyEvents.map((ev) => (
+                  <HistoryEventRow key={ev.id} event={ev} />
+                ))}
+              </ol>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+interface HistoryEventRowProps {
+  event: any;
+}
+
+/**
+ * Render a single timeline entry. We pick an icon + tone based on
+ * the `event_type` so the eye can scan a long list quickly:
+ *   - notification.sent  -> green check (delivered)
+ *   - notification.failed -> red x (something broke)
+ *   - notification.skipped -> muted (intentional no-op, e.g. duplicate)
+ *   - state changes (snoozed, dismissed, completed, reassigned, escalated)
+ *   - generic 'created'/'updated' fallback
+ */
+function HistoryEventRow({ event }: HistoryEventRowProps) {
+  const ts = event.created_at ? new Date(event.created_at) : null;
+  const tsLabel = ts
+    ? `${ts.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })} (${formatDistanceToNow(ts, { addSuffix: true })})`
+    : "";
+
+  const visual = visualForEvent(event);
+
+  const channelBadge =
+    event.channel && event.channel !== "in_app" ? (
+      <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+        {event.channel === "email" ? <Mail className="h-3 w-3 mr-1" /> : null}
+        {event.channel === "push" ? <Smartphone className="h-3 w-3 mr-1" /> : null}
+        {event.channel}
+      </Badge>
+    ) : null;
+
+  return (
+    <li className="ml-6">
+      <span
+        className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full border ${visual.bg} ${visual.border}`}
+      >
+        <visual.icon className={`h-3.5 w-3.5 ${visual.fg}`} />
+      </span>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-medium text-sm">{visual.title}</span>
+        {channelBadge}
+        {event.recipient ? (
+          <span className="text-xs text-muted-foreground">→ {event.recipient}</span>
+        ) : null}
+      </div>
+      {event.message ? (
+        <p className="mt-0.5 text-sm text-muted-foreground">{event.message}</p>
+      ) : null}
+      {event.error ? (
+        <p className="mt-0.5 text-xs text-red-500">{event.error}</p>
+      ) : null}
+      <p className="mt-1 text-[11px] text-muted-foreground">{tsLabel}</p>
+    </li>
+  );
+}
+
+interface EventVisual {
+  icon: typeof Bell;
+  title: string;
+  fg: string;
+  bg: string;
+  border: string;
+}
+
+function visualForEvent(ev: any): EventVisual {
+  const t = String(ev.event_type || "");
+  const status = String(ev.status || "");
+
+  if (t === "notification.sent") {
+    return {
+      icon: Check,
+      title: ev.channel === "email" ? "Email sent" : ev.channel === "in_app" ? "Surfaced in inbox" : "Notification sent",
+      fg: "text-green-500",
+      bg: "bg-green-500/10",
+      border: "border-green-500/30",
+    };
+  }
+  if (t === "notification.failed" || status === "error") {
+    return {
+      icon: XCircle,
+      title: "Notification failed",
+      fg: "text-red-500",
+      bg: "bg-red-500/10",
+      border: "border-red-500/30",
+    };
+  }
+  if (t === "notification.skipped") {
+    return {
+      icon: EyeOff,
+      title: "Notification skipped",
+      fg: "text-muted-foreground",
+      bg: "bg-muted",
+      border: "border-border",
+    };
+  }
+  if (t === "snoozed") {
+    return { icon: Clock, title: "Snoozed", fg: "text-yellow-500", bg: "bg-yellow-500/10", border: "border-yellow-500/30" };
+  }
+  if (t === "dismissed") {
+    return { icon: XCircle, title: "Dismissed", fg: "text-muted-foreground", bg: "bg-muted", border: "border-border" };
+  }
+  if (t === "completed") {
+    return { icon: CheckCircle2, title: "Marked done", fg: "text-green-500", bg: "bg-green-500/10", border: "border-green-500/30" };
+  }
+  if (t === "reopened") {
+    return { icon: Eye, title: "Reopened", fg: "text-blue-500", bg: "bg-blue-500/10", border: "border-blue-500/30" };
+  }
+  if (t === "reassigned") {
+    return { icon: User, title: "Reassigned", fg: "text-blue-500", bg: "bg-blue-500/10", border: "border-blue-500/30" };
+  }
+  if (t === "escalated") {
+    return { icon: AlertTriangle, title: "Escalated", fg: "text-orange-500", bg: "bg-orange-500/10", border: "border-orange-500/30" };
+  }
+  if (t === "created") {
+    return { icon: Bell, title: "Detected", fg: "text-blue-500", bg: "bg-blue-500/10", border: "border-blue-500/30" };
+  }
+  return { icon: History, title: t || "Event", fg: "text-muted-foreground", bg: "bg-muted", border: "border-border" };
 }
 
 interface ActionCenterItemRowProps {
@@ -719,9 +908,10 @@ interface ActionCenterItemRowProps {
   onSelect: () => void;
   onAction: (action: string, extra?: Record<string, any>) => void;
   onSnooze: () => void;
+  onHistory: () => void;
 }
 
-function ActionCenterItemRow({ item, selected, onSelect, onAction, onSnooze }: ActionCenterItemRowProps) {
+function ActionCenterItemRow({ item, selected, onSelect, onAction, onSnooze, onHistory }: ActionCenterItemRowProps) {
   const config = SEVERITY_CONFIG[item.severity];
   const categoryConfig = CATEGORY_CONFIG[item.category];
   const CategoryIcon = categoryConfig?.icon || Package;
@@ -786,6 +976,11 @@ function ActionCenterItemRow({ item, selected, onSelect, onAction, onSnooze }: A
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onHistory}>
+              <History className="h-4 w-4 mr-2" />
+              View history
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onSnooze}>
               <Clock className="h-4 w-4 mr-2" />
               Snooze
