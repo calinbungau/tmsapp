@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Shield, Check, HardDrive, Users, Car, FileText, Building, Building2, MapPin, Loader2, ChevronRight, UserCog, FolderTree, ArrowLeftRight, Mail, Link2 } from "lucide-react";
+import { Shield, Check, HardDrive, Users, Car, FileText, Building, Building2, MapPin, Loader2, ChevronRight, UserCog, FolderTree, ArrowLeftRight, Mail, Link2, Bell } from "lucide-react";
 import { useAdminSession } from "@/hooks/use-admin-session";
 import Link from "next/link";
 
@@ -386,6 +386,24 @@ export default function AdminSettingsPage() {
                     <div>
                       <h3 className="font-medium">System Email</h3>
                       <p className="text-sm text-muted-foreground">SMTP for reports, alerts & notifications</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/settings/action-center">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
+                      <Bell className="h-5 w-5 text-orange-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium">Action Center</h3>
+                      <p className="text-sm text-muted-foreground">Alert rules, reminder schedules & escalation</p>
                     </div>
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
