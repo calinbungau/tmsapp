@@ -20,6 +20,41 @@ function serviceClient() {
   )
 }
 
+/**
+ * Map a BNG cost catalog code to the categorical bucket the trip editor
+ * tabs filter on (fuel / toll / parking / wash / ad_blue / other).
+ *
+ * The trip editor's Fuel and Expenses tabs filter trip_expenses.category,
+ * but supplier-imported rows in cost_entries only carry cost_code. To make
+ * an imported Shell row appear under "Fuel" and a Cargobox toll under
+ * "Toll" without a separate UI, we derive category from cost_code here.
+ *
+ * Mapping reflects the live cost_catalog descriptions:
+ *   A1-001  Diesel motorin\u0103         \u2192 fuel
+ *   A1-002  AdBlue                       \u2192 ad_blue
+ *   A1-003  LNG / GNL                    \u2192 fuel
+ *   A1-004  CNG                          \u2192 fuel
+ *   A1-005  Benzin\u0103                 \u2192 fuel
+ *   A1-010..017  Tax\u0103 rutier\u0103  \u2192 toll
+ *   A1-020  Pod / tunel                  \u2192 toll
+ *   A1-022  Vignette                     \u2192 toll
+ *   A1-030  Parking                      \u2192 parking
+ *   A1-031  Sp\u0103l\u0103torie         \u2192 wash
+ * Everything else falls through to "other" (still surfaced; just not
+ * counted under a specific Fuel/Toll filter).
+ */
+function categoryFromCostCode(code: string | null | undefined): string {
+  if (!code) return "other"
+  const c = code.toUpperCase()
+  if (c === "A1-001" || c === "A1-003" || c === "A1-004" || c === "A1-005") return "fuel"
+  if (c === "A1-002") return "ad_blue"
+  if (/^A1-01[0-7]$/.test(c)) return "toll"
+  if (c === "A1-020" || c === "A1-022") return "toll"
+  if (c === "A1-030") return "parking"
+  if (c === "A1-031") return "wash"
+  return "other"
+}
+
 export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -30,7 +65,8 @@ export async function GET(
   // when cookies don't propagate to nested route handlers in some Next.js 16 paths.
   const supabase = serviceClient()
 
-  const { data, error } = await supabase
+  // 1) Driver-entered + admin-entered expenses (the original source).
+  const { data: tripExpenses, error } = await supabase
     .from("trip_expenses")
     .select("*, cost_catalog:cost_catalog_id ( id, cost_code, cost_line, unit )")
     .eq("trip_id", tripId)
@@ -41,7 +77,105 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ expenses: data ?? [] })
+  // 2) Supplier-imported costs auto-attached to this trip (Shell, Cargobox,
+  //    OMV, etc.). These live in cost_entries and we never want to write to
+  //    them from the trip editor (the supplier file is the source of
+  //    truth), so we surface them with read_only: true and a source value
+  //    derived from the provider so the UI can show a "Shell"/"Cargobox"
+  //    badge instead of the generic "driver"/"ai".
+  const { data: importedRaw, error: importedErr } = await supabase
+    .from("cost_entries")
+    .select(
+      `
+        id, trip_id, trip_leg_id, vehicle_id, driver_id,
+        cost_code, cost_catalog_id, description, notes,
+        amount, amount_incl_vat, amount_excl_vat, tax_rate, tax_amount,
+        amount_eur, currency, occurred_at, country_code,
+        vendor_name, location_label, latitude, longitude,
+        units_qty, liters_qty, kwh_qty, status,
+        provider_id,
+        cost_catalog:cost_catalog_id ( id, cost_code, cost_line, unit ),
+        cost_providers:provider_id ( id, code, name )
+      `,
+    )
+    .eq("trip_id", tripId)
+    .order("occurred_at", { ascending: false })
+
+  if (importedErr) {
+    // Don't fail the whole call \u2014 just log and return what we have.
+    console.log("[v0] /expenses GET cost_entries error:", importedErr.message)
+  }
+
+  // Reshape cost_entries rows into the trip_expenses shape the tabs expect.
+  const imported = (importedRaw ?? []).map((c: any) => {
+    const code = c.cost_code ?? c.cost_catalog?.cost_code ?? null
+    const category = categoryFromCostCode(code)
+    // Pick the most useful quantity for the tab to display. Fuel rows get
+    // litres; everything else falls back to units_qty when present.
+    const qty =
+      category === "fuel" || category === "ad_blue"
+        ? c.liters_qty ?? c.units_qty ?? null
+        : c.units_qty ?? null
+    const unit =
+      category === "fuel" || category === "ad_blue"
+        ? c.liters_qty != null
+          ? "L"
+          : c.cost_catalog?.unit ?? null
+        : c.cost_catalog?.unit ?? null
+    const providerCode = c.cost_providers?.code ?? null
+    return {
+      id: c.id,
+      trip_id: c.trip_id,
+      leg_id: c.trip_leg_id ?? null,
+      order_id: null,
+      category,
+      description: c.description ?? null,
+      amount: c.amount_incl_vat ?? c.amount ?? null,
+      currency: c.currency ?? "EUR",
+      amount_eur: c.amount_eur ?? null,
+      tax_rate: c.tax_rate ?? null,
+      tax_amount: c.tax_amount ?? null,
+      amount_excl_vat: c.amount_excl_vat ?? null,
+      amount_incl_vat: c.amount_incl_vat ?? c.amount ?? null,
+      amount_eur_excl_vat: null,
+      amount_eur_incl_vat: c.amount_eur ?? null,
+      occurred_at: c.occurred_at,
+      country: c.country_code ?? null,
+      vendor: c.vendor_name ?? c.cost_providers?.name ?? null,
+      receipt_url: null,
+      // The UI uses `source` to render a small badge ("driver", "ai"). We
+      // emit the provider code (uppercased) so a Cargobox row shows
+      // "CARGOBOX" and a Shell row shows "SHELL", both clearly distinct
+      // from the manual sources.
+      source: providerCode ? providerCode.toUpperCase() : "provider_import",
+      status: c.status ?? "recorded",
+      latitude: c.latitude ?? null,
+      longitude: c.longitude ?? null,
+      location_label: c.location_label ?? null,
+      quantity: qty,
+      unit,
+      extraction_confidence: null,
+      cost_catalog_id: c.cost_catalog_id ?? null,
+      cost_catalog: c.cost_catalog ?? null,
+      driver: null,
+      // Flags consumed by the UI to hide edit / delete / approve actions.
+      // Imported rows are owned by the supplier file; corrections must
+      // happen at the source (re-import or adjust at the provider level).
+      read_only: true,
+      origin: "cost_entry" as const,
+    }
+  })
+
+  // 3) Merge \u2014 driver-entered first if same occurred_at, but otherwise
+  //    sorted descending by occurred_at so the newest tx is on top.
+  const merged = [...(tripExpenses ?? []).map((e: any) => ({ ...e, origin: "trip_expense" as const, read_only: false })), ...imported]
+  merged.sort((a, b) => {
+    const ta = a.occurred_at ? new Date(a.occurred_at).getTime() : 0
+    const tb = b.occurred_at ? new Date(b.occurred_at).getTime() : 0
+    return tb - ta
+  })
+
+  return NextResponse.json({ expenses: merged })
 }
 
 export async function POST(

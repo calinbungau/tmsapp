@@ -904,6 +904,18 @@ export function TabExpenses({ tripId, trip, linkedOrders, onChange }: Props) {
                           </span>
                         )}
                         {e.source === "driver" && <span className="ml-1 text-[9px] text-muted-foreground">{' \u00B7 '}driver</span>}
+                        {/*
+                          Imported supplier rows (Shell, Cargobox, OMV, \u2026) come back from
+                          /expenses with read_only = true and source = the provider code.
+                          We render a small badge so reviewers can immediately tell which
+                          file the row originated from \u2014 click-through goes to the
+                          finance Cost Entries master ledger.
+                        */}
+                        {(e as any).read_only && (
+                          <span className="ml-1 inline-flex items-center gap-0.5 text-[9px] font-semibold text-blue-400 uppercase tracking-wide">
+                            {' \u00B7 '}{e.source}
+                          </span>
+                        )}
                       </td>
                       <td className="px-2 py-1.5">
                         <div className="flex items-center justify-end gap-1">
@@ -912,26 +924,37 @@ export function TabExpenses({ tripId, trip, linkedOrders, onChange }: Props) {
                               <ExternalLink className="h-3 w-3" />
                             </a>
                           )}
-                          <button
-                            onClick={() => editRow(e)}
-                            className={`p-1 rounded hover:bg-muted ${editingId === e.id ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"}`}
-                            title="Edit expense"
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </button>
-                          {e.status === "pending_review" && (
+                          {/*
+                            Read-only rows (cost_entries from supplier imports) have no
+                            edit/approve/delete affordances \u2014 the supplier file is the
+                            source of truth and corrections must happen at re-import time.
+                          */}
+                          {(e as any).read_only ? (
+                            <span className="text-[9px] text-muted-foreground/70 italic px-1">imported</span>
+                          ) : (
                             <>
-                              <button onClick={() => patch(e.id, { status: "approved" })} className="p-1 rounded hover:bg-emerald-500/20 text-emerald-400" title="Approve">
-                                <Check className="h-3 w-3" />
+                              <button
+                                onClick={() => editRow(e)}
+                                className={`p-1 rounded hover:bg-muted ${editingId === e.id ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"}`}
+                                title="Edit expense"
+                              >
+                                <Pencil className="h-3 w-3" />
                               </button>
-                              <button onClick={() => { const r = window.prompt("Rejection reason?"); if (r) patch(e.id, { status: "rejected", rejected_reason: r }); }} className="p-1 rounded hover:bg-red-500/20 text-red-400" title="Reject">
-                                <X className="h-3 w-3" />
+                              {e.status === "pending_review" && (
+                                <>
+                                  <button onClick={() => patch(e.id, { status: "approved" })} className="p-1 rounded hover:bg-emerald-500/20 text-emerald-400" title="Approve">
+                                    <Check className="h-3 w-3" />
+                                  </button>
+                                  <button onClick={() => { const r = window.prompt("Rejection reason?"); if (r) patch(e.id, { status: "rejected", rejected_reason: r }); }} className="p-1 rounded hover:bg-red-500/20 text-red-400" title="Reject">
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </>
+                              )}
+                              <button onClick={() => remove(e.id)} className="p-1 rounded hover:bg-red-500/20 text-red-400" title="Delete">
+                                <Trash2 className="h-3 w-3" />
                               </button>
                             </>
                           )}
-                          <button onClick={() => remove(e.id)} className="p-1 rounded hover:bg-red-500/20 text-red-400" title="Delete">
-                            <Trash2 className="h-3 w-3" />
-                          </button>
                         </div>
                       </td>
                     </tr>

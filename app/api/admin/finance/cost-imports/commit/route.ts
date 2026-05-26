@@ -298,6 +298,31 @@ export async function POST(req: NextRequest) {
     console.log("[v0] geocoding pass failed:", (geoErr as Error)?.message)
   }
 
+  // ---- Auto-attach to trips / legs ----
+  // Once cost_entries are inserted, link each one to the trip (and ideally
+  // the trip_leg) whose vehicle + time window contains occurred_at. This is
+  // what surfaces a Shell fuel transaction on the right trip's Fuel tab and
+  // a Cargobox toll on its Expenses tab without any operator action. The
+  // RPC is idempotent (only touches rows with trip_id IS NULL) so re-runs
+  // are safe.
+  let attachedToLeg = 0
+  let attachedToTrip = 0
+  try {
+    const { data: attachResult, error: attachErr } = await supabase.rpc("tms_auto_attach_cost_entries", {
+      p_admin_id: admin_id,
+      p_ids: null, // run for everything still unattached for this admin
+    })
+    if (attachErr) {
+      console.log("[v0] auto-attach to trips failed:", attachErr.message)
+    } else if (Array.isArray(attachResult) && attachResult[0]) {
+      attachedToLeg = attachResult[0].attached_to_leg ?? 0
+      attachedToTrip = attachResult[0].attached_to_trip ?? 0
+    }
+  } catch (attachErr) {
+    // Auto-attach is best-effort — never fail an import on it.
+    console.log("[v0] auto-attach raised:", (attachErr as Error)?.message)
+  }
+
   // Update mapping rule usage counters in bulk (best-effort).
   const ruleHits = new Map<string, number>()
   for (const r of rows) {
@@ -371,6 +396,8 @@ export async function POST(req: NextRequest) {
     errors,
     status: finalStatus,
     geocoded: geocodedCount,
+    attached_to_leg: attachedToLeg,
+    attached_to_trip: attachedToTrip,
   })
 }
 

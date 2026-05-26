@@ -557,7 +557,21 @@ export function TabFuel({ tripId, trip, onChange }: TabFuelProps) {
                       AI {Math.round(entry.extraction_confidence)}%
                     </Badge>
                   )}
-                  {entry.status === "pending_review" ? (
+                  {/*
+                    Imported supplier fuel rows (Shell, OMV, \u2026) come back from the
+                    /expenses route with read_only = true and source = the provider
+                    code. They share the same Fuel tab so consumption math stays in
+                    one place, but they never expose approve / reject / delete \u2014
+                    the supplier file is the source of truth.
+                  */}
+                  {(entry as any).read_only ? (
+                    <Badge
+                      variant="outline"
+                      className="border-blue-500/50 bg-blue-500/10 text-[10px] uppercase tracking-wide text-blue-300"
+                    >
+                      {entry.source}
+                    </Badge>
+                  ) : entry.status === "pending_review" ? (
                     <>
                       <Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-400 hover:bg-emerald-500/20" onClick={() => handleApprove(entry.id)}>
                         <Check className="h-4 w-4" />
@@ -575,9 +589,11 @@ export function TabFuel({ tripId, trip, onChange }: TabFuelProps) {
                       {entry.status}
                     </Badge>
                   )}
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-red-400" onClick={() => handleDelete(entry.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {!(entry as any).read_only && (
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-red-400" onClick={() => handleDelete(entry.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </Card>
             );
