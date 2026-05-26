@@ -38,11 +38,13 @@ import {
   Bell,
   Check,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Clock,
   ExternalLink,
   Eye,
   EyeOff,
+  FileWarning,
   Filter,
   Inbox,
   MoreVertical,
@@ -52,8 +54,10 @@ import {
   Route,
   Search,
   Settings,
+  ShieldAlert,
   Truck,
   User,
+  Wrench,
   XCircle,
 } from "lucide-react";
 import { formatDistanceToNow, addDays, addHours } from "date-fns";
@@ -100,6 +104,7 @@ const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Package }> =
   trips: { label: "Trips", icon: Route },
   finance: { label: "Finance", icon: Receipt },
   fleet: { label: "Fleet", icon: Truck },
+  compliance: { label: "Compliance", icon: ShieldAlert },
 };
 
 export default function ActionCenterPage() {
@@ -121,6 +126,17 @@ export default function ActionCenterPage() {
   const [selectedSeverity, setSelectedSeverity] = useState<string>("all");
   const [selectedAssignee, setSelectedAssignee] = useState<string>("all");
 
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [selectedStatus, selectedCategory, selectedSeverity, selectedAssignee, pageSize]);
+
   // Stats
   const [stats, setStats] = useState<{
     total: number;
@@ -133,6 +149,8 @@ export default function ActionCenterPage() {
 
     const params = new URLSearchParams({
       admin_id: adminSession.id,
+      page: String(page),
+      page_size: String(pageSize),
     });
 
     if (selectedStatus !== "all") {
@@ -153,8 +171,10 @@ export default function ActionCenterPage() {
     const res = await fetch(`/api/admin/action-center/items?${params}`);
     const data = await res.json();
     setItems(data.items || []);
+    setTotalItems(data.total || 0);
+    setTotalPages(data.total_pages || 0);
     setLoading(false);
-  }, [adminSession?.id, adminSession?.user_id, selectedStatus, selectedCategory, selectedSeverity, selectedAssignee]);
+  }, [adminSession?.id, adminSession?.user_id, selectedStatus, selectedCategory, selectedSeverity, selectedAssignee, page, pageSize]);
 
   const fetchStats = useCallback(async () => {
     if (!adminSession?.id) return;
@@ -457,6 +477,8 @@ export default function ActionCenterPage() {
             <SelectItem value="orders">Orders</SelectItem>
             <SelectItem value="trips">Trips</SelectItem>
             <SelectItem value="finance">Finance</SelectItem>
+            <SelectItem value="fleet">Fleet</SelectItem>
+            <SelectItem value="compliance">Compliance</SelectItem>
           </SelectContent>
         </Select>
 
@@ -541,7 +563,7 @@ export default function ActionCenterPage() {
                       onCheckedChange={toggleSelectAll}
                     />
                     <span className="text-sm text-muted-foreground">
-                      {filteredItems.length} items
+                      Showing {filteredItems.length} of {totalItems} items
                     </span>
                   </div>
 
@@ -559,6 +581,47 @@ export default function ActionCenterPage() {
                       }}
                     />
                   ))}
+
+                  {/* Pagination footer */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between p-4 bg-muted/20">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-muted-foreground">Rows per page</span>
+                        <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+                          <SelectTrigger className="w-[80px] h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="10">10</SelectItem>
+                            <SelectItem value="25">25</SelectItem>
+                            <SelectItem value="50">50</SelectItem>
+                            <SelectItem value="100">100</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">
+                          Page {page} of {totalPages}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPage((p) => Math.max(1, p - 1))}
+                          disabled={page === 1}
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                          disabled={page >= totalPages}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>

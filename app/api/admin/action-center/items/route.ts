@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
       created_at,
       updated_at,
       assignee:assignee_user_id ( id, email, employee:employee_id ( first_name, last_name ) )
-    `)
+    `, { count: "exact" })
     .eq("admin_id", adminId)
 
   // Filter by status (default: open, snoozed)
@@ -93,20 +93,35 @@ export async function GET(req: NextRequest) {
     query = query.eq("assignee_user_id", assigneeParam)
   }
 
+  // Pagination
+  const pageParam = parseInt(req.nextUrl.searchParams.get("page") || "1", 10)
+  const pageSizeParam = parseInt(req.nextUrl.searchParams.get("page_size") || "25", 10)
+  const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1
+  const pageSize = Number.isFinite(pageSizeParam) && pageSizeParam > 0 ? Math.min(pageSizeParam, 100) : 25
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
   // Order by severity desc (critical first), then due_at asc
   query = query
     .order("severity", { ascending: false })
     .order("due_at", { ascending: true, nullsFirst: false })
-    .limit(500)
+    .range(from, to)
 
-  const { data, error } = await query
+  const { data, error, count } = await query
 
   if (error) {
     console.error("[ActionCenter] GET items error:", error.message)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ items: data ?? [], count: data?.length ?? 0 })
+  return NextResponse.json({
+    items: data ?? [],
+    count: data?.length ?? 0,
+    total: count ?? 0,
+    page,
+    page_size: pageSize,
+    total_pages: count ? Math.ceil(count / pageSize) : 0,
+  })
 }
 
 /**

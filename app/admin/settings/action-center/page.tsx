@@ -30,13 +30,18 @@ import {
   Bell,
   Check,
   Clock,
+  FileWarning,
+  Info,
   Loader2,
   Mail,
   Package,
   Receipt,
   Route,
   Settings,
+  ShieldAlert,
+  Smartphone,
   Truck,
+  Wrench,
 } from "lucide-react";
 
 interface ActionCenterDefinition {
@@ -59,6 +64,8 @@ const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Package; col
   orders: { label: "Orders", icon: Package, color: "bg-blue-500/20 text-blue-400" },
   trips: { label: "Trips", icon: Route, color: "bg-green-500/20 text-green-400" },
   finance: { label: "Finance", icon: Receipt, color: "bg-purple-500/20 text-purple-400" },
+  fleet: { label: "Fleet", icon: Truck, color: "bg-cyan-500/20 text-cyan-400" },
+  compliance: { label: "Compliance", icon: ShieldAlert, color: "bg-amber-500/20 text-amber-400" },
 };
 
 const SEVERITY_CONFIG = {
@@ -73,6 +80,8 @@ const ROLE_OPTIONS = [
   { value: "finance", label: "Finance" },
   { value: "dispatcher", label: "Dispatcher" },
   { value: "manager", label: "Manager" },
+  { value: "fleet", label: "Fleet" },
+  { value: "compliance", label: "Compliance" },
 ];
 
 export default function ActionCenterSettingsPage() {
@@ -193,6 +202,46 @@ export default function ActionCenterSettingsPage() {
           </p>
         </div>
       </div>
+
+      {/* Notification timing explainer */}
+      <Card className="border-primary/30 bg-primary/5">
+        <CardContent className="p-4">
+          <div className="flex gap-3">
+            <div className="p-2 rounded-lg bg-primary/15 h-fit">
+              <Info className="h-4 w-4 text-primary" />
+            </div>
+            <div className="flex-1 space-y-2 text-sm">
+              <p className="font-medium text-foreground">When are notifications sent?</p>
+              <ul className="space-y-1 text-muted-foreground list-disc pl-4">
+                <li>
+                  Detectors run every <span className="font-medium text-foreground">5 minutes</span>{" "}
+                  (server cron). New items are created or updated automatically.
+                </li>
+                <li>
+                  <span className="font-medium text-foreground">In-App</span>: shown immediately in
+                  the sidebar badge and Action Center inbox the moment a detector fires.
+                </li>
+                <li>
+                  <span className="font-medium text-foreground">Email</span>: sent within 5 minutes
+                  of detection to users matching the assignee role. Snoozed/dismissed items don&apos;t
+                  re-trigger emails.
+                </li>
+                <li>
+                  <span className="font-medium text-foreground">Push</span>: sent for{" "}
+                  <span className="font-medium text-foreground">critical</span> &{" "}
+                  <span className="font-medium text-foreground">high</span> severity items only,
+                  delivered to devices where the user has push enabled.
+                </li>
+                <li>
+                  <span className="font-medium text-foreground">Escalation</span>: if an item stays
+                  open past the configured hours, it escalates (assignee role widens, severity may
+                  increase, and a follow-up notification is sent).
+                </li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Success/Error Message */}
       {message && (
@@ -400,6 +449,81 @@ export default function ActionCenterSettingsPage() {
                           </div>
                         )}
 
+                        {def.code === "document.expiring" && (
+                          <div className="space-y-3">
+                            <Label>Look-ahead window</Label>
+                            <div className="flex items-center gap-4">
+                              <Slider
+                                value={[def.thresholds?.window_days || 60]}
+                                min={7}
+                                max={180}
+                                step={1}
+                                onValueCommit={(v) =>
+                                  handleThresholdChange(def, "window_days", v[0])
+                                }
+                                className="flex-1"
+                                disabled={!def.is_enabled}
+                              />
+                              <span className="text-sm font-medium w-20 text-right">
+                                {def.thresholds?.window_days || 60} days
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Severity: <span className="text-red-400">Critical</span> when expired,{" "}
+                              <span className="text-orange-400">High</span> within 7 days,{" "}
+                              <span className="text-yellow-400">Medium</span> within 30 days.
+                            </p>
+                          </div>
+                        )}
+
+                        {def.code === "maintenance.due_or_overdue" && (
+                          <div className="space-y-4">
+                            <div className="space-y-3">
+                              <Label>Date look-ahead window</Label>
+                              <div className="flex items-center gap-4">
+                                <Slider
+                                  value={[def.thresholds?.date_window_days || 30]}
+                                  min={3}
+                                  max={90}
+                                  step={1}
+                                  onValueCommit={(v) =>
+                                    handleThresholdChange(def, "date_window_days", v[0])
+                                  }
+                                  className="flex-1"
+                                  disabled={!def.is_enabled}
+                                />
+                                <span className="text-sm font-medium w-20 text-right">
+                                  {def.thresholds?.date_window_days || 30} days
+                                </span>
+                              </div>
+                            </div>
+                            <div className="space-y-3">
+                              <Label>Mileage look-ahead window</Label>
+                              <div className="flex items-center gap-4">
+                                <Slider
+                                  value={[def.thresholds?.km_window || 1000]}
+                                  min={100}
+                                  max={5000}
+                                  step={100}
+                                  onValueCommit={(v) =>
+                                    handleThresholdChange(def, "km_window", v[0])
+                                  }
+                                  className="flex-1"
+                                  disabled={!def.is_enabled}
+                                />
+                                <span className="text-sm font-medium w-20 text-right">
+                                  {def.thresholds?.km_window || 1000} km
+                                </span>
+                              </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Severity: <span className="text-red-400">Critical</span> when overdue,{" "}
+                              <span className="text-orange-400">High</span> within 3 days or 500 km,{" "}
+                              <span className="text-yellow-400">Medium</span> within 14 days.
+                            </p>
+                          </div>
+                        )}
+
                         {/* Default Assignee Role */}
                         <div className="space-y-3">
                           <Label>Default Assignee Role</Label>
@@ -459,7 +583,7 @@ export default function ActionCenterSettingsPage() {
                               onClick={() => handleChannelToggle(def, "push")}
                               disabled={!def.is_enabled}
                             >
-                              <AlertTriangle className="h-4 w-4 mr-1" />
+                              <Smartphone className="h-4 w-4 mr-1" />
                               Push
                             </Button>
                           </div>
