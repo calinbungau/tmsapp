@@ -32,7 +32,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     .from("action_center_items")
     .select(`
       *,
-      assignee:assignee_user_id ( id, name, email ),
+      assignee:assignee_user_id ( id, email, employee:employee_id ( first_name, last_name ) ),
       definition:definition_id ( id, code, title, description, category )
     `)
     .eq("id", itemId)

@@ -85,7 +85,7 @@ interface ActionCenterItem {
   escalated_at: string | null;
   created_at: string;
   updated_at: string;
-  assignee?: { id: string; name: string; email: string } | null;
+  assignee?: { id: string; email: string; employee?: { first_name: string | null; last_name: string | null } | null } | null;
 }
 
 const SEVERITY_CONFIG = {
@@ -700,7 +700,7 @@ function ActionCenterItemRow({ item, selected, onSelect, onAction, onSnooze }: A
           {item.assignee && (
             <span className="text-xs text-muted-foreground flex items-center gap-1">
               <User className="h-3 w-3" />
-              {item.assignee.name || item.assignee.email}
+              {[item.assignee.employee?.first_name, item.assignee.employee?.last_name].filter(Boolean).join(" ") || item.assignee.email}
             </span>
           )}
         </div>

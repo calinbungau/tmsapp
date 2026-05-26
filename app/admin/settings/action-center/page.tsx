@@ -141,8 +141,15 @@ export default function ActionCenterSettingsPage() {
     await handleUpdate(def.id, { default_assignee_role: role || null });
   };
 
+  const channelsOf = (def: ActionCenterDefinition): string[] => {
+    const c = def.notify_channels as any;
+    if (Array.isArray(c)) return c;
+    if (c && typeof c === "object") return Object.keys(c).filter((k) => c[k]);
+    return [];
+  };
+
   const handleChannelToggle = async (def: ActionCenterDefinition, channel: string) => {
-    const currentChannels = def.notify_channels || [];
+    const currentChannels = channelsOf(def);
     const newChannels = currentChannels.includes(channel)
       ? currentChannels.filter((c) => c !== channel)
       : [...currentChannels, channel];
@@ -424,7 +431,7 @@ export default function ActionCenterSettingsPage() {
                           <div className="flex flex-wrap gap-2">
                             <Button
                               variant={
-                                def.notify_channels?.includes("in_app") ? "default" : "outline"
+                                channelsOf(def).includes("in_app") ? "default" : "outline"
                               }
                               size="sm"
                               onClick={() => handleChannelToggle(def, "in_app")}
@@ -435,7 +442,7 @@ export default function ActionCenterSettingsPage() {
                             </Button>
                             <Button
                               variant={
-                                def.notify_channels?.includes("email") ? "default" : "outline"
+                                channelsOf(def).includes("email") ? "default" : "outline"
                               }
                               size="sm"
                               onClick={() => handleChannelToggle(def, "email")}
@@ -446,7 +453,7 @@ export default function ActionCenterSettingsPage() {
                             </Button>
                             <Button
                               variant={
-                                def.notify_channels?.includes("push") ? "default" : "outline"
+                                channelsOf(def).includes("push") ? "default" : "outline"
                               }
                               size="sm"
                               onClick={() => handleChannelToggle(def, "push")}

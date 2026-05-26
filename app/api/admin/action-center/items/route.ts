@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
       escalated_at,
       created_at,
       updated_at,
-      assignee:assignee_user_id ( id, name, email )
+      assignee:assignee_user_id ( id, email, employee:employee_id ( first_name, last_name ) )
     `)
     .eq("admin_id", adminId)
 
