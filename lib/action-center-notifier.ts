@@ -346,11 +346,16 @@ function renderEmail(item: any): { subject: string; html: string; text: string }
         timeStyle: "short",
       })
     : null;
+  // Public app URL for any link rendered in the email. Configurable via
+  // NEXT_PUBLIC_APP_URL so staging / preview deployments can override it,
+  // but defaults to the production host.
+  const appBase = (process.env.NEXT_PUBLIC_APP_URL || "https://app.bngtracking.ro").replace(/\/+$/, "");
+  const inboxUrl = `${appBase}/admin/action-center`;
   const url = item.resolution_url
     ? item.resolution_url.startsWith("http")
       ? item.resolution_url
-      : `https://app.example.com${item.resolution_url}` // placeholder; SMTP clients handle relative just fine
-    : null;
+      : `${appBase}${item.resolution_url.startsWith("/") ? "" : "/"}${item.resolution_url}`
+    : inboxUrl;
 
   const html = `
     <div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a">
@@ -360,7 +365,8 @@ function renderEmail(item: any): { subject: string; html: string; text: string }
       </div>
       ${item.body ? `<p style="font-size:14px;line-height:1.5;color:#334155">${escapeHtml(item.body)}</p>` : ""}
       ${due ? `<p style="font-size:13px;color:#64748b"><strong>Due:</strong> ${due}</p>` : ""}
-      ${url ? `<p style="margin-top:24px"><a href="${url}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-size:14px">Open in Action Center</a></p>` : ""}
+      <p style="margin-top:24px"><a href="${url}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-size:14px">Open in Action Center</a></p>
+      <p style="font-size:12px;color:#64748b;margin-top:8px">Or paste this URL into your browser: <a href="${url}" style="color:#0f172a">${url}</a></p>
       <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0" />
       <p style="font-size:12px;color:#94a3b8">You are receiving this because your account is configured to receive Action Center notifications for <strong>${escapeHtml(item.code)}</strong>. Update your preferences in Settings &gt; Action Center.</p>
     </div>
@@ -370,7 +376,7 @@ function renderEmail(item: any): { subject: string; html: string; text: string }
     `[${sevLabel}] ${item.title}`,
     item.body || "",
     due ? `Due: ${due}` : "",
-    url ? `Open: ${url}` : "",
+    `Open: ${url}`,
     "",
     "Update preferences in Settings > Action Center.",
   ]
