@@ -5,22 +5,13 @@ import { geocodeAddressSmart } from "@/lib/tms/geocode"
 export const runtime = "nodejs"
 
 /**
- * Driver-side trip-expense ingest. Used by the "Add expense" flow inside the
- * driver app (manual entry + scan-and-confirm via /api/tms/extract-receipt).
+ * Driver-side trip-expense ingest. Writes directly to `cost_entries`
+ * (post-consolidation). The row lands with status='pending_review' so the
+ * finance Review Queue picks it up before it counts in P&L.
  *
- * Differences vs the admin-side counterpart at
- *   /api/admin/tms/trips/[id]/expenses
- * — actor identity comes from the driver session (driver_id in body), not
- *   from a Supabase auth cookie;
- * — `source` is forced to "driver" and `status` to "pending_review" so the
- *   row lands in the finance Review Queue instead of going straight to the
- *   ledger;
- * — we re-verify that the caller's driver_id is actually assigned to the
- *   trip (via trips.driver_id OR any of its trip_legs.driver_id) before
- *   inserting, so a driver can't submit expenses against another driver's
- *   trip by guessing the trip UUID.
+ * Authorization: driver_id must be assigned to the trip (either via
+ * trips.driver_id OR any trip_legs.driver_id) before we accept the insert.
  */
-
 function serviceClient() {
   return createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -36,28 +27,18 @@ export async function POST(
   const { id: tripId } = await context.params
   const body = await req.json().catch(() => ({}))
 
-  const driverId: string | null =
-    typeof body.driver_id === "string" ? body.driver_id : null
+  const driverId: string | null = typeof body.driver_id === "string" ? body.driver_id : null
   if (!driverId) {
     return NextResponse.json({ error: "driver_id is required" }, { status: 401 })
   }
 
   const supabase = serviceClient()
 
-  // ── Authorization: confirm this driver is assigned to this trip ──
-  // Either via the legacy trip-level driver_id OR via any leg of the trip.
+  // Authorize + resolve admin_id.
   const [{ data: trip }, { data: legs }] = await Promise.all([
-    supabase
-      .from("trips")
-      .select("id, driver_id")
-      .eq("id", tripId)
-      .maybeSingle(),
-    supabase
-      .from("trip_legs")
-      .select("id, driver_id")
-      .eq("trip_id", tripId),
+    supabase.from("trips").select("id, admin_id, driver_id").eq("id", tripId).maybeSingle(),
+    supabase.from("trip_legs").select("id, driver_id").eq("trip_id", tripId),
   ])
-
   if (!trip) {
     return NextResponse.json({ error: "Trip not found" }, { status: 404 })
   }
@@ -68,71 +49,77 @@ export async function POST(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  // ── Geocoding safety net (mirrors the admin route) ──
+  // Geocoding safety net.
   let lat: number | null = body.latitude ?? null
   let lng: number | null = body.longitude ?? null
   if ((lat == null || lng == null) && body.location_label) {
-    const hit = await geocodeAddressSmart(
-      body.location_label,
-      body.country ?? null,
-    )
-    if (hit) {
-      lat = hit.latitude
-      lng = hit.longitude
-    }
+    const hit = await geocodeAddressSmart(body.location_label, body.country ?? null)
+    if (hit) { lat = hit.latitude; lng = hit.longitude }
   }
 
-  // Pick a leg to attach to: the caller may explicitly pass leg_id, otherwise
-  // we fall back to the first leg this driver owns on the trip (helps the
-  // ledger pivot per-leg P&L correctly).
   const legId: string | null =
     typeof body.leg_id === "string"
       ? body.leg_id
       : (legs ?? []).find((l) => l.driver_id === driverId)?.id ?? null
 
-  const insert = {
+  const category: string | null = body.category ?? null
+  const isFuelish = category === "fuel" || category === "ad_blue" || category === "adblue"
+  const qty: number | null = body.quantity != null ? Number(body.quantity) : null
+
+  // Resolve cost_code from catalog if a catalog item was picked.
+  let costCode: string | null = null
+  if (body.cost_catalog_id) {
+    const { data: cat } = await supabase
+      .from("cost_catalog")
+      .select("cost_code")
+      .eq("id", body.cost_catalog_id)
+      .maybeSingle()
+    costCode = cat?.cost_code ?? null
+  }
+
+  const insert: Record<string, unknown> = {
+    admin_id: trip.admin_id,
     trip_id: tripId,
-    leg_id: legId,
+    trip_leg_id: legId,
     order_id: body.order_id ?? null,
-    category: body.category,
+    driver_id: driverId,
+    cost_catalog_id: body.cost_catalog_id ?? null,
+    cost_code: costCode,
+    category,
     description: body.description ?? null,
+    notes: body.notes ?? null,
+    vendor_name: body.vendor ?? null,
+    location_label: body.location_label ?? null,
+    latitude: lat,
+    longitude: lng,
+    country_code: body.country ?? null,
     amount: body.amount,
-    currency: body.currency ?? "EUR",
-    // amount_eur is filled by the BEFORE trigger from fx_rates + occurred_at.
-    amount_eur: body.amount_eur ?? null,
-    fx_rate: body.fx_rate ?? null,
-    tax_rate: body.tax_rate ?? null,
-    tax_amount: body.tax_amount ?? body.vat_amount ?? null,
     amount_excl_vat:
       body.amount_excl_vat ??
       (body.amount != null && body.vat_amount != null
         ? Number(body.amount) - Number(body.vat_amount)
         : null),
     amount_incl_vat: body.amount_incl_vat ?? body.amount ?? null,
+    tax_rate: body.tax_rate ?? null,
+    tax_amount: body.tax_amount ?? body.vat_amount ?? null,
+    fx_rate: body.fx_rate ?? null,
+    currency: body.currency ?? "EUR",
+    amount_eur: body.amount_eur ?? null,
+    liters_qty: isFuelish ? qty : null,
+    units_qty: !isFuelish ? qty : null,
     occurred_at: body.occurred_at ?? new Date().toISOString(),
-    country: body.country ?? null,
-    vendor: body.vendor ?? null,
-    receipt_url: body.receipt_url ?? null,
-    // Forced provenance: the Review Queue uses these to badge the row as
-    // "driver" and to know it must be approved before it hits cost_entries.
-    source: "driver",
     status: "pending_review",
-    driver_id: driverId,
-    recorded_by: null,
-    notes: body.notes ?? null,
-    latitude: lat,
-    longitude: lng,
-    location_label: body.location_label ?? null,
-    quantity: body.quantity ?? null,
-    unit: body.unit ?? null,
+    source: "trip_expense",
+    receipt_url: body.receipt_url ?? null,
     extracted_data: body.extracted_data ?? null,
     extraction_confidence: body.extraction_confidence ?? null,
+    recorded_by: null, // driver, not admin
   }
 
   const { data, error } = await supabase
-    .from("trip_expenses")
+    .from("cost_entries")
     .insert(insert)
-    .select()
+    .select("id, trip_id, trip_leg_id, category, amount, currency, vendor_name, country_code")
     .single()
 
   if (error) {
@@ -140,18 +127,18 @@ export async function POST(
     return NextResponse.json({ error: error.message }, { status: 400 })
   }
 
-  // Best-effort audit event for the trip activity log.
+  // Audit trail
   await supabase.from("trip_events").insert({
     trip_id: tripId,
-    leg_id: data.leg_id,
+    leg_id: data.trip_leg_id,
     event_type: "expense_added",
     severity: "info",
-    title: `${data.category} ${data.amount} ${data.currency} (driver, pending review)`,
-    description: data.description ?? null,
+    title: `${data.category ?? "expense"} ${data.amount} ${data.currency} (driver, pending review)`,
+    description: body.description ?? null,
     metadata: {
       expense_id: data.id,
-      vendor: data.vendor,
-      country: data.country,
+      vendor: data.vendor_name,
+      country: data.country_code,
       source: "driver",
     },
     actor_type: "driver",
