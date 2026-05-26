@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import {
   Plus, Loader2, Check, X, Receipt, Fuel, Coins, ParkingSquare, Ship, Droplet,
   Wrench, ShieldAlert, AlertCircle, FileWarning, Sparkles, Trash2, ExternalLink,
-  Upload, MapPin, Calendar, Pencil,
+  Upload, MapPin, Calendar, Pencil, Unlink,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { CatalogPicker, type CatalogItem } from "@/components/finance/catalog-picker";
@@ -80,6 +80,12 @@ export function TabExpenses({ tripId, trip, linkedOrders, onChange }: Props) {
   /** Non-null when the form is editing an existing row instead of creating one. */
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
+  // Expenses tab can show totals two ways:
+  //   - "incl"  → gross (matches receipt + driver cash view, default).
+  //   - "excl"  → net of VAT (matches P&L tab + Internal Fleet P&L report,
+  //               since input VAT is recoverable for the internal fleet).
+  // The toggle is sticky to the user's last choice within the session.
+  const [vatMode, setVatMode] = useState<"incl" | "excl">("incl");
   const [extracting, setExtracting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -420,6 +426,24 @@ export function TabExpenses({ tripId, trip, linkedOrders, onChange }: Props) {
     }
   }
 
+  async function detach(id: string) {
+    if (!window.confirm(
+      "Remove this imported cost from the trip?\n\n" +
+      "It will go back to the master Cost Entries ledger as unattached. " +
+      "It can be re-attached automatically when the trip windows change " +
+      "or by the daily reconciliation cron.",
+    )) return;
+    const res = await fetch(`/api/admin/finance/cost-entries/${id}/detach`, { method: "POST" });
+    if (res.ok) {
+      toast({ title: "Cost detached from trip" });
+      load();
+      onChange?.();
+    } else {
+      const j = await res.json().catch(() => ({}));
+      toast({ title: "Detach failed", description: j.error, variant: "destructive" });
+    }
+  }
+
   async function remove(id: string) {
     if (!window.confirm("Delete this expense?")) return;
     console.log("[v0] tab-expenses: DELETE", { id });
@@ -436,8 +460,19 @@ export function TabExpenses({ tripId, trip, linkedOrders, onChange }: Props) {
     }
   }
 
+  // EUR-amount picker honoring the VAT toggle. We always prefer the explicit
+  // VAT-side EUR amount when present; otherwise fall back to amount_eur (which
+  // is the trigger-supplied normalised value, gross by convention).
+  function eurAmount(e: Expense) {
+    if (e.status === "rejected") return 0;
+    const incl = (e as any).amount_eur_incl_vat ?? e.amount_eur;
+    const excl = (e as any).amount_eur_excl_vat ?? e.amount_eur;
+    const v = vatMode === "excl" ? excl : incl;
+    return Number(v ?? 0) || 0;
+  }
+
   const visible = filter === "all" ? expenses : expenses.filter(e => e.category === filter);
-  const total = visible.reduce((s, e) => s + (e.status === "rejected" ? 0 : Number(e.amount_eur ?? e.amount) || 0), 0);
+  const total = visible.reduce((s, e) => s + eurAmount(e), 0);
   const pendingCount = expenses.filter(e => e.status === "pending_review").length;
 
   // Category breakdown (only categories that have entries)
@@ -445,8 +480,8 @@ export function TabExpenses({ tripId, trip, linkedOrders, onChange }: Props) {
     .map(c => ({
       ...c,
       total: expenses
-        .filter(e => e.category === c.id && e.status !== "rejected")
-        .reduce((s, e) => s + (Number(e.amount_eur ?? e.amount) || 0), 0),
+        .filter(e => e.category === c.id)
+        .reduce((s, e) => s + eurAmount(e), 0),
       count: expenses.filter(e => e.category === c.id).length,
     }))
     .filter(b => b.count > 0);
@@ -493,7 +528,27 @@ export function TabExpenses({ tripId, trip, linkedOrders, onChange }: Props) {
           </div>
           <div className="flex items-center gap-2">
             <div className="text-right leading-tight">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground/70">Total</div>
+              <div className="flex items-center justify-end gap-1.5">
+                <div className="text-[9px] uppercase tracking-wider text-muted-foreground/70">Total</div>
+                {/*
+                  VAT mode pill. Default is incl. VAT (matches the cash a
+                  driver/operator sees on the receipt). Toggling to excl.
+                  shows the same number the Trip P&L tab and Internal Fleet
+                  P&L report use, so the two reconcile at a glance.
+                */}
+                <button
+                  type="button"
+                  onClick={() => setVatMode(vatMode === "incl" ? "excl" : "incl")}
+                  className="text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-border/50 bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                  title={
+                    vatMode === "incl"
+                      ? "Showing VAT-inclusive (cash). Click to switch to VAT-exclusive (P&L view)."
+                      : "Showing VAT-exclusive (P&L). Click to switch to VAT-inclusive (cash view)."
+                  }
+                >
+                  {vatMode === "incl" ? "incl. VAT" : "excl. VAT"}
+                </button>
+              </div>
               <div className="text-base font-bold tabular-nums">
                 {total.toFixed(2)}<span className="text-[10px] text-muted-foreground/70 ml-1">EUR</span>
               </div>
@@ -930,7 +985,16 @@ export function TabExpenses({ tripId, trip, linkedOrders, onChange }: Props) {
                             source of truth and corrections must happen at re-import time.
                           */}
                           {(e as any).read_only ? (
-                            <span className="text-[9px] text-muted-foreground/70 italic px-1">imported</span>
+                            <>
+                              <button
+                                onClick={() => detach(e.id)}
+                                className="p-1 rounded hover:bg-amber-500/20 text-amber-400"
+                                title="Detach from trip — sends this cost back to the master ledger as unattached. Use when auto-attach picked the wrong trip."
+                              >
+                                <Unlink className="h-3 w-3" />
+                              </button>
+                              <span className="text-[9px] text-muted-foreground/70 italic px-1">imported</span>
+                            </>
                           ) : (
                             <>
                               <button

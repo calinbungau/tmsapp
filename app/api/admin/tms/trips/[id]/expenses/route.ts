@@ -90,7 +90,8 @@ export async function GET(
         id, trip_id, trip_leg_id, vehicle_id, driver_id,
         cost_code, cost_catalog_id, description, notes,
         amount, amount_incl_vat, amount_excl_vat, tax_rate, tax_amount,
-        amount_eur, currency, occurred_at, country_code,
+        amount_eur, amount_eur_excl_vat, amount_eur_incl_vat,
+        currency, occurred_at, country_code,
         vendor_name, location_label, latitude, longitude,
         units_qty, liters_qty, kwh_qty, status,
         provider_id,
@@ -137,8 +138,12 @@ export async function GET(
       tax_amount: c.tax_amount ?? null,
       amount_excl_vat: c.amount_excl_vat ?? null,
       amount_incl_vat: c.amount_incl_vat ?? c.amount ?? null,
-      amount_eur_excl_vat: null,
-      amount_eur_incl_vat: c.amount_eur ?? null,
+      // Both EUR-normalised buckets so the UI can show either VAT-incl
+      // (cash view, matches receipt totals) or VAT-excl (P&L view, what
+      // the trip_pnl view aggregates). Falls back to amount_eur when only
+      // one side is populated by the import.
+      amount_eur_excl_vat: c.amount_eur_excl_vat ?? null,
+      amount_eur_incl_vat: c.amount_eur_incl_vat ?? c.amount_eur ?? null,
       occurred_at: c.occurred_at,
       country: c.country_code ?? null,
       vendor: c.vendor_name ?? c.cost_providers?.name ?? null,
