@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -57,6 +59,13 @@ import {
   ChevronRight,
   Eye,
   Link as LinkIcon,
+  MapPin,
+  Clock,
+  Hash,
+  Coins,
+  Fuel,
+  ExternalLink,
+  X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
@@ -145,6 +154,13 @@ export default function CostEntriesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editEntry, setEditEntry] = useState<CostEntry | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  // Detail (read-only) view
+  const [detailEntry, setDetailEntry] = useState<CostEntry | null>(null);
   
   // Reference data
   const [costCatalog, setCostCatalog] = useState<CostCatalogItem[]>([]);
@@ -505,6 +521,71 @@ export default function CostEntriesPage() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (!adminSession?.id) return;
+    if (selectedIds.size === 0) return;
+    if (
+      !confirm(
+        `Delete ${selectedIds.size} cost ${selectedIds.size === 1 ? "entry" : "entries"}? This cannot be undone.`,
+      )
+    )
+      return;
+
+    setBulkDeleting(true);
+    const supabase = createClient();
+    const ids = Array.from(selectedIds);
+    const { error } = await supabase
+      .from("cost_entries")
+      .delete()
+      .eq("admin_id", adminSession.id)
+      .in("id", ids);
+
+    setBulkDeleting(false);
+
+    if (error) {
+      toast({
+        title: "Bulk delete failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Deleted",
+        description: `${ids.length} ${ids.length === 1 ? "entry" : "entries"} removed.`,
+      });
+      setSelectedIds(new Set());
+      fetchEntries();
+    }
+  };
+
+  // Clear stale selection any time the visible page changes.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [currentPage, statusFilter, dateFrom, dateTo, searchQuery]);
+
+  const toggleRow = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const togglePage = () => {
+    setSelectedIds((prev) => {
+      const allOnPageSelected = entries.length > 0 && entries.every((e) => prev.has(e.id));
+      if (allOnPageSelected) {
+        const next = new Set(prev);
+        for (const e of entries) next.delete(e.id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const e of entries) next.add(e.id);
+      return next;
+    });
+  };
+
   const handleStatusChange = async (entry: CostEntry, newStatus: string) => {
     if (!adminSession?.id) return;
 
@@ -629,6 +710,36 @@ export default function CostEntriesPage() {
         </CardContent>
       </Card>
 
+      {/* Bulk action bar — visible when rows are selected */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-md border border-amber-500/40 bg-amber-500/10">
+          <div className="flex items-center gap-3">
+            <Badge variant="outline" className="border-amber-500/50 text-amber-300 bg-amber-500/15">
+              {selectedIds.size} selected
+            </Badge>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedIds(new Set())}
+              className="h-7 px-2 text-xs"
+            >
+              <X className="h-3.5 w-3.5 mr-1" />
+              Clear
+            </Button>
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleBulkDelete}
+            disabled={bulkDeleting}
+            className="h-8"
+          >
+            <Trash2 className="h-4 w-4 mr-1.5" />
+            {bulkDeleting ? "Deleting…" : `Delete ${selectedIds.size}`}
+          </Button>
+        </div>
+      )}
+
       {/* Entries Table */}
       <Card>
         <CardContent className="p-0">
@@ -649,6 +760,15 @@ export default function CostEntriesPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[40px]">
+                      <Checkbox
+                        checked={
+                          entries.length > 0 && entries.every((e) => selectedIds.has(e.id))
+                        }
+                        onCheckedChange={togglePage}
+                        aria-label="Select all on page"
+                      />
+                    </TableHead>
                     <TableHead className="w-[100px]">Date</TableHead>
                     <TableHead className="w-[100px]">Code</TableHead>
                     <TableHead>Description</TableHead>
@@ -661,7 +781,29 @@ export default function CostEntriesPage() {
                 </TableHeader>
                 <TableBody>
                   {entries.map((entry) => (
-                    <TableRow key={entry.id}>
+                    <TableRow
+                      key={entry.id}
+                      data-state={selectedIds.has(entry.id) ? "selected" : undefined}
+                      className="cursor-pointer hover:bg-muted/40"
+                      onClick={(e) => {
+                        // Don't open detail when interacting with the
+                        // checkbox cell, the actions menu, or any link.
+                        const target = e.target as HTMLElement;
+                        if (target.closest("[data-row-stop]")) return;
+                        setDetailEntry(entry);
+                      }}
+                    >
+                      <TableCell
+                        className="align-middle"
+                        data-row-stop=""
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Checkbox
+                          checked={selectedIds.has(entry.id)}
+                          onCheckedChange={() => toggleRow(entry.id)}
+                          aria-label="Select row"
+                        />
+                      </TableCell>
                       <TableCell className="text-muted-foreground text-xs">
                         {new Date(entry.entry_date).toLocaleDateString("en-GB")}
                       </TableCell>
@@ -732,7 +874,7 @@ export default function CostEntriesPage() {
                           {entry.status.replace("_", " ")}
                         </Badge>
                       </TableCell>
-                      <TableCell>
+                      <TableCell data-row-stop="" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-7 w-7">
@@ -740,6 +882,10 @@ export default function CostEntriesPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setDetailEntry(entry)}>
+                              <Eye className="h-4 w-4 mr-2" />
+                              View details
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openDialog(entry)}>
                               <Pencil className="h-4 w-4 mr-2" />
                               Edit
@@ -1084,6 +1230,332 @@ export default function CostEntriesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Detail (read-only) view */}
+      <CostEntryDetailDialog
+        entry={detailEntry}
+        onClose={() => setDetailEntry(null)}
+        onEdit={(e) => {
+          setDetailEntry(null);
+          openDialog(e);
+        }}
+      />
+    </div>
+  );
+}
+
+// =====================================================================
+// Detail dialog: read-only view exposing every field on a cost entry,
+// including time, address, lat/lon, invoice + transaction id, receipt,
+// merchant, raw extracted_data, etc.
+// =====================================================================
+
+interface DetailDialogProps {
+  entry: (CostEntry & Record<string, any>) | null;
+  onClose: () => void;
+  onEdit: (entry: CostEntry) => void;
+}
+
+function CostEntryDetailDialog({ entry, onClose, onEdit }: DetailDialogProps) {
+  if (!entry) return null;
+
+  const e = entry as any;
+
+  const fmtMoney = (v: any, ccy: string | null | undefined) => {
+    if (v == null || v === "") return "—";
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "—";
+    try {
+      return new Intl.NumberFormat("en-EU", {
+        style: "currency",
+        currency: ccy || "EUR",
+        minimumFractionDigits: 2,
+      }).format(n);
+    } catch {
+      return `${n.toFixed(2)} ${ccy || ""}`;
+    }
+  };
+  const fmtNum = (v: any, suffix = "") => {
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    return `${n.toLocaleString("en-EU", { maximumFractionDigits: 3 })}${suffix}`;
+  };
+  const fmtDate = (v: any) => {
+    if (!v) return "—";
+    try {
+      return new Date(v).toLocaleDateString("en-GB");
+    } catch {
+      return String(v);
+    }
+  };
+  const fmtDateTime = (v: any) => {
+    if (!v) return "—";
+    try {
+      const d = new Date(v);
+      return `${d.toLocaleDateString("en-GB")} ${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+    } catch {
+      return String(v);
+    }
+  };
+
+  const lat = e.latitude != null ? Number(e.latitude) : null;
+  const lon = e.longitude != null ? Number(e.longitude) : null;
+  const hasCoords = lat != null && lon != null && Number.isFinite(lat) && Number.isFinite(lon);
+
+  const receiptUrl: string | null =
+    e.receipt_url || e.receipt_path || e.attachment_url || e.invoice_url || null;
+  const extracted = e.extracted_data && typeof e.extracted_data === "object" ? e.extracted_data : null;
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Receipt className="h-5 w-5" />
+            <span>Cost entry</span>
+            {e.cost_code && (
+              <Badge variant="outline" className="font-mono text-[11px]">
+                {e.cost_code}
+              </Badge>
+            )}
+            <Badge
+              variant="outline"
+              className={STATUS_COLORS[e.status] || ""}
+            >
+              {String(e.status || "").replace("_", " ")}
+            </Badge>
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Headline summary */}
+        <div className="grid grid-cols-3 gap-3 pt-2">
+          <SummaryStat
+            label="Gross"
+            value={fmtMoney(e.amount_incl_vat ?? e.amount, e.currency)}
+            sub={
+              e.currency && e.currency !== "EUR" && e.amount_eur != null
+                ? `≈ ${fmtMoney(e.amount_eur, "EUR")}`
+                : undefined
+            }
+          />
+          <SummaryStat label="Net" value={fmtMoney(e.amount_excl_vat, e.currency)} />
+          <SummaryStat
+            label="VAT"
+            value={fmtMoney(e.tax_amount, e.currency)}
+            sub={e.tax_rate != null ? `${Number(e.tax_rate).toFixed(2)}%` : undefined}
+          />
+        </div>
+
+        <Separator className="my-3" />
+
+        {/* When */}
+        <DetailSection title="When" icon={<Clock className="h-3.5 w-3.5" />}>
+          <DetailRow label="Date" value={fmtDate(e.entry_date)} />
+          <DetailRow label="Time / Occurred at" value={fmtDateTime(e.occurred_at)} />
+          <DetailRow label="Posting date" value={fmtDate(e.posting_date)} />
+          {extracted?.posted_at && (
+            <DetailRow label="Posted at" value={fmtDateTime(extracted.posted_at)} />
+          )}
+          <DetailRow label="Recorded" value={fmtDateTime(e.created_at)} />
+        </DetailSection>
+
+        {/* Where */}
+        <DetailSection title="Where" icon={<MapPin className="h-3.5 w-3.5" />}>
+          <DetailRow label="Country" value={e.country_code || "—"} mono />
+          <DetailRow label="Station / Location" value={e.location_label || "—"} />
+          <DetailRow label="Geocoded address" value={e.geocoded_address || "—"} wrap />
+          <DetailRow
+            label="Coordinates"
+            value={
+              hasCoords ? (
+                <a
+                  className="inline-flex items-center gap-1 text-primary hover:underline tabular-nums"
+                  href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=16/${lat}/${lon}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {lat!.toFixed(5)}, {lon!.toFixed(5)}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : (
+                "—"
+              )
+            }
+          />
+        </DetailSection>
+
+        {/* Identification */}
+        <DetailSection title="Identification" icon={<Hash className="h-3.5 w-3.5" />}>
+          <DetailRow label="Invoice number" value={e.invoice_number || "—"} mono />
+          <DetailRow label="Transaction ID" value={e.external_id || "—"} mono wrap />
+          <DetailRow label="External source" value={e.external_source || "—"} mono />
+          <DetailRow label="Source" value={e.source || "—"} mono />
+          <DetailRow label="Entry ID" value={e.id} mono wrap />
+        </DetailSection>
+
+        {/* Allocation */}
+        <DetailSection title="Allocation" icon={<Truck className="h-3.5 w-3.5" />}>
+          <DetailRow
+            label="Cost code"
+            value={
+              e.cost_catalog?.name
+                ? `${e.cost_code} — ${e.cost_catalog.name}`
+                : e.cost_code || "—"
+            }
+          />
+          <DetailRow label="Vehicle" value={e.vehicle?.plate_number || "—"} mono />
+          <DetailRow label="Driver" value={e.driver?.name || "—"} />
+          <DetailRow
+            label="Trip"
+            value={
+              e.trip ? (
+                <Link
+                  href={`/admin/tms/trips/${e.trip.id}/edit`}
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  {e.trip.reference_number}
+                  <ExternalLink className="h-3 w-3" />
+                </Link>
+              ) : (
+                "—"
+              )
+            }
+          />
+        </DetailSection>
+
+        {/* Money */}
+        <DetailSection title="Amounts" icon={<Coins className="h-3.5 w-3.5" />}>
+          <DetailRow label="Currency" value={e.currency || "—"} mono />
+          <DetailRow label="Amount" value={fmtMoney(e.amount, e.currency)} />
+          <DetailRow label="Amount (excl. VAT)" value={fmtMoney(e.amount_excl_vat, e.currency)} />
+          <DetailRow label="Amount (incl. VAT)" value={fmtMoney(e.amount_incl_vat, e.currency)} />
+          <DetailRow label="Tax rate" value={e.tax_rate != null ? `${Number(e.tax_rate).toFixed(2)}%` : "—"} />
+          <DetailRow label="Tax amount" value={fmtMoney(e.tax_amount, e.currency)} />
+          <DetailRow label="EUR equivalent" value={fmtMoney(e.amount_eur, "EUR")} />
+        </DetailSection>
+
+        {/* Quantities */}
+        {(e.liters_qty || e.kwh_qty || e.km_qty || e.units_qty) && (
+          <DetailSection title="Quantities" icon={<Fuel className="h-3.5 w-3.5" />}>
+            <DetailRow label="Liters" value={fmtNum(e.liters_qty, " L") || "—"} />
+            <DetailRow label="kWh" value={fmtNum(e.kwh_qty, " kWh") || "—"} />
+            <DetailRow label="Kilometers" value={fmtNum(e.km_qty, " km") || "—"} />
+            <DetailRow label="Units" value={fmtNum(e.units_qty) || "—"} />
+          </DetailSection>
+        )}
+
+        {/* Counterparty */}
+        <DetailSection title="Counterparty" icon={<Building2 className="h-3.5 w-3.5" />}>
+          <DetailRow label="Supplier (provider)" value={e.cost_provider?.name || "—"} />
+          <DetailRow label="Merchant on receipt" value={e.vendor_name || "—"} />
+        </DetailSection>
+
+        {/* Notes / description */}
+        {(e.description || e.notes) && (
+          <DetailSection title="Notes" icon={<FileText className="h-3.5 w-3.5" />}>
+            {e.description && <DetailRow label="Description" value={e.description} wrap />}
+            {e.notes && <DetailRow label="Notes" value={e.notes} wrap />}
+          </DetailSection>
+        )}
+
+        {/* Receipt */}
+        {receiptUrl && (
+          <DetailSection title="Receipt" icon={<Receipt className="h-3.5 w-3.5" />}>
+            <a
+              href={receiptUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline break-all"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Open receipt
+            </a>
+          </DetailSection>
+        )}
+
+        {/* Raw extracted data */}
+        {extracted && (
+          <DetailSection title="Raw supplier data" icon={<FileText className="h-3.5 w-3.5" />}>
+            <pre className="text-[11px] leading-snug bg-muted/40 rounded-md p-3 overflow-x-auto max-h-64">
+              {JSON.stringify(extracted, null, 2)}
+            </pre>
+          </DetailSection>
+        )}
+
+        <DialogFooter className="pt-2">
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+          <Button onClick={() => onEdit(entry)}>
+            <Pencil className="h-4 w-4 mr-2" />
+            Edit
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SummaryStat({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub?: string;
+}) {
+  return (
+    <div className="rounded-md border bg-muted/20 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-base font-semibold tabular-nums leading-tight">{value}</div>
+      {sub && <div className="text-[11px] text-muted-foreground tabular-nums">{sub}</div>}
+    </div>
+  );
+}
+
+function DetailSection({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mt-3">
+      <h4 className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">
+        {icon}
+        {title}
+      </h4>
+      <div className="rounded-md border divide-y">{children}</div>
+    </div>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+  mono,
+  wrap,
+}: {
+  label: string;
+  value: React.ReactNode;
+  mono?: boolean;
+  wrap?: boolean;
+}) {
+  return (
+    <div className="flex items-start gap-3 px-3 py-1.5 text-sm">
+      <div className="w-44 shrink-0 text-xs text-muted-foreground pt-0.5">{label}</div>
+      <div
+        className={`flex-1 min-w-0 ${mono ? "font-mono text-[12px]" : ""} ${
+          wrap ? "break-words whitespace-pre-wrap" : "truncate"
+        }`}
+      >
+        {value ?? "—"}
+      </div>
     </div>
   );
 }
