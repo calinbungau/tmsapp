@@ -173,6 +173,11 @@ export default function TripsIndexPage() {
   const [dateRange, setDateRange] = useState<string>("30d"); // 7d / 30d / 90d / all
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [merging, setMerging] = useState(false);
+  // Pagination — applied client-side after the server-side filters (date /
+  // status / assignment) so the user keeps the snappy filter UX. Page is
+  // reset to 1 whenever filters change (effect below).
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [page, setPage] = useState<number>(1);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -322,9 +327,22 @@ export default function TripsIndexPage() {
     return { total, active, totalKm, totalRevenue, totalCost, margin, marginPct, ordersCount };
   }, [trips]);
 
+  // ─── Pagination ────────────────────────────────────────────
+  // Reset to page 1 whenever the underlying list changes (filter/refresh).
+  useEffect(() => {
+    setPage(1);
+  }, [trips.length, search, statusFilter, assignmentFilter, dateRange]);
+  const pageCount = Math.max(1, Math.ceil(trips.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pageStart = (safePage - 1) * pageSize;
+  const pageEnd = Math.min(pageStart + pageSize, trips.length);
+  const visibleTrips = useMemo(
+    () => trips.slice(pageStart, pageEnd),
+    [trips, pageStart, pageEnd],
+  );
+
   // ─── Selection / merge eligibility ─────────────────────────
-  const selectedTrips = useMemo(
-    () => trips.filter((t) => selectedIds.has(t.id)),
+  const selectedTrips = useMemo(    () => trips.filter((t) => selectedIds.has(t.id)),
     [trips, selectedIds],
   );
   const mergeEligibility = useMemo(() => {
@@ -581,7 +599,7 @@ export default function TripsIndexPage() {
           <>
             {/* Mobile cards */}
             <div className="md:hidden divide-y divide-border/30">
-              {trips.map((t) => (
+              {visibleTrips.map((t) => (
                 <TripCard
                   key={t.id}
                   trip={t}
@@ -600,13 +618,29 @@ export default function TripsIndexPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          if (selectedIds.size === trips.length) clearSelection();
-                          else setSelectedIds(new Set(trips.map((t) => t.id)));
+                          // Select-all operates on the current page only so
+                          // bulk actions stay predictable when the list is
+                          // paginated.
+                          const visibleIds = visibleTrips.map((t) => t.id);
+                          const allVisibleSelected = visibleIds.every((id) => selectedIds.has(id));
+                          if (allVisibleSelected) {
+                            const next = new Set(selectedIds);
+                            visibleIds.forEach((id) => next.delete(id));
+                            setSelectedIds(next);
+                          } else {
+                            const next = new Set(selectedIds);
+                            visibleIds.forEach((id) => next.add(id));
+                            setSelectedIds(next);
+                          }
                         }}
                         className="text-muted-foreground hover:text-foreground"
-                        title={selectedIds.size === trips.length ? "Clear selection" : "Select all"}
+                        title={
+                          visibleTrips.every((t) => selectedIds.has(t.id))
+                            ? "Clear page selection"
+                            : "Select all on page"
+                        }
                       >
-                        {selectedIds.size === trips.length && trips.length > 0 ? (
+                        {visibleTrips.length > 0 && visibleTrips.every((t) => selectedIds.has(t.id)) ? (
                           <CheckSquare className="h-3.5 w-3.5" />
                         ) : (
                           <Square className="h-3.5 w-3.5" />
@@ -627,7 +661,7 @@ export default function TripsIndexPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
-                  {trips.map((t) => (
+                  {visibleTrips.map((t) => (
                     <TripDesktopRow
                       key={t.id}
                       trip={t}
@@ -638,6 +672,81 @@ export default function TripsIndexPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination footer (shared across mobile + desktop). Hidden
+                when everything fits on one page so it stays out of the way
+                for tiny lists. */}
+            {trips.length > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-4 md:px-6 py-3 border-t border-border/30 bg-background/40 text-xs">
+                <div className="text-muted-foreground">
+                  Showing <span className="text-foreground font-medium">{pageStart + 1}</span>
+                  {"–"}
+                  <span className="text-foreground font-medium">{pageEnd}</span> of{" "}
+                  <span className="text-foreground font-medium">{trips.length}</span> round trips
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-muted-foreground">
+                    Rows per page
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        setPageSize(Number(e.target.value));
+                        setPage(1);
+                      }}
+                      className="bg-background border border-border/50 rounded px-1.5 py-1 text-xs text-foreground"
+                    >
+                      {[10, 25, 50, 100].map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2"
+                      disabled={safePage <= 1}
+                      onClick={() => setPage(1)}
+                    >
+                      ‹‹
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2"
+                      disabled={safePage <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      ‹
+                    </Button>
+                    <span className="px-2 text-muted-foreground">
+                      Page <span className="text-foreground font-medium">{safePage}</span> /{" "}
+                      {pageCount}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2"
+                      disabled={safePage >= pageCount}
+                      onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                    >
+                      ›
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2"
+                      disabled={safePage >= pageCount}
+                      onClick={() => setPage(pageCount)}
+                    >
+                      ››
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
