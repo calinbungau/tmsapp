@@ -35,6 +35,8 @@ import {
   Loader2,
   Mail,
   Package,
+  Play,
+  Plus,
   Receipt,
   Route,
   Settings,
@@ -42,6 +44,7 @@ import {
   Smartphone,
   Truck,
   Wrench,
+  X,
 } from "lucide-react";
 
 interface ActionCenterDefinition {
@@ -56,6 +59,7 @@ interface ActionCenterDefinition {
   severity_matrix: Record<string, any> | null;
   thresholds: Record<string, any> | null;
   notify_channels: string[];
+  email_recipients: string[];
   escalation_after_hours: number | null;
   created_at: string;
 }
@@ -89,6 +93,14 @@ export default function ActionCenterSettingsPage() {
   const [definitions, setDefinitions] = useState<ActionCenterDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [runResult, setRunResult] = useState<{ totalUpserted: number; durationMs: number } | null>(
+    null
+  );
+  // Local state for the per-rule email-input fields. Keyed by definition id
+  // so multiple rules can be edited independently without one rule's pending
+  // text leaking into another.
+  const [emailInputs, setEmailInputs] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const fetchDefinitions = useCallback(async () => {
@@ -165,6 +177,96 @@ export default function ActionCenterSettingsPage() {
     await handleUpdate(def.id, { notify_channels: newChannels });
   };
 
+  // ----- Custom email recipients ----------------------------------
+  // Stored as a JSONB array on the definition. Backend column was
+  // added in scripts/200_action_center_email_recipients.sql.
+  const recipientsOf = (def: ActionCenterDefinition): string[] => {
+    const r = def.email_recipients as any;
+    if (Array.isArray(r)) return r.filter((e) => typeof e === "string" && e);
+    return [];
+  };
+
+  const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+
+  const handleAddRecipient = async (def: ActionCenterDefinition) => {
+    const raw = (emailInputs[def.id] || "").trim();
+    if (!raw) return;
+    // Allow comma- or semicolon-separated bulk paste so users can drop
+    // a contact list straight in.
+    const incoming = raw
+      .split(/[,;\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const existing = recipientsOf(def);
+    const existingLower = new Set(existing.map((e) => e.toLowerCase()));
+    const additions: string[] = [];
+    const invalid: string[] = [];
+    for (const email of incoming) {
+      if (!isValidEmail(email)) {
+        invalid.push(email);
+        continue;
+      }
+      if (existingLower.has(email.toLowerCase())) continue;
+      additions.push(email);
+      existingLower.add(email.toLowerCase());
+    }
+
+    if (invalid.length > 0) {
+      setMessage({ type: "error", text: `Invalid email${invalid.length > 1 ? "s" : ""}: ${invalid.join(", ")}` });
+      setTimeout(() => setMessage(null), 3500);
+    }
+    if (additions.length === 0) {
+      // Still clear the input if everything was duplicate.
+      if (invalid.length === 0) setEmailInputs((prev) => ({ ...prev, [def.id]: "" }));
+      return;
+    }
+
+    const next = [...existing, ...additions];
+    setEmailInputs((prev) => ({ ...prev, [def.id]: "" }));
+    await handleUpdate(def.id, { email_recipients: next });
+  };
+
+  const handleRemoveRecipient = async (def: ActionCenterDefinition, email: string) => {
+    const next = recipientsOf(def).filter((e) => e.toLowerCase() !== email.toLowerCase());
+    await handleUpdate(def.id, { email_recipients: next });
+  };
+
+  // ----- Manual run ------------------------------------------------
+  // Vercel's cron schedule only kicks in for production deployments and
+  // tasks tick once every 5 minutes. The "Run now" button triggers the
+  // same orchestrator immediately so admins can verify a brand-new
+  // expired document, overdue maintenance, etc. surfaces without
+  // waiting for the next tick.
+  const handleRunDetectors = async () => {
+    if (!adminSession?.id || running) return;
+    setRunning(true);
+    setRunResult(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admin/action-center/run-detectors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_id: adminSession.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to run detectors");
+      setRunResult({
+        totalUpserted: data.totalUpserted ?? 0,
+        durationMs: data.durationMs ?? 0,
+      });
+      setMessage({
+        type: "success",
+        text: `Detectors finished in ${Math.max(1, Math.round((data.durationMs ?? 0) / 100) / 10)}s — ${data.totalUpserted ?? 0} item(s) created/updated.`,
+      });
+      setTimeout(() => setMessage(null), 4000);
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Failed to run detectors" });
+    } finally {
+      setRunning(false);
+    }
+  };
+
   // Group definitions by category
   const defsByCategory = definitions.reduce((acc, def) => {
     const cat = def.category || "other";
@@ -195,12 +297,20 @@ export default function ActionCenterSettingsPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-bold">Action Center Settings</h1>
           <p className="text-muted-foreground">
             Configure detection rules, thresholds, and notification preferences
           </p>
         </div>
+        <Button onClick={handleRunDetectors} disabled={running} variant="outline">
+          {running ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Play className="h-4 w-4 mr-2" />
+          )}
+          {running ? "Running..." : "Run detectors now"}
+        </Button>
       </div>
 
       {/* Notification timing explainer */}
@@ -215,16 +325,20 @@ export default function ActionCenterSettingsPage() {
               <ul className="space-y-1 text-muted-foreground list-disc pl-4">
                 <li>
                   Detectors run every <span className="font-medium text-foreground">5 minutes</span>{" "}
-                  (server cron). New items are created or updated automatically.
+                  on production deployments via Vercel Cron. New items are created or updated
+                  automatically. Use <span className="font-medium text-foreground">&ldquo;Run detectors now&rdquo;</span>{" "}
+                  above to trigger them immediately for testing.
                 </li>
                 <li>
                   <span className="font-medium text-foreground">In-App</span>: shown immediately in
                   the sidebar badge and Action Center inbox the moment a detector fires.
                 </li>
                 <li>
-                  <span className="font-medium text-foreground">Email</span>: sent within 5 minutes
-                  of detection to users matching the assignee role. Snoozed/dismissed items don&apos;t
-                  re-trigger emails.
+                  <span className="font-medium text-foreground">Email</span>: when enabled, sent to
+                  users with the assignee role <em>plus</em> any custom recipients you list per
+                  rule. Snoozed/dismissed items don&apos;t re-trigger emails. (Email worker is being
+                  rolled out — channel preferences and recipients are stored now and will be used
+                  as soon as it ships.)
                 </li>
                 <li>
                   <span className="font-medium text-foreground">Push</span>: sent for{" "}
@@ -588,6 +702,79 @@ export default function ActionCenterSettingsPage() {
                             </Button>
                           </div>
                         </div>
+
+                        {/* Custom Email Recipients */}
+                        {channelsOf(def).includes("email") && (
+                          <div className="space-y-3">
+                            <Label>Custom email recipients</Label>
+                            <p className="text-xs text-muted-foreground">
+                              Extra addresses notified for this rule, in addition to users with the
+                              assignee role above. Useful for routing e.g. expiring documents to a
+                              compliance officer or external accountant.
+                            </p>
+                            {recipientsOf(def).length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {recipientsOf(def).map((email) => (
+                                  <Badge
+                                    key={email}
+                                    variant="secondary"
+                                    className="gap-1 pl-2 pr-1 py-1"
+                                  >
+                                    <Mail className="h-3 w-3 opacity-70" />
+                                    <span className="text-xs">{email}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveRecipient(def, email)}
+                                      disabled={!def.is_enabled || saving === def.id}
+                                      className="ml-0.5 rounded-sm hover:bg-muted-foreground/20 disabled:opacity-50"
+                                      aria-label={`Remove ${email}`}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2 max-w-md">
+                              <Input
+                                type="email"
+                                placeholder="name@company.com"
+                                value={emailInputs[def.id] || ""}
+                                onChange={(e) =>
+                                  setEmailInputs((prev) => ({
+                                    ...prev,
+                                    [def.id]: e.target.value,
+                                  }))
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleAddRecipient(def);
+                                  }
+                                }}
+                                disabled={!def.is_enabled || saving === def.id}
+                                className="h-9"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleAddRecipient(def)}
+                                disabled={
+                                  !def.is_enabled ||
+                                  saving === def.id ||
+                                  !(emailInputs[def.id] || "").trim()
+                                }
+                              >
+                                <Plus className="h-4 w-4 mr-1" />
+                                Add
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Tip: paste multiple addresses separated by commas to add at once.
+                            </p>
+                          </div>
+                        )}
 
                         {/* Escalation */}
                         <div className="space-y-3">

@@ -62,6 +62,7 @@ export async function PATCH(req: NextRequest) {
     "severity_matrix",
     "thresholds",
     "notify_channels",
+    "email_recipients",
     "escalation_after_hours",
   ]
 
