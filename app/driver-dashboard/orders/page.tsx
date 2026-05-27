@@ -508,9 +508,15 @@ export default function DriverOrdersPage() {
     setSubmittingForm(true);
     const s = createClient();
     try {
-      await s.from("order_stop_form_submissions").insert({
-        order_id: formContext.orderId,
-        stop_id: formContext.stopId,
+      // Persist into the new TMS-side submission table created in
+      // migration 171. The legacy `order_stop_form_submissions` table
+      // never existed in the schema; we write against the actual
+      // `trip_stop_form_submissions` table so the dispatcher panels
+      // (and the email-to-carrier archive) can read it back. The
+      // `trip_id` column lets us index by trip without an extra join.
+      await s.from("trip_stop_form_submissions").insert({
+        trip_stop_id: formContext.stopId,
+        trip_id: activeTrip.id,
         form_id: formContext.formId,
         submitted_by: driver.id,
         submitted_by_type: "driver",

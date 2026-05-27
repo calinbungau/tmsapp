@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { processDriverPosition } from "@/lib/tms/auto-checkin";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -38,7 +39,23 @@ export async function POST(request: NextRequest) {
       is_moving,
     });
 
-    return NextResponse.json({ ok: true });
+    // Run the geofence engine for this fix. We deliberately await it so
+    // the caller knows whether anything was triggered, but it's wrapped
+    // in try/catch so a bug in the geofence logic never breaks the
+    // primary purpose of the endpoint (recording the position).
+    let geofence: { enters: number; exits: number } | null = null;
+    try {
+      geofence = await processDriverPosition({
+        supabase,
+        driverId: driver_id,
+        lat: latitude,
+        lng: longitude,
+      });
+    } catch (geoErr: any) {
+      console.error("[v0] geofence error:", geoErr?.message || geoErr);
+    }
+
+    return NextResponse.json({ ok: true, geofence });
   } catch (err: any) {
     console.error("Position update error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });

@@ -65,7 +65,14 @@ interface TripStop {
   contact_name?: string;
   contact_phone?: string;
   reference_number?: string;
-  form_id?: string;
+  form_id?: string | null;
+  // Geofencing & auto check-in/out controls (mirror of FSM task_stops). The
+  // columns already exist on trip_stops so this is purely a UI surface
+  // wiring — leaving them undefined keeps existing rows on their DB
+  // defaults (auto_*: false, radius 200m).
+  auto_checkin?: boolean | null;
+  auto_checkout?: boolean | null;
+  geofence_radius?: number | null;
   order_id: string | null;
   order_stop_id?: string | null;
   distance_to_km: number | null;
@@ -110,6 +117,14 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [showQuickCreateCarrier, setShowQuickCreateCarrier] = useState(false);
   const [showAddOrder, setShowAddOrder] = useState(false);
   const [removingOrderId, setRemovingOrderId] = useState<string | null>(null);
+  // Forms available for stop-level capture (shared `task_forms` table; we
+  // also accept the new 'order' / 'trip' scopes so a single library of
+  // forms is reusable across modules).
+  const [stopForms, setStopForms] = useState<{ id: string; name: string; scope: string }[]>([]);
+  // Default geofence radius pulled from Settings → Company Profile so a
+  // freshly added stop starts at the operator's preferred value (rather
+  // than the legacy 200m hard-coded default).
+  const [defaultGeofenceRadius, setDefaultGeofenceRadius] = useState<number>(200);
 
   // Route waypoints (intermediate drag-points for draggable route)
   const [waypoints, setWaypoints] = useState<[number, number][]>([]);
@@ -327,6 +342,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
         trip_stops(id, sequence_order, stop_type, company_name, address, city, country, postal_code,
                    order_id, lat, lng, planned_date, planned_time_from, planned_time_to, status, notes,
                    contact_name, contact_phone, reference_number, form_id,
+                   auto_checkin, auto_checkout, geofence_radius,
                    route_to_geometry, distance_to_km, duration_to_minutes,
                    action_type:action_type_id(id, code, name, icon, color)),
           trip_legs(id, leg_number, assignment_type, from_stop_index, to_stop_index, vehicle_id, driver_id, carrier_id, route_strategy)
@@ -457,16 +473,25 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   useEffect(() => {
     if (!adminSession?.id) return;
     (async () => {
-      const [{ data: d }, { data: v }, { data: t }, { data: c }] = await Promise.all([
+      const [{ data: d }, { data: v }, { data: t }, { data: c }, { data: forms }, { data: cp }] = await Promise.all([
         supabase.from("drivers").select("id, name").eq("admin_id", adminSession.id).order("name"),
         supabase.from("vehicles").select("id, plate_number, make, model, max_weight_kg, max_pallets").eq("admin_id", adminSession.id).order("plate_number"),
         supabase.from("trailers").select("id, plate_number, trailer_type, max_weight_kg, max_pallets").eq("admin_id", adminSession.id).order("plate_number"),
         supabase.from("partners").select("id, name").eq("admin_id", adminSession.id).eq("partner_type", "carrier").order("name"),
+        // Pull stop/trip-scope forms once. We deliberately filter by the
+        // scopes that make sense at a stop (the driver fills them on
+        // arrival/departure); 'task'-scoped FSM forms are not surfaced
+        // here to avoid mixing the two modules' libraries.
+        supabase.from("task_forms").select("id, name, scope").eq("admin_id", adminSession.id).in("scope", ["stop","trip","order"]).order("name"),
+        supabase.from("company_profiles").select("default_geofence_radius_m").eq("admin_id", adminSession.id).maybeSingle(),
       ]);
       setDrivers(d || []);
       setVehicles(v || []);
       setTrailers(t || []);
       setCarriers(c || []);
+      setStopForms((forms as any[]) || []);
+      const r = (cp as any)?.default_geofence_radius_m;
+      if (typeof r === "number" && r > 0) setDefaultGeofenceRadius(r);
     })();
   }, [adminSession?.id, supabase]);
 
@@ -525,6 +550,10 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
       contact_name: null,
       contact_phone: null,
       reference_number: null,
+      form_id: null,
+      auto_checkin: false,
+      auto_checkout: false,
+      geofence_radius: defaultGeofenceRadius,
       distance_to_km: null,
       duration_to_minutes: null,
       route_to_geometry: null,
@@ -581,6 +610,16 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
           contact_name: stop.contact_name || null,
           contact_phone: stop.contact_phone || null,
           reference_number: stop.reference_number || null,
+          // Capture-form selection + geofence behaviour. We persist the
+          // raw values (or null) so the driver app and the auto-checkin
+          // service can read them with no conditional fallbacks.
+          form_id: stop.form_id || null,
+          auto_checkin: !!stop.auto_checkin,
+          auto_checkout: !!stop.auto_checkout,
+          geofence_radius:
+            typeof stop.geofence_radius === "number" && stop.geofence_radius > 0
+              ? stop.geofence_radius
+              : 200,
           distance_to_km: stop.distance_to_km,
           duration_to_minutes: stop.duration_to_minutes,
           route_to_geometry: stop.route_to_geometry,
@@ -1539,6 +1578,75 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
               <div className="space-y-1">
                 <Label className="text-[10px] text-muted-foreground/70">Reference Number</Label>
                 <Input value={selectedStop.reference_number || ""} onChange={e => updateStop(selectedStopIndex!, { reference_number: e.target.value })} className="h-7 text-[11px] bg-background/60" placeholder="Stop reference..." />
+              </div>
+
+              {/* Capture Form & Geofencing — shared with FSM. The form
+                  picker only lists task_forms scoped to stop/trip/order
+                  so dispatchers don't accidentally attach a service-task
+                  form. Auto check-in / check-out flip the boolean flags
+                  consumed by the geofence service in lib/tms/auto-checkin.ts. */}
+              <div className="space-y-2 rounded-md border border-border/40 bg-background/40 p-2">
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1">
+                    <FileText className="h-2.5 w-2.5" />Capture Form
+                  </Label>
+                  <Select
+                    value={selectedStop.form_id || "__none__"}
+                    onValueChange={(v) =>
+                      updateStop(selectedStopIndex!, { form_id: v === "__none__" ? null : v })
+                    }
+                  >
+                    <SelectTrigger className="h-7 text-[11px] bg-background/60">
+                      <SelectValue placeholder="No form" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__" className="text-[11px]">No form</SelectItem>
+                      {stopForms.map(f => (
+                        <SelectItem key={f.id} value={f.id} className="text-[11px]">
+                          {f.name}
+                          <span className="ml-1 text-[9px] text-muted-foreground/70 uppercase">{f.scope}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground/80 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-3 w-3 cursor-pointer accent-primary"
+                      checked={!!selectedStop.auto_checkin}
+                      onChange={e => updateStop(selectedStopIndex!, { auto_checkin: e.target.checked })}
+                    />
+                    Auto check-in
+                  </label>
+                  <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground/80 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-3 w-3 cursor-pointer accent-primary"
+                      checked={!!selectedStop.auto_checkout}
+                      onChange={e => updateStop(selectedStopIndex!, { auto_checkout: e.target.checked })}
+                    />
+                    Auto check-out
+                  </label>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[9px] text-muted-foreground/50 uppercase">Geofence radius (m)</span>
+                  <Input
+                    type="number"
+                    min={20}
+                    max={5000}
+                    step={10}
+                    value={selectedStop.geofence_radius ?? defaultGeofenceRadius}
+                    onChange={e =>
+                      updateStop(selectedStopIndex!, {
+                        geofence_radius: e.target.value === "" ? defaultGeofenceRadius : Number(e.target.value),
+                      })
+                    }
+                    className="h-7 text-[11px] bg-background/60"
+                    placeholder={String(defaultGeofenceRadius)}
+                  />
+                </div>
               </div>
 
               {/* Notes */}
