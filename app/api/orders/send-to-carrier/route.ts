@@ -77,6 +77,11 @@ export async function POST(request: NextRequest) {
     if (orderErr || !order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
+    // Supabase's typed client widens to GenericStringError when the
+    // select string is concatenated, so we narrow back to a permissive
+    // shape for snapshot construction. Runtime fields are guaranteed
+    // by the SQL select above.
+    const o = order as any;
 
     // Pull stops separately and order them by sequence so the snapshot
     // mirrors what the operator sees in the dialog left-to-right.
@@ -97,26 +102,26 @@ export async function POST(request: NextRequest) {
     // logic in components/tms/send-to-carrier-dialog.tsx.
     const orderSnapshot = {
       order: {
-        reference_number: order.reference_number,
-        status: order.status,
-        customer_price: order.customer_price,
-        customer_currency: order.customer_currency,
-        carrier_cost: order.carrier_cost,
-        carrier_currency: order.carrier_currency,
-        weight_kg: order.weight_kg,
-        pallet_count: order.pallet_count,
-        volume_m3: order.volume_m3,
-        loading_meters: order.loading_meters,
-        cargo_description: order.cargo_description,
-        goods_type: order.goods_type,
-        adr_class: order.adr_class,
-        special_instructions: order.special_instructions,
-        temperature_min: order.temperature_min,
-        temperature_max: order.temperature_max,
-        estimated_distance_km: order.estimated_distance_km,
-        estimated_duration_hours: order.estimated_duration_hours,
+        reference_number: o.reference_number,
+        status: o.status,
+        customer_price: o.customer_price,
+        customer_currency: o.customer_currency,
+        carrier_cost: o.carrier_cost,
+        carrier_currency: o.carrier_currency,
+        weight_kg: o.weight_kg,
+        pallet_count: o.pallet_count,
+        volume_m3: o.volume_m3,
+        loading_meters: o.loading_meters,
+        cargo_description: o.cargo_description,
+        goods_type: o.goods_type,
+        adr_class: o.adr_class,
+        special_instructions: o.special_instructions,
+        temperature_min: o.temperature_min,
+        temperature_max: o.temperature_max,
+        estimated_distance_km: o.estimated_distance_km,
+        estimated_duration_hours: o.estimated_duration_hours,
       },
-      stops: (stopsRows ?? []).map((s) => ({
+      stops: ((stopsRows ?? []) as any[]).map((s: any) => ({
         sequence_order: s.sequence_order,
         stop_type: s.stop_type,
         company_name: s.company_name,
@@ -180,7 +185,7 @@ export async function POST(request: NextRequest) {
     const uploadLink = `${baseUrl}/carrier/confirm/${token}`;
 
     // Build email body with the upload link
-    const refNumber = order.reference_number || orderId.slice(0, 8);
+    const refNumber = o.reference_number || orderId.slice(0, 8);
     const emailHtml = buildCarrierEmailHtml({
       carrierName: carrierName || "Carrier",
       refNumber,
@@ -273,7 +278,7 @@ export async function POST(request: NextRequest) {
     // managed by the recompute trigger on child status changes; we never
     // write parent status from here. For internal orders, dispatch lives
     // on trip_legs, not on orders.status — so we skip the flip entirely.
-    const fromStatus = order.status;
+    const fromStatus = o.status;
     let toStatus: string | null = null;
     if (fromStatus?.startsWith("fwd_")) {
       toStatus = "fwd_carrier_confirmation_required";
