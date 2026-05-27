@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { dispatchAllAdmins } from "@/lib/action-center-notifier";
 import { NextResponse } from "next/server";
 
 // Called by Vercel Cron every 5 minutes to run all Action Center detectors
@@ -36,12 +37,29 @@ export async function GET(request: Request) {
       0
     );
 
-    await saveLog(supabase, "action_center_detectors", "success", startTime, totalUpserted, null, data);
+    // After detectors mutate the items table, fan out notifications
+    // (in-app log + email + push placeholder). We only consider items
+    // detected/refreshed in the last 10 minutes so a backfill or
+    // schema change doesn't accidentally email everyone the entire
+    // backlog. Each delivery is recorded as an event row, so admins
+    // see a per-item timeline like "Email delivered to ops@x.com".
+    let notify: Awaited<ReturnType<typeof dispatchAllAdmins>> | null = null;
+    try {
+      notify = await dispatchAllAdmins(10);
+    } catch (e: any) {
+      console.error("[ActionCenter Cron] Notifier error:", e?.message || e);
+    }
+
+    await saveLog(supabase, "action_center_detectors", "success", startTime, totalUpserted, null, {
+      detectors: data,
+      notifications: notify,
+    });
 
     return NextResponse.json({
       success: true,
       detectors: data,
       totalUpserted,
+      notifications: notify,
       durationMs: Date.now() - startTime,
     });
   } catch (err: any) {

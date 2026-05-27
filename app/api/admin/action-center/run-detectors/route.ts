@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { dispatchActionCenterNotifications } from "@/lib/action-center-notifier";
 import { NextResponse } from "next/server";
 
 /**
@@ -53,12 +54,26 @@ export async function POST(request: Request) {
       0
     );
 
-    await saveLog(supabase, "success", startTime, totalUpserted, null, data);
+    // Same dispatch flow as the scheduled cron, but scoped to just
+    // this admin so a manual "Run now" doesn't trigger emails for
+    // every tenant on the platform.
+    let notify: Awaited<ReturnType<typeof dispatchActionCenterNotifications>> | null = null;
+    try {
+      notify = await dispatchActionCenterNotifications(adminId, 10);
+    } catch (e: any) {
+      console.error("[ActionCenter Manual] Notifier error:", e?.message || e);
+    }
+
+    await saveLog(supabase, "success", startTime, totalUpserted, null, {
+      detectors: data,
+      notifications: notify,
+    });
 
     return NextResponse.json({
       success: true,
       detectors: data,
       totalUpserted,
+      notifications: notify,
       durationMs: Date.now() - startTime,
     });
   } catch (err: any) {

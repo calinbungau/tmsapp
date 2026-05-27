@@ -47,8 +47,11 @@ export async function getSystemEmailSettings(adminId: string): Promise<SystemEma
     smtp_secure: data.smtp_secure,
     smtp_user: data.smtp_user,
     smtp_password: password,
-    from_email: data.from_email,
-    from_name: data.from_name,
+    // The DB column is `email_address` / `display_name`. Older rows
+    // may still carry `from_email` / `from_name`, so we fall back to
+    // those for backwards compatibility.
+    from_email: data.email_address ?? data.from_email ?? "",
+    from_name: data.display_name ?? data.from_name ?? "",
     is_active: data.is_active,
   };
 }

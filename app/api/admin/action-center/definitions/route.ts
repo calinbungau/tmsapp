@@ -64,6 +64,18 @@ export async function PATCH(req: NextRequest) {
     "notify_channels",
     "email_recipients",
     "escalation_after_hours",
+    // Reminder schedule fields
+    "reminder_offsets_before",
+    "reminder_daily_after_due",
+    "reminder_daily_max_days",
+    "send_window",
+    "business_hours_start",
+    "business_hours_end",
+    "skip_weekends",
+    "timezone",
+    "digest_mode",
+    "escalation_role",
+    "min_hours_between_emails",
   ]
 
   const safeUpdates: Record<string, any> = {}
