@@ -54,16 +54,85 @@ export async function POST(request: NextRequest) {
     }
     const primaryEmail = recipients[0];
 
-    // Get the order to verify it exists and get reference number
+    // Get the order to verify it exists and get reference number.
+    // We grab the full row + stops here because we want to snapshot
+    // every operationally-meaningful field at send-time. The dispatcher
+    // needs to be able to look back later and ask "what did we send to
+    // the carrier last week?" — without a snapshot we'd only see the
+    // current order data, which by then has already been mutated (new
+    // dates, swapped stops, repriced).
     const { data: order, error: orderErr } = await supabase
       .from("orders")
-      .select("id, reference_number, status, admin_id")
+      .select(
+        "id, reference_number, status, admin_id, customer_id, carrier_id, " +
+          "customer_price, customer_currency, carrier_cost, carrier_currency, " +
+          "weight_kg, pallet_count, volume_m3, loading_meters, " +
+          "cargo_description, goods_type, adr_class, special_instructions, " +
+          "temperature_min, temperature_max, " +
+          "estimated_distance_km, estimated_duration_hours"
+      )
       .eq("id", orderId)
       .single();
 
     if (orderErr || !order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
+
+    // Pull stops separately and order them by sequence so the snapshot
+    // mirrors what the operator sees in the dialog left-to-right.
+    const { data: stopsRows } = await supabase
+      .from("order_stops")
+      .select(
+        "id, sequence_order, stop_type, company_name, address, city, country, " +
+          "postal_code, planned_date, planned_time_from, planned_time_to, " +
+          "reference_number, contact_name, contact_phone, contact_email"
+      )
+      .eq("order_id", orderId)
+      .order("sequence_order", { ascending: true });
+
+    // The activity-log snapshot. Trimmed to the fields a dispatcher
+    // actually compares against ("did the date slip? did the price
+    // change? did the route reroute?"). Anything not here can't be
+    // compared retroactively — keep this list aligned with the diff
+    // logic in components/tms/send-to-carrier-dialog.tsx.
+    const orderSnapshot = {
+      order: {
+        reference_number: order.reference_number,
+        status: order.status,
+        customer_price: order.customer_price,
+        customer_currency: order.customer_currency,
+        carrier_cost: order.carrier_cost,
+        carrier_currency: order.carrier_currency,
+        weight_kg: order.weight_kg,
+        pallet_count: order.pallet_count,
+        volume_m3: order.volume_m3,
+        loading_meters: order.loading_meters,
+        cargo_description: order.cargo_description,
+        goods_type: order.goods_type,
+        adr_class: order.adr_class,
+        special_instructions: order.special_instructions,
+        temperature_min: order.temperature_min,
+        temperature_max: order.temperature_max,
+        estimated_distance_km: order.estimated_distance_km,
+        estimated_duration_hours: order.estimated_duration_hours,
+      },
+      stops: (stopsRows ?? []).map((s) => ({
+        sequence_order: s.sequence_order,
+        stop_type: s.stop_type,
+        company_name: s.company_name,
+        address: s.address,
+        city: s.city,
+        country: s.country,
+        postal_code: s.postal_code,
+        planned_date: s.planned_date,
+        planned_time_from: s.planned_time_from,
+        planned_time_to: s.planned_time_to,
+        reference_number: s.reference_number,
+        contact_name: s.contact_name,
+        contact_phone: s.contact_phone,
+        contact_email: s.contact_email,
+      })),
+    };
 
     // Get SMTP settings for the acting user (per-user mailbox), with
     // legacy fallback to the tenant's pre-migration mailbox row.
@@ -229,7 +298,8 @@ export async function POST(request: NextRequest) {
       console.log("[v0] send-to-carrier on internal order — no status flip", { orderId, fromStatus });
     }
 
-    // Log activity
+    // Log activity (with the full order snapshot so future operators
+    // can diff "what was sent then" vs. "what the order looks like now").
     await supabase.from("order_activity_log").insert({
       order_id: orderId,
       action: "order_sent_to_carrier",
@@ -243,7 +313,14 @@ export async function POST(request: NextRequest) {
         upload_link: uploadLink,
         upload_token: token,
         language: lang || "en",
+        subject: mailSubject,
+        message: message || null,
         sent_at: new Date().toISOString(),
+        // Frozen snapshot of the order at send-time. Used by the
+        // dialog's "Previously sent" panel to highlight what has
+        // changed in the order since this send (dates slipped,
+        // price changed, stops swapped, etc.).
+        order_snapshot: orderSnapshot,
       },
       performed_by_type: "admin",
       performed_by_id: adminId,
