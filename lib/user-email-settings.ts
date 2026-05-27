@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Resolves the user_email_settings row for a given (admin, user) pair.
@@ -13,7 +13,9 @@ import { createClient } from "@supabase/supabase-js";
  * Returns null if neither is found.
  */
 export async function getUserEmailSettingsRow(
-  supabase: ReturnType<typeof createClient>,
+  // Loosely typed: callers across the codebase instantiate `createClient`
+  // with default generics, so we accept any SupabaseClient shape.
+  supabase: SupabaseClient<any, any, any, any, any>,
   adminId: string,
   userId: string | null,
 ): Promise<any | null> {
