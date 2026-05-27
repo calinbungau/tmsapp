@@ -94,6 +94,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (adminSession.isOwner) return true;
     if (!adminSession.user_id) return true;
     if (adminSession.permissions && Object.keys(adminSession.permissions).length === 0 && adminSession.role) return true;
+    // A role explicitly named "All" / "Full Access" / "Administrator" is treated as full access,
+    // even if its permission set hasn't been backfilled with newer module keys yet.
+    if (adminSession.role && /^(all|full[\s_-]?access|administrator|admin)$/i.test(adminSession.role.trim())) return true;
     return false;
   }, [adminSession]);
 
