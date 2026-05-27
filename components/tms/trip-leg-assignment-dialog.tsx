@@ -449,6 +449,29 @@ interface TripLegAssignmentDialogProps {
               .select("*, order_stops(*)")
               .eq("id", parentOrderId)
               .single();
+
+            // Pull the company-level default payment terms so the carrier
+            // payment window on the new FWD matches what the operator
+            // configured in Settings → Company Profile → Defaults (e.g. 45)
+            // instead of falling back to a hardcoded 30. Customer-side
+            // terms are inherited from the parent order when available,
+            // and default to the same company value otherwise so the two
+            // never diverge silently.
+            const { data: companyProfile } = await supabase
+              .from("company_profiles")
+              .select("default_payment_terms_days")
+              .eq("admin_id", adminId)
+              .maybeSingle();
+            const defaultPaymentDays =
+              (companyProfile as any)?.default_payment_terms_days ?? 30;
+            const carrierPaymentDays =
+              (parentOrder as any)?.payment_terms_carrier_days ?? defaultPaymentDays;
+            const customerPaymentDays =
+              (parentOrder as any)?.payment_terms_customer_days ?? defaultPaymentDays;
+            console.log(
+              "[v0] TripLegAssignmentDialog: payment terms resolved",
+              { defaultPaymentDays, carrierPaymentDays, customerPaymentDays },
+            );
             
             console.log("[v0] TripLegAssignmentDialog: Parent order fetched:", {
               orderId: parentOrder?.id,
@@ -508,6 +531,14 @@ interface TripLegAssignmentDialogProps {
                 customer_vat_amount: parentOrder?.customer_vat_amount,
                 customer_price_without_vat: parentOrder?.customer_price_without_vat,
                 customer_price_with_vat: parentOrder?.customer_price_with_vat,
+                // Payment terms — carrier window is taken from the
+                // company default (Settings → Company Profile), customer
+                // window mirrors whatever the parent order already has
+                // so the dispatcher doesn't have to retype it after
+                // every leg split. Both are still editable on the
+                // resulting FWD order page.
+                payment_terms_carrier_days: carrierPaymentDays,
+                payment_terms_customer_days: customerPaymentDays,
               })
               .select()
               .single();
