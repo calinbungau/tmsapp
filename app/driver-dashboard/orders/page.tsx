@@ -79,6 +79,11 @@ interface TripStop {
 interface DriverTrip {
   id: string;
   status: string;
+  // The driver's active leg id for this trip, when v3 leg-based dispatch
+  // is in use. All status transitions ("Accept Trip", "Start Route") must
+  // be written to this leg row — updating trips.status is a no-op for the
+  // driver UI because fetchTrips overlays the leg status back on top.
+  leg_id: string | null;
   vehicle_plate: string | null;
   trailer_plate: string | null;
   distance_km: number | null;
@@ -333,6 +338,7 @@ export default function DriverOrdersPage() {
       return {
         id: t.id,
         status: effectiveStatus,
+        leg_id: leg?.id ?? null,
         vehicle_plate: effectiveVehiclePlate,
         trailer_plate: effectiveTrailerPlate,
         distance_km: t.distance_km,
@@ -402,8 +408,32 @@ export default function DriverOrdersPage() {
   // ── Trip status transitions ──
   const updateTripStatus = async (tripId: string, newStatus: string) => {
     const s = createClient();
-    const { error } = await s.from("trips").update({ status: newStatus }).eq("id", tripId);
-    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+
+    // V3 leg-based dispatch: the driver-facing status lives on the
+    // driver's trip_leg, not the trip. fetchTrips overlays the leg
+    // status onto the trip object, so writing to trips.status alone is
+    // a no-op for the UI (the next refetch reverts it to the leg
+    // status). Resolve the leg id and translate the legacy v2 status
+    // value into the v3 leg vocabulary before writing.
+    const trip = trips.find(t => t.id === tripId) || (activeTrip?.id === tripId ? activeTrip : null);
+    const legId = trip?.leg_id ?? null;
+
+    const legStatusMap: Record<string, string> = {
+      accepted: "accepted_by_driver",
+      in_progress: "in_progress",
+      completed: "completed",
+      cancelled: "cancelled",
+    };
+
+    if (legId) {
+      const legStatus = legStatusMap[newStatus] ?? newStatus;
+      const { error } = await s.from("trip_legs").update({ status: legStatus }).eq("id", legId);
+      if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    } else {
+      // Legacy v2 fallback — trip-level driver assignment with no leg.
+      const { error } = await s.from("trips").update({ status: newStatus }).eq("id", tripId);
+      if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    }
 
     // Order status is auto-synced via DB trigger (sync_order_status_on_trip_change)
 
@@ -469,7 +499,15 @@ export default function DriverOrdersPage() {
         st.id === stopId ? true : ["completed", "skipped"].includes(st.status)
       );
       if (allDone) {
-        await s.from("trips").update({ status: "completed" }).eq("id", activeTrip.id);
+        // Mark the leg as completed in v3 mode (trips.status stays at
+        // 'planned'). The leg-status trigger on the DB side propagates
+        // the completion down to trip-level / order-level wherever it
+        // is supposed to.
+        if (activeTrip.leg_id) {
+          await s.from("trip_legs").update({ status: "completed" }).eq("id", activeTrip.leg_id);
+        } else {
+          await s.from("trips").update({ status: "completed" }).eq("id", activeTrip.id);
+        }
         // Auto-derive order delivered status
         for (const ord of activeTrip.orders) {
           // Check if ALL order_stops for this order are completed
@@ -543,7 +581,15 @@ export default function DriverOrdersPage() {
         label: "Start Route", icon: <PlayCircle className="h-4 w-4 mr-2" />,
         action: async () => {
           const s = createClient();
-          await s.from("trips").update({ status: "in_progress" }).eq("id", trip.id);
+          // Mirror updateTripStatus: write to the leg in v3 mode, fall
+          // back to trip-level for legacy data. Without this, hitting
+          // "Start Route" only flips trips.status (which the UI ignores)
+          // and the page still shows "Accept Trip / Start Route" buttons.
+          if (trip.leg_id) {
+            await s.from("trip_legs").update({ status: "in_progress" }).eq("id", trip.leg_id);
+          } else {
+            await s.from("trips").update({ status: "in_progress" }).eq("id", trip.id);
+          }
           // Set first stop to en_route
           const firstStop = trip.stops.find(st => st.status === "pending");
           if (firstStop) await s.from("trip_stops").update({ status: "en_route" }).eq("id", firstStop.id);
