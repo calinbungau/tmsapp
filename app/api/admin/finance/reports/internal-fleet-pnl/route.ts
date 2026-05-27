@@ -155,6 +155,8 @@ type ApiOrderSummary = {
   cargo_description: string | null;
   weight_kg: number | null;
   pallet_count: number | null;
+  created_by_id: string | null;
+  created_by_name: string | null;
 };
 
 type ApiLegSummary = {
@@ -206,6 +208,8 @@ export type FleetPnlRow = {
   // Nested
   orders: ApiOrderSummary[];
   legs: ApiLegSummary[];
+  // Distinct creators of the orders touched by this trip.
+  creators: Array<{ id: string; name: string | null }>;
 };
 
 /* ---------------- helpers ---------------- */
@@ -359,10 +363,65 @@ export async function GET(req: NextRequest) {
     const { data } = await sb
       .from("orders")
       .select(
-        "id, reference_number, parent_order_id, status, customer_id, customer_price, customer_currency, carrier_cost, carrier_currency, commercial_role, customer_reference, cargo_description, weight_kg, pallet_count",
+        "id, reference_number, parent_order_id, status, customer_id, customer_price, customer_currency, carrier_cost, carrier_currency, commercial_role, customer_reference, cargo_description, weight_kg, pallet_count, created_by",
       )
       .in("id", orderIds);
     orders = (data ?? []) as OrderRow[];
+  }
+
+  // Resolve order creators (users.id → employees full name, with admins
+  // and email fallbacks) so the client can filter the trip rows by the
+  // user who logged the underlying order(s).
+  const creatorIdSet = new Set<string>();
+  for (const o of orders) {
+    const cid = (o as any).created_by as string | null;
+    if (cid) creatorIdSet.add(cid);
+  }
+  const creatorMap = new Map<string, string>();
+  if (creatorIdSet.size) {
+    const ids = Array.from(creatorIdSet);
+    const { data: usersRows } = await sb
+      .from("users")
+      .select("id, employee_id, email")
+      .in("id", ids);
+    const empIds = ((usersRows ?? [])
+      .map(u => (u as any).employee_id)
+      .filter(Boolean)) as string[];
+    const empNameMap = new Map<string, string>();
+    if (empIds.length) {
+      const { data: emps } = await sb
+        .from("employees")
+        .select("id, first_name, last_name")
+        .in("id", empIds);
+      for (const e of emps ?? []) {
+        const fn = (e as any).first_name || "";
+        const ln = (e as any).last_name || "";
+        const name = `${fn} ${ln}`.trim();
+        if (name) empNameMap.set((e as any).id as string, name);
+      }
+    }
+    for (const u of usersRows ?? []) {
+      const uid = (u as any).id as string;
+      const eid = (u as any).employee_id as string | null;
+      const fallback = ((u as any).email as string | null) || null;
+      const name = (eid && empNameMap.get(eid)) || fallback || null;
+      if (name) creatorMap.set(uid, name);
+    }
+    const unresolved = ids.filter(i => !creatorMap.has(i));
+    if (unresolved.length) {
+      const { data: adminRows } = await sb
+        .from("admins")
+        .select("id, name, email")
+        .in("id", unresolved);
+      for (const a of adminRows ?? []) {
+        const aid = (a as any).id as string;
+        const nm =
+          ((a as any).name as string | null)?.trim() ||
+          ((a as any).email as string | null) ||
+          null;
+        if (nm) creatorMap.set(aid, nm);
+      }
+    }
   }
 
   // 4. Subcontract children — used to compute "subcontracted cost" subtracted from revenue
@@ -550,6 +609,11 @@ export async function GET(req: NextRequest) {
       cargo_description: o.cargo_description,
       weight_kg: o.weight_kg,
       pallet_count: o.pallet_count,
+      created_by_id: ((o as any).created_by as string | null) ?? null,
+      created_by_name:
+        ((o as any).created_by &&
+          creatorMap.get((o as any).created_by as string)) ||
+        null,
     };
     const arr = ordersByTrip.get(link.trip_id) || [];
     arr.push(summary);
@@ -684,6 +748,17 @@ export async function GET(req: NextRequest) {
       subcontract_leg_count,
       order_count: tripOrders.length,
       orders: tripOrders,
+      // Distinct list of users who created the orders touched by this trip.
+      // Used by the client-side "User" filter on the report.
+      creators: (() => {
+        const seen = new Map<string, string | null>();
+        for (const o of tripOrders) {
+          if (o.created_by_id && !seen.has(o.created_by_id)) {
+            seen.set(o.created_by_id, o.created_by_name ?? null);
+          }
+        }
+        return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
+      })(),
       legs: tripLegs.sort(
         (a, b) => (a.leg_number ?? 0) - (b.leg_number ?? 0),
       ),

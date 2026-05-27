@@ -82,6 +82,8 @@ type OrderSummary = {
   cargo_description: string | null;
   weight_kg: number | null;
   pallet_count: number | null;
+  created_by_id?: string | null;
+  created_by_name?: string | null;
 };
 
 type LegSummary = {
@@ -129,6 +131,7 @@ type Row = {
   order_count: number;
   orders: OrderSummary[];
   legs: LegSummary[];
+  creators?: Array<{ id: string; name: string | null }>;
 };
 
 const fetcher = (u: string) => fetch(u).then(r => r.json());
@@ -174,6 +177,7 @@ export default function InternalFleetPnLPage() {
   const [search, setSearch] = React.useState<string>("");
   const [vehicleFilter, setVehicleFilter] = React.useState<string>("all");
   const [driverFilter, setDriverFilter] = React.useState<string>("all");
+  const [userFilter, setUserFilter] = React.useState<string>("all");
   const [marginFilter, setMarginFilter] = React.useState<string>("all"); // all|profit|loss|low
   const [showPlanned, setShowPlanned] = React.useState<boolean>(true);
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
@@ -210,11 +214,43 @@ export default function InternalFleetPnLPage() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [allRows]);
 
+  const userOptions = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of allRows) {
+      // Prefer the row-level distinct creators list, but fall back to the
+      // per-order creator info so we still build a list when older API
+      // payloads don't include the aggregated `creators` array yet.
+      const fromRow = r.creators ?? [];
+      for (const c of fromRow) {
+        if (!c.id) continue;
+        if (!m.has(c.id)) m.set(c.id, c.name || c.id);
+      }
+      if (!fromRow.length) {
+        for (const o of r.orders ?? []) {
+          if (o.created_by_id && !m.has(o.created_by_id)) {
+            m.set(o.created_by_id, o.created_by_name || o.created_by_id);
+          }
+        }
+      }
+    }
+    return Array.from(m.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allRows]);
+
   const filteredRows = React.useMemo(() => {
     const q = search.trim().toLowerCase();
     return allRows.filter(r => {
       if (vehicleFilter !== "all" && r.vehicle_id !== vehicleFilter) return false;
       if (driverFilter !== "all" && r.driver_id !== driverFilter) return false;
+      if (userFilter !== "all") {
+        const ids = new Set<string>();
+        for (const c of r.creators ?? []) if (c.id) ids.add(c.id);
+        for (const o of r.orders ?? []) {
+          if (o.created_by_id) ids.add(o.created_by_id);
+        }
+        if (!ids.has(userFilter)) return false;
+      }
       if (marginFilter === "profit" && r.profit_eur <= 0) return false;
       if (marginFilter === "loss" && r.profit_eur >= 0) return false;
       if (
@@ -239,7 +275,7 @@ export default function InternalFleetPnLPage() {
       }
       return true;
     });
-  }, [allRows, search, vehicleFilter, driverFilter, marginFilter]);
+  }, [allRows, search, vehicleFilter, driverFilter, marginFilter, userFilter]);
 
   /* totals (over filtered set) */
   const totals = React.useMemo(() => {
@@ -328,6 +364,7 @@ export default function InternalFleetPnLPage() {
         vehicle: vehicleFilter,
         driver: driverFilter,
         margin: marginFilter,
+        user: userFilter,
         search,
       },
       company: {
@@ -546,7 +583,7 @@ export default function InternalFleetPnLPage() {
         {/* Filters */}
         <Card>
           <CardContent className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3 items-end">
               <div className="space-y-1">
                 <Label htmlFor="from">From</Label>
                 <Input
@@ -590,6 +627,22 @@ export default function InternalFleetPnLPage() {
                   <SelectContent>
                     <SelectItem value="all">All drivers</SelectItem>
                     {driverOptions.map(v => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>User</Label>
+                <Select value={userFilter} onValueChange={setUserFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All users" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All users</SelectItem>
+                    {userOptions.map(v => (
                       <SelectItem key={v.id} value={v.id}>
                         {v.name}
                       </SelectItem>
