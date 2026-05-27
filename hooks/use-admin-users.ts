@@ -99,13 +99,21 @@ export function useAdminUsers(adminId: string | undefined): UseAdminUsersResult 
         .select("id, email, name")
         .eq("id", adminId);
       if (cancelled) return;
+      // For each admin row, prefer the owner user's resolved display name
+      // (which already includes the linked employee's full name) over the
+      // raw admin name. This way, legacy orders whose created_by points at
+      // an admin id still surface the real dispatcher instead of the bare
+      // tenant name (e.g. "Testing").
       (adminRows || []).forEach(a => {
         if (out.some(u => u.id === a.id)) return; // already covered
+        const ownerUser = out.find(
+          u => u.email && a.email && u.email.toLowerCase() === a.email.toLowerCase()
+        );
         const fallback = a.email ? a.email.split("@")[0] : "Admin";
         out.push({
           id: a.id,
           email: a.email ?? null,
-          name: a.name?.trim() || fallback,
+          name: ownerUser?.name || a.name?.trim() || fallback,
         });
       });
 
