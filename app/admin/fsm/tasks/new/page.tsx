@@ -358,7 +358,7 @@ function ChipSelect<T extends { id: string }>({
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ════════��══════════════════════════════════════════════════════════════════
 // Address Input with Autocomplete
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -925,7 +925,9 @@ export default function TaskCreatePage() {
         dispatch_form_values: tab.dispatch_form_values && Object.keys(tab.dispatch_form_values).length > 0 ? tab.dispatch_form_values : null,
         notes: tab.notes || null,
         is_draft: true,
-        created_by: adminSession.id,
+        // Use the logged-in user's id so the dispatcher / creator
+        // resolves through users.employee_id to the actual employee.
+        created_by: adminSession.user_id ?? adminSession.id,
         driver_reminder_hours: tab.driverReminderHours,
         driver_reminder_repeat_min: tab.driverReminderRepeatMin,
       };

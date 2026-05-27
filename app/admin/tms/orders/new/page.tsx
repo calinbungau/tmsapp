@@ -1669,7 +1669,11 @@ created_from: tab.createdFrom,
         ...calculateVatAmounts(f.carrier_cost, f.carrier_vat_type, f.carrier_vat_rate, "carrier"),
         payment_terms_carrier_days: f.payment_terms_carrier_days ? parseInt(f.payment_terms_carrier_days) : null,
         created_from: activeTab.createdFrom,
-        created_by: adminSession.id,
+        // Prefer the logged-in user's id (users.id) so the dispatcher
+        // resolves to the user's linked employee. Fall back to the
+        // tenant id only for legacy sessions that have no users-table
+        // record (e.g. owner-only logins).
+        created_by: adminSession.user_id ?? adminSession.id,
         source_document_url: activeTab.pdfUrl || null,
         is_draft: true,
         commercial_role: "customer_order", // This is a direct customer order
