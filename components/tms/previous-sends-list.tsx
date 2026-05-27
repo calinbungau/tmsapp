@@ -12,9 +12,10 @@
 // in the live preview pane.
 
 import React, { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, History, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronRight, History, AlertTriangle, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { buildEmailAuthHeaders } from "@/lib/client-email-headers";
 
 type Snapshot = {
   order?: Record<string, any>;
@@ -34,6 +35,8 @@ type SendEntry = {
     message?: string | null;
     sent_at?: string;
     order_snapshot?: Snapshot;
+    pdf_storage_path?: string;
+    pdf_filename?: string;
   } | null;
   performed_by_id?: string | null;
 };
@@ -45,6 +48,9 @@ interface PreviousSendsListProps {
   currentSnapshot: Snapshot;
   // Increment to force a refetch (e.g. after a fresh send completes).
   refreshKey?: number;
+  // Required so the per-entry "Download" button can authorize itself
+  // against the /api/orders/[orderId]/sent-pdf/[logId] endpoint.
+  adminId?: string | null;
 }
 
 // Human-readable labels for the snapshot fields. Anything not listed
@@ -125,10 +131,45 @@ function diffStops(prev?: any[], curr?: any[]) {
   return changes;
 }
 
-export function PreviousSendsList({ orderId, currentSnapshot, refreshKey = 0 }: PreviousSendsListProps) {
+export function PreviousSendsList({ orderId, currentSnapshot, refreshKey = 0, adminId }: PreviousSendsListProps) {
   const [entries, setEntries] = useState<SendEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Per-entry download state so the spinner only shows on the row the
+  // user clicked.
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const handleDownload = async (entry: SendEntry) => {
+    if (!entry.id) return;
+    setDownloadingId(entry.id);
+    try {
+      const headers: Record<string, string> = adminId
+        ? buildEmailAuthHeaders(adminId)
+        : {};
+      const res = await fetch(
+        `/api/orders/${orderId}/sent-pdf/${entry.id}`,
+        { headers },
+      );
+      const data = await res.json();
+      if (!res.ok || !data?.url) {
+        alert(data?.error || "Could not load archived PDF");
+        return;
+      }
+      // Trigger a download. We rely on the signed URL having a
+      // download disposition + filename hint set server-side.
+      const a = document.createElement("a");
+      a.href = data.url;
+      a.download = data.filename || "order.pdf";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e: any) {
+      alert(e?.message || "Download failed");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -232,6 +273,32 @@ export function PreviousSendsList({ orderId, currentSnapshot, refreshKey = 0 }: 
 
             {open && (
               <div className="px-2 pb-2 pt-0 border-t border-border/30 space-y-1.5">
+                {/* Re-download the exact PDF that was attached to the
+                    email on this date. We surface the button when an
+                    archived path exists; older log rows from before
+                    archival was enabled simply won't show it. */}
+                {d?.pdf_storage_path && (
+                  <div className="pt-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[10px] gap-1.5"
+                      disabled={downloadingId === entry.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownload(entry);
+                      }}
+                    >
+                      {downloadingId === entry.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Download className="h-3 w-3" />
+                      )}
+                      Download sent PDF
+                    </Button>
+                  </div>
+                )}
                 {totalChanges === 0 ? (
                   <div className="text-[10px] text-emerald-500 pt-1.5">
                     Order is unchanged since this send.

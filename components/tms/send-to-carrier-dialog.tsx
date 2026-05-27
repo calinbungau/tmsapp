@@ -531,15 +531,14 @@ export function SendToCarrierDialog({ open, onOpenChange, orderId, adminId, admi
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/*
         Responsive sizing rules:
-          - Width caps at 1600px on huge desktops, but stretches to fill
-            the viewport (`w-[100vw]`) on mid/small screens.
-          - Height pinned to `100dvh` (dynamic viewport height) so the
-            dialog never exceeds what the user can actually see — this
-            is what stopped the header from getting clipped on laptops.
-          - On mobile (<md) we kill the rounded corners so it feels like
-            a true full-screen panel.
+          - Width caps at 1400px on huge desktops, fills the viewport
+            on small/medium screens.
+          - Height caps at 88vh on desktop and 100dvh on phones, with
+            a max-height of 820px so on huge monitors the dialog stays
+            a comfortable size instead of stretching to fill 4K.
+          - Mobile is full-screen (no rounded corners, no inset).
       */}
-      <DialogContent className="w-[100vw] sm:max-w-[95vw] sm:w-[1600px] max-h-[100dvh] h-[100dvh] sm:h-[92vh] flex flex-col p-0 gap-0 bg-background border-border/50 sm:rounded-lg rounded-none">
+      <DialogContent className="w-[100vw] sm:max-w-[95vw] sm:w-[1400px] max-h-[100dvh] h-[100dvh] sm:max-h-[820px] sm:h-[88vh] flex flex-col p-0 gap-0 bg-background border-border/50 sm:rounded-lg rounded-none">
         <DialogHeader className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border/50 shrink-0">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
@@ -579,10 +578,16 @@ export function SendToCarrierDialog({ open, onOpenChange, orderId, adminId, admi
             </div>
 
             {/* Right: Controls Panel — full-width on mobile (stacks below
-                the preview), fixed 320px on desktop. The panel itself
-                scrolls independently so the Send button stays reachable
-                no matter how tall the form gets. */}
-            <div className="w-full md:w-[320px] border-t md:border-t-0 md:border-l border-border/50 flex flex-col shrink-0 overflow-y-auto min-h-0 max-h-[60dvh] md:max-h-none">
+                the preview), fixed 320px on desktop. Layout:
+                  - inner scroll area for carrier/template/recipients/
+                    message/history (`overflow-y-auto`, `min-h-0`)
+                  - sticky footer with Print/Download + Send buttons so
+                    they remain reachable no matter how far the operator
+                    has scrolled the form (this is what the user asked
+                    for: actions docked to the right side).
+            */}
+            <div className="w-full md:w-[320px] border-t md:border-t-0 md:border-l border-border/50 flex flex-col shrink-0 min-h-0 max-h-[60dvh] md:max-h-none">
+              <div className="flex-1 overflow-y-auto min-h-0">
               {/* Carrier Info */}
               <div className="p-4 border-b border-border/30 space-y-3">
                 <div>
@@ -715,11 +720,15 @@ export function SendToCarrierDialog({ open, onOpenChange, orderId, adminId, admi
                   orderId={orderId}
                   currentSnapshot={currentSnapshot}
                   refreshKey={historyRefreshKey}
+                  adminId={adminId}
                 />
               </div>
+              </div>
 
-              {/* Actions */}
-              <div className="p-4 space-y-2 mt-auto">
+              {/* Sticky action footer — sits outside the scroll area so
+                  Print/Download and Send are always visible at the
+                  bottom of the right sidebar. */}
+              <div className="p-4 space-y-2 border-t border-border/50 bg-background/95 backdrop-blur sticky bottom-0">
                 <Button
                   variant="outline"
                   className="w-full h-9 text-xs gap-1.5 border-border/50"

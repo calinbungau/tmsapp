@@ -305,31 +305,90 @@ export async function POST(request: NextRequest) {
 
     // Log activity (with the full order snapshot so future operators
     // can diff "what was sent then" vs. "what the order looks like now").
-    await supabase.from("order_activity_log").insert({
-      order_id: orderId,
-      action: "order_sent_to_carrier",
-      details: {
-        carrier_name: carrierName,
-        carrier_email: primaryEmail,
-        // Keep the full recipient list so the activity log shows
-        // every address the email was actually delivered to.
-        carrier_emails: recipients,
-        recipient_count: recipients.length,
-        upload_link: uploadLink,
-        upload_token: token,
-        language: lang || "en",
-        subject: mailSubject,
-        message: message || null,
-        sent_at: new Date().toISOString(),
-        // Frozen snapshot of the order at send-time. Used by the
-        // dialog's "Previously sent" panel to highlight what has
-        // changed in the order since this send (dates slipped,
-        // price changed, stops swapped, etc.).
-        order_snapshot: orderSnapshot,
-      },
-      performed_by_type: "admin",
-      performed_by_id: adminId,
-    });
+    // We insert first to get an id, then upload the exact PDF that was
+    // attached to the email under that id so each historical send has
+    // its own immutable copy in storage. If the upload fails we still
+    // keep the log row — the snapshot data alone is still useful.
+    const sentAtIso = new Date().toISOString();
+    const { data: logRow } = await supabase
+      .from("order_activity_log")
+      .insert({
+        order_id: orderId,
+        action: "order_sent_to_carrier",
+        details: {
+          carrier_name: carrierName,
+          carrier_email: primaryEmail,
+          // Keep the full recipient list so the activity log shows
+          // every address the email was actually delivered to.
+          carrier_emails: recipients,
+          recipient_count: recipients.length,
+          upload_link: uploadLink,
+          upload_token: token,
+          language: lang || "en",
+          subject: mailSubject,
+          message: message || null,
+          sent_at: sentAtIso,
+          // Frozen snapshot of the order at send-time. Used by the
+          // dialog's "Previously sent" panel to highlight what has
+          // changed in the order since this send (dates slipped,
+          // price changed, stops swapped, etc.).
+          order_snapshot: orderSnapshot,
+        },
+        performed_by_type: "admin",
+        performed_by_id: adminId,
+      })
+      .select("id")
+      .single();
+
+    // Persist the exact attached PDF so the dispatcher can re-download
+    // the document that was actually sent on a given date — not a fresh
+    // re-render against today's (possibly modified) order data.
+    if (logRow?.id && orderPdfBase64 && typeof orderPdfBase64 === "string") {
+      try {
+        const cleanBase64 = orderPdfBase64.replace(/^data:application\/pdf;base64,/, "");
+        const pdfBuffer = Buffer.from(cleanBase64, "base64");
+        const safeFilename = (typeof orderPdfFilename === "string" && orderPdfFilename.trim())
+          ? orderPdfFilename.trim()
+          : `Order_${refNumber}.pdf`;
+        // Path: orders/<orderId>/sent/<logId>.pdf — stable, predictable,
+        // and scoped under the order so RLS / cleanup is straightforward.
+        const storagePath = `orders/${orderId}/sent/${logRow.id}.pdf`;
+        const { error: upErr } = await supabase.storage
+          .from("documents")
+          .upload(storagePath, pdfBuffer, {
+            contentType: "application/pdf",
+            upsert: true,
+          });
+        if (upErr) {
+          console.error("[v0] send-to-carrier: pdf archive upload failed", upErr);
+        } else {
+          // Patch the log row with the storage pointer + filename so
+          // the UI can build a download URL later.
+          await supabase
+            .from("order_activity_log")
+            .update({
+              details: {
+                carrier_name: carrierName,
+                carrier_email: primaryEmail,
+                carrier_emails: recipients,
+                recipient_count: recipients.length,
+                upload_link: uploadLink,
+                upload_token: token,
+                language: lang || "en",
+                subject: mailSubject,
+                message: message || null,
+                sent_at: sentAtIso,
+                order_snapshot: orderSnapshot,
+                pdf_storage_path: storagePath,
+                pdf_filename: safeFilename,
+              },
+            })
+            .eq("id", logRow.id);
+        }
+      } catch (e) {
+        console.error("[v0] send-to-carrier: pdf archive exception", e);
+      }
+    }
 
     return NextResponse.json({
       success: true,
