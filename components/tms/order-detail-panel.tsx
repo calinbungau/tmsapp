@@ -1340,6 +1340,13 @@ export default function OrderDetailPanel({ orderId, editTripId, onClose, onStatu
   // Editable state
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState<any>({});
+  // Company-level default payment terms (Settings → Company Profile →
+  // Defaults). Used as the fallback whenever the order itself has no
+  // explicit value on either the customer or the carrier leg, so a
+  // newly-created FWD that doesn't yet carry payment terms still
+  // displays the operator's preferred net-X (e.g. 45) instead of the
+  // hard-coded 30.
+  const [defaultPaymentDays, setDefaultPaymentDays] = useState<number>(30);
   // Determine-Cost dialog: opened via the "Determine cost" pill above the
   // Carrier Cost field. Persists a full breakdown (unit, distance, pricing
   // rule, extras) to `carrier_cost_calculations` and writes the resulting
@@ -1431,6 +1438,17 @@ setEditData({
   customer_id: data.customer_id, carrier_id: data.carrier_id,
   driver_id: data.driver_id, vehicle_id: data.vehicle_id, trailer_id: data.trailer_id,
   customer_reference: data.customer_reference,
+  // Seed the payment-term inputs with whatever is on the order row,
+  // falling back to the company-level default (loaded from
+  // company_profiles in fetchRefData). Without this seeding the
+  // Edit panel would render an empty <Input> and the placeholder
+  // would always be the legacy "30" — even when the operator had
+  // configured a different default in Settings.
+  payment_terms_customer_days:
+    data.payment_terms_customer_days ?? defaultPaymentDays,
+  payment_terms_carrier_days:
+    data.payment_terms_carrier_days ?? defaultPaymentDays,
+  carrier_payment_notes: data.carrier_payment_notes,
   // Subcontractor vehicle/trailer/driver – seeded below from the
   // parent trip-leg, so the user can edit them directly from this
   // FWD detail page (mirroring what's done in trip-leg-assignment).
@@ -1748,13 +1766,26 @@ setEditData({
 
   const fetchRefData = useCallback(async () => {
     if (!order?.admin_id) return;
-  const [p, d, v, t] = await Promise.all([
+  const [p, d, v, t, profile] = await Promise.all([
     supabase.from("business_partners").select("id, name, types").eq("admin_id", order.admin_id).order("name"),
       supabase.from("drivers").select("id, name").eq("admin_id", order.admin_id).order("name"),
       supabase.from("vehicles").select("id, plate_number").eq("admin_id", order.admin_id).order("plate_number"),
       supabase.from("trailers").select("id, plate_number").eq("admin_id", order.admin_id).order("plate_number"),
+      // Pull Settings → Company Profile → Defaults so the carrier and
+      // customer payment-day inputs can fall back to the operator's
+      // configured value (typically 45) when the order row itself has
+      // no explicit number stored yet.
+      supabase
+        .from("company_profiles")
+        .select("default_payment_terms_days")
+        .eq("admin_id", order.admin_id)
+        .maybeSingle(),
     ]);
     setPartners(p.data || []); setDriversList(d.data || []); setVehiclesList(v.data || []); setTrailersList(t.data || []);
+    const fallbackDays = (profile?.data as any)?.default_payment_terms_days;
+    if (typeof fallbackDays === "number" && Number.isFinite(fallbackDays)) {
+      setDefaultPaymentDays(fallbackDays);
+    }
   }, [order?.admin_id, supabase]);
 
   useEffect(() => { fetchOrder(); }, [fetchOrder]);
@@ -3911,7 +3942,7 @@ const handleSaveInvoice = async (formData: {
                           <Input
                             type="number" min={0} max={365}
                             className="h-8 text-xs"
-                            placeholder="30"
+                            placeholder={String(defaultPaymentDays)}
                             value={editData.payment_terms_customer_days ?? ""}
                             onChange={e => setEditData((p: any) => ({ ...p, payment_terms_customer_days: e.target.value === "" ? null : Number(e.target.value) }))}
                           />
@@ -4078,7 +4109,7 @@ const handleSaveInvoice = async (formData: {
                               <Input
                                 type="number" min={0} max={365}
                                 className="h-8 text-xs"
-                                placeholder="30"
+                                placeholder={String(defaultPaymentDays)}
                                 value={editData.payment_terms_carrier_days ?? ""}
                                 onChange={e => setEditData((p: any) => ({ ...p, payment_terms_carrier_days: e.target.value === "" ? null : Number(e.target.value) }))}
                               />
