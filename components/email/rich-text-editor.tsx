@@ -36,6 +36,11 @@ export function RichTextEditor({
   editable = true,
 }: RichTextEditorProps) {
   const editor = useEditor({
+    // Tiptap v3+ requires opting out of SSR rendering explicitly so the
+    // editor mounts only on the client. Without this, navigating to a
+    // route that imports the editor (e.g. clicking "Compose") throws
+    // "SSR has been detected" and crashes the page.
+    immediatelyRender: false,
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
