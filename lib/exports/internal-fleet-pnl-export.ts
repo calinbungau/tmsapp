@@ -88,6 +88,8 @@ export type FleetOrderSummary = {
   cargo_description: string | null
   weight_kg: number | null
   pallet_count: number | null
+  created_by_id?: string | null
+  created_by_name?: string | null
 }
 
 export type FleetLegSummary = {
@@ -135,6 +137,7 @@ export type FleetTripRow = {
   order_count: number
   orders: FleetOrderSummary[]
   legs: FleetLegSummary[]
+  creators?: Array<{ id: string; name: string | null }>
 }
 
 export type FleetPnlTotals = {
@@ -160,6 +163,7 @@ export type FleetExportContext = {
     vehicle?: string
     driver?: string
     margin?: string
+    user?: string
     search?: string
   }
   company?: {
