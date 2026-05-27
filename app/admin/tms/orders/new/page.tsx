@@ -1056,11 +1056,18 @@ useEffect(() => { fetchRefData(); }, [fetchRefData]);
   const loadDrafts = useCallback(async () => {
     if (!adminSession?.id) return;
     const s = createClient();
+    // Scope drafts to the logged-in user. We accept BOTH the users.id and
+    // the legacy tenant id (admins.id) as creator: the former is what new
+    // drafts are stamped with, the latter covers historical owner-only
+    // sessions that still write the tenant id. This way each dispatcher
+    // sees only their own in-progress drafts on a multi-user tenant.
+    const creatorIds = [adminSession.user_id, adminSession.id].filter(Boolean) as string[];
     const { data: drafts } = await s.from("orders")
       .select("*")
-  .eq("admin_id", adminSession.id)
-  .in("status", ["draft", "fwd_draft"])
-  .order("updated_at", { ascending: false });
+      .eq("admin_id", adminSession.id)
+      .in("status", ["draft", "fwd_draft"])
+      .in("created_by", creatorIds)
+      .order("updated_at", { ascending: false });
 
     if (!drafts || drafts.length === 0) {
       draftsLoadedRef.current = true;
