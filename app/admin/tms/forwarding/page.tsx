@@ -429,7 +429,7 @@ export default function ForwarderBoardPage() {
     });
   }, [orders, search]);
 
-  // ─── Table sort ──��───────────────────────────────────────
+  // ─── Table sort ──────────────────────────────────────────
   const sortedOrders = useMemo(() => {
     const sorted = [...visibleOrders];
     sorted.sort((a, b) => {
@@ -499,11 +499,7 @@ export default function ForwarderBoardPage() {
       try {
         const res = await fetch("/api/orders/request-cmr-pod", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-admin-id": adminSession.id,
-            "x-user-id": adminSession.user_id || "",
-          },
+          headers: { "Content-Type": "application/json", "x-admin-id": adminSession.id },
           body: JSON.stringify({ orderId: oid }),
         });
         if (res.ok) {

@@ -902,12 +902,6 @@ export default function EmailPage() {
               <TabsTrigger value="smtp" className="text-xs">SMTP (Send)</TabsTrigger>
             </TabsList>
 
-            {(settings as any).is_legacy_fallback && (
-              <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
-                <strong>Tenant-wide mailbox detected.</strong> These credentials were configured before per-user mailboxes were introduced and are currently shared by everyone in your tenant. The next time you press <em>Save</em>, this mailbox will be claimed as <em>yours only</em>. Other users will need to configure their own.
-              </div>
-            )}
-
             <TabsContent value="general" className="space-y-3 mt-4">
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Email Address</label>
