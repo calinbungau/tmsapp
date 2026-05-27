@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "@/lib/encryption";
 import { ImapFlow } from "imapflow";
+import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,19 +14,16 @@ const MAX_FETCH = 50; // Fetch latest 50 per sync
 export async function POST(request: NextRequest) {
   try {
     const adminId = request.headers.get("x-admin-id");
+    const userId = request.headers.get("x-user-id");
     const body = await request.json();
     const folder = body.folder || "INBOX";
 
     if (!adminId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // Get user email settings with encrypted passwords
-    const { data: settings, error: settErr } = await supabase
-      .from("user_email_settings")
-      .select("*")
-      .eq("admin_id", adminId)
-      .single();
+    // Get user email settings (per-user with legacy fallback)
+    const settings = await getUserEmailSettingsRow(supabase, adminId, userId);
 
-    if (settErr || !settings) {
+    if (!settings) {
       return NextResponse.json({ error: "Email not configured" }, { status: 400 });
     }
 
@@ -52,11 +50,13 @@ export async function POST(request: NextRequest) {
       const lock = await client.getMailboxLock(folder);
 
       try {
-        // Get existing message_ids so we skip duplicates
+        // Get existing message_ids so we skip duplicates. Scope to the
+        // *mailbox* (user_email_setting_id) so each user's inbox is
+        // isolated even when multiple users share a tenant.
         const { data: existing } = await supabase
           .from("user_emails")
           .select("message_id")
-          .eq("admin_id", adminId)
+          .eq("user_email_setting_id", settings.id)
           .eq("mailbox", folder);
         const existingIds = new Set((existing || []).map((e: any) => e.message_id));
 

@@ -2240,7 +2240,7 @@ setEditData({
       try {
         const res = await fetch("/api/orders/request-cmr-pod", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-admin-id": adminSession.id },
+          headers: { "Content-Type": "application/json", "x-admin-id": adminSession.id, "x-user-id": adminSession.user_id || "" },
           body: JSON.stringify({ orderId }),
         });
         const data = await res.json().catch(() => ({}));
@@ -3074,7 +3074,7 @@ const handleSaveInvoice = async (formData: {
       console.log("[v0] handleRecordPayment payment insert OK");
 
       // Calculate new amount paid and status. `order_invoices` has
-      // one `status` column that encodes the lifecycle ����� there's no
+      // one `status` column that encodes the lifecycle ������� there's no
       // separate payment_status, and `remaining_amount` is a regular
       // numeric column we maintain in tandem with `paid_amount`.
       const newPaidAmount = (invoice.paid_amount || 0) + paymentData.amount;

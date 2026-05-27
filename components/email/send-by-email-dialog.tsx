@@ -171,6 +171,7 @@ export function SendByEmailDialog(props: SendByEmailDialogProps) {
         headers: {
           "Content-Type": "application/json",
           "x-admin-id": adminId,
+          "x-user-id": (typeof window !== "undefined" ? (() => { try { return JSON.parse(window.localStorage.getItem("admin_session") || "{}").user_id || ""; } catch { return ""; } })() : ""),
         },
         body: JSON.stringify({
           to: recipients,

@@ -237,9 +237,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // Fetch email unread count
   try {
-  const emailRes = await fetch("/api/email/unread-count", {
-    headers: { "x-admin-id": adminSession.id },
-  });
+      const emailRes = await fetch("/api/email/unread-count", {
+        headers: { "x-admin-id": adminSession.id, "x-user-id": adminSession.user_id || "" },
+      });
   const emailData = await emailRes.json();
   setEmailUnread(emailData.count || 0);
   } catch {}
@@ -256,16 +256,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   } catch {}
 
   // Background email sync (fire-and-forget) so new emails appear in DB
-  fetch("/api/email/sync", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-admin-id": adminSession.id },
-    body: JSON.stringify({ folder: "INBOX" }),
-  }).then(async () => {
-    // Re-fetch unread count after sync completes
-    try {
-      const res = await fetch("/api/email/unread-count", {
-        headers: { "x-admin-id": adminSession.id },
-      });
+    fetch("/api/email/sync", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-id": adminSession.id,
+        "x-user-id": adminSession.user_id || "",
+      },
+      body: JSON.stringify({ folder: "INBOX" }),
+    }).then(async () => {
+      // Re-fetch unread count after sync completes
+      try {
+        const res = await fetch("/api/email/unread-count", {
+          headers: { "x-admin-id": adminSession.id, "x-user-id": adminSession.user_id || "" },
+        });
       const data = await res.json();
       setEmailUnread(data.count || 0);
     } catch {}

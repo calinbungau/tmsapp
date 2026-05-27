@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "@/lib/encryption";
 import { PDFDocument } from "pdf-lib";
 import nodemailer from "nodemailer";
+import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
 
 /**
  * POST /api/orders/[id]/send-docs-to-customer
@@ -106,6 +107,7 @@ export async function POST(
 ) {
   try {
     const adminId = request.headers.get("x-admin-id");
+    const userId = request.headers.get("x-user-id");
     if (!adminId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -373,14 +375,12 @@ export async function POST(
       });
     }
 
-    // ── Load SMTP config from user_email_settings ──
-    // Same source as the existing sign-and-send route — the admin's
-    // own outbound mailbox. Keeps email auditability consistent.
-    const { data: settings } = await supabase
-      .from("user_email_settings")
-      .select("*")
-      .eq("admin_id", adminId)
-      .single();
+    // ── Load SMTP config from user_email_settings for the acting user ──
+    // Same source as the existing sign-and-send route — the user's
+    // own outbound mailbox. Keeps email auditability consistent and
+    // ensures the email is sent FROM the dispatcher who clicked Send,
+    // not from a shared tenant mailbox.
+    const settings = await getUserEmailSettingsRow(supabase, adminId, userId);
 
     if (!settings) {
       return NextResponse.json(

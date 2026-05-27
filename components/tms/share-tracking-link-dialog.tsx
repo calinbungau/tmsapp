@@ -39,6 +39,7 @@ import {
   AlertCircle, ExternalLink, MapPin, Clock,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { buildEmailAuthHeaders } from "@/lib/client-email-headers";
 
 interface ResourceOption {
   id: string;
@@ -151,7 +152,7 @@ export function ShareTrackingLinkDialog({
     setLoading(true);
     try {
       const res = await fetch(`/api/orders/${orderId}/tracking-shares`, {
-        headers: { "x-admin-id": adminId },
+        headers: buildEmailAuthHeaders(adminId),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Could not load shares");
@@ -265,7 +266,7 @@ export function ShareTrackingLinkDialog({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-id": adminId,
+          ...buildEmailAuthHeaders(adminId),
         },
         body: JSON.stringify(body),
       });
@@ -306,7 +307,7 @@ export function ShareTrackingLinkDialog({
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-id": adminId,
+          ...buildEmailAuthHeaders(adminId),
         },
         body: JSON.stringify({ share_id: shareId, base_url: window.location.origin, ...body }),
       });
@@ -402,7 +403,7 @@ export function ShareTrackingLinkDialog({
             </div>
           ) : (
             <div className="space-y-6">
-              {/* ── Step 1: GPS source ─────────────────────────────────── */}
+              {/* ── Step 1: GPS source ────────────────────────────────��── */}
               <section>
                 <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
                   <MapPin className="h-4 w-4" /> GPS source
@@ -726,7 +727,7 @@ export function ShareTrackingLinkDialog({
 
 // ─────────────────────────────────────────────────────────────────────────
 // History row sub-component
-// ─────────────────────────────────────────────────────────────────────────
+// ────��────────────────────────────────────────────────────────────────────
 function ShareHistoryRow({
   share,
   busy,

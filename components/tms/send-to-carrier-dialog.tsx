@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { EmailRecipientInput } from "@/components/tms/email-recipient-input";
 import { recordEmailRecipients } from "@/lib/email-recipients";
+import { buildEmailAuthHeaders } from "@/lib/client-email-headers";
 import {
   fetchOrderData, fetchCompanyProfile, fetchOrderTemplates,
   renderOrderHtml, parseTemplate, openPrintWindow,
@@ -413,7 +414,7 @@ export function SendToCarrierDialog({ open, onOpenChange, orderId, adminId, admi
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-id": adminId,
+          ...buildEmailAuthHeaders(adminId),
         },
         body: JSON.stringify({
           orderId,

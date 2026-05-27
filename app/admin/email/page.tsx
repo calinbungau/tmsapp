@@ -177,6 +177,7 @@ export default function EmailPage() {
     return {
       "Content-Type": "application/json",
       "x-admin-id": session?.id || "",
+      "x-user-id": session?.user_id || "",
     };
   }, [session]);
 

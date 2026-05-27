@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "@/lib/encryption";
 import { PDFDocument } from "pdf-lib";
 import nodemailer from "nodemailer";
+import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,6 +13,7 @@ const supabase = createClient(
 export async function POST(request: NextRequest) {
   try {
     const adminId = request.headers.get("x-admin-id");
+    const userId = request.headers.get("x-user-id");
     if (!adminId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
@@ -28,12 +30,8 @@ export async function POST(request: NextRequest) {
       .eq("admin_id", adminId)
       .single();
 
-    // 2. Get SMTP settings
-    const { data: settings } = await supabase
-      .from("user_email_settings")
-      .select("*")
-      .eq("admin_id", adminId)
-      .single();
+    // 2. Get SMTP settings for the acting user
+    const settings = await getUserEmailSettingsRow(supabase, adminId, userId);
 
     if (!settings) {
       return NextResponse.json({ error: "Email settings not configured. Go to Email > Settings to set up SMTP." }, { status: 400 });
