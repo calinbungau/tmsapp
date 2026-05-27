@@ -567,11 +567,27 @@ function renderEmail(
     
   const appBase = (process.env.NEXT_PUBLIC_APP_URL || "https://app.bngtracking.ro").replace(/\/+$/, "");
   const inboxUrl = `${appBase}/admin/action-center`;
-  const url = item.resolution_url
-    ? item.resolution_url.startsWith("http")
-      ? item.resolution_url
-      : `${appBase}${item.resolution_url.startsWith("/") ? "" : "/"}${item.resolution_url}`
-    : inboxUrl;
+
+  // Always render links against the configured public host. If detectors
+  // stored a full URL using the deployment hostname (e.g. a vercel preview
+  // URL), strip it and keep only the path so emails always point at
+  // app.bngtracking.ro.
+  let url = inboxUrl;
+  if (item.resolution_url) {
+    let path = String(item.resolution_url).trim();
+    if (/^https?:\/\//i.test(path)) {
+      try {
+        const u = new URL(path);
+        path = `${u.pathname}${u.search}${u.hash}`;
+      } catch {
+        path = "";
+      }
+    }
+    if (path) {
+      if (!path.startsWith("/")) path = `/${path}`;
+      url = `${appBase}${path}`;
+    }
+  }
 
   const escalationBanner = escalatedTo 
     ? `<div style="background:#fef3c7;border:1px solid #f59e0b;padding:12px;border-radius:6px;margin-bottom:16px">
