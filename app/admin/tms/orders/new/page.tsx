@@ -2103,6 +2103,7 @@ created_from: tab.createdFrom,
               // Create the forwarding order (subcontract) linked to parent order
               const { data: fwdOrder, error: fwdErr } = await s.from("orders").insert({
                 admin_id: adminSession.id,
+                created_by: adminSession.user_id ?? adminSession.id,
                 reference_number: fwdRef,
                 order_type: "forwarding",
                 status: fwdStatus,

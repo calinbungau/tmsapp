@@ -14,6 +14,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Truck, Building2, HelpCircle, User, Check, ChevronsUpDown, Phone, Container, Loader2, FileText, Plus, Link2, UserPlus, Trash2 } from "lucide-react";
 import { QuickCreatePartnerDialog, type CreatedPartner } from "@/components/tms/quick-create-partner-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useAdminSession } from "@/hooks/use-admin-session";
 import { deriveLegStatus, canAutoRollLegStatus } from "@/lib/tms/status/derive-leg-status";
 import { recomputeParentStatus } from "@/lib/tms/status/recompute-parent";
 
@@ -42,7 +43,12 @@ interface TripLegAssignmentDialogProps {
   onSave: (updatedLeg: any) => void;
 }
 
-export function TripLegAssignmentDialog({ open, onOpenChange, tripLeg, adminId, parentOrderId, onSave }: TripLegAssignmentDialogProps) {
+  export function TripLegAssignmentDialog({ open, onOpenChange, tripLeg, adminId, parentOrderId, onSave }: TripLegAssignmentDialogProps) {
+  // Resolve the logged-in user's id so created_by on any FWD orders /
+  // trips we create here points at users.id (which links to an Employee
+  // record) rather than the tenant id (which collapses to the owner).
+  const { session: adminSession } = useAdminSession();
+  const creatorId = adminSession?.user_id ?? adminId;
   const supabase = createClient();
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
@@ -467,6 +473,9 @@ export function TripLegAssignmentDialog({ open, onOpenChange, tripLeg, adminId, 
               .from("orders")
               .insert({
                 admin_id: adminId,
+                // Stamp the actual logged-in user so the dispatcher
+                // resolves to their linked employee on the Forwarder Board.
+                created_by: creatorId,
                 reference_number: newRef,
                 order_type: "forwarding",
                 commercial_role: "carrier_subcontract",
@@ -992,7 +1001,7 @@ export function TripLegAssignmentDialog({ open, onOpenChange, tripLeg, adminId, 
                 //
                 // The parent transport order has a route_geometry that
                 // covers the ENTIRE trip across all legs. We can't reuse
-                // it verbatim — each FWD order needs only the segment for
+                // it verbatim ��� each FWD order needs only the segment for
                 // ITS leg. trip_stops.route_to_geometry stores per-segment
                 // geometry (geometry from previous stop to this stop), and
                 // distance_to_km/duration_to_minutes the segment metrics.
@@ -1060,6 +1069,7 @@ export function TripLegAssignmentDialog({ open, onOpenChange, tripLeg, adminId, 
                   .from("trips")
                   .insert({
                     admin_id: adminId,
+                    created_by: creatorId,
                     reference_number: `TRIP-FWD-${Date.now()}`,
                     assignment_type: "forwarding",
                   // Trip-level status is administrative metadata only; the
