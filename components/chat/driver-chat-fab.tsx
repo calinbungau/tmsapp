@@ -121,26 +121,22 @@ export function DriverChatFab({ driverId, driverName, adminId, unreadCount, onUn
   return (
     <>
       {/* FAB Button - only show when sheet is closed.
-          Positioned bottom-LEFT (not bottom-right) because every
-          action button on the driver screens — "Complete Loading",
-          "Complete Unloading", "Submit", "Upload files" — is
-          right-aligned by convention. A bottom-right FAB physically
-          covers the orange primary CTA on the trip-detail page (see
-          the user's screenshot from 5/28). The left corner is unused
-          across all driver routes, so the FAB has its own safe
-          territory and never fights for the same pixels as a primary
-          action. We also bump it slightly higher (bottom-24 instead
-          of bottom-[5.5rem]) so the chat icon doesn't crowd the
-          bottom-nav badge on the active tab. */}
+          Bottom-right is the conventional spot for a chat launcher
+          and reads better visually. To avoid covering the orange
+          primary CTA on stop cards ("Complete Loading", etc.) or the
+          CMR/POD + Expense buttons row, we lift the FAB well above
+          the bottom nav (bottom-32 ≈ 8 rem) and shrink it from h-14
+          to h-12 — small enough to feel like a hint, big enough to
+          tap. z-40 keeps it under any open dialog (z-50). */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed left-4 bottom-24 z-40 flex items-center justify-center h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 transition-all duration-300 active:scale-95"
+          className="fixed right-4 bottom-32 z-40 flex items-center justify-center h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 transition-all duration-300 active:scale-95"
           aria-label="Open chat"
         >
-          <MessageSquare className="h-6 w-6" />
+          <MessageSquare className="h-5 w-5" />
           {unreadCount > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 ring-2 ring-background px-1.5 text-[11px] font-bold text-white animate-in zoom-in duration-200">
+            <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 ring-2 ring-background px-1.5 text-[10px] font-bold text-white animate-in zoom-in duration-200">
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
