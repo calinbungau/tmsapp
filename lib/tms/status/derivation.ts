@@ -66,7 +66,20 @@ export function deriveParentStatus(
     }
   }
 
-  // Manual closeout rows — never overwrite.
+  // Manual / post-convergence rows — never overwrite via child-state
+  // derivation.
+  //
+  // Note: `ready_for_invoicing` IS in this list even though we auto-PROMOTE
+  // TO it (see below). The distinction: derivation can advance the parent
+  // INTO ready_for_invoicing, but once the parent is there, child changes
+  // must never pull it back to in_execution — that's a back-office decision
+  // (e.g. POD rejected, need to re-execute), made manually.
+  //
+  // `documents_and_invoice_sent` is set by the send-docs API after a
+  // successful send, and `completed` is set when the customer invoice is
+  // paid (see app/api/smartbill/payment/route.ts and the manual mark-paid
+  // handler in components/tms/order-detail-panel.tsx). All three are
+  // terminal for the auto-derivation pipeline.
   if (
     normalizedParent === "ready_for_invoicing" ||
     normalizedParent === "documents_and_invoice_sent" ||
@@ -111,12 +124,25 @@ export function deriveParentStatus(
   const minRank = Math.min(...ranks)
 
   // Convergence — all children at rank 13 (or higher, e.g. fwd carrier-invoice
-  // post-flow). Means parent should auto-advance to documents_received.
+  // post-flow).
+  //
+  // Per back-office workflow, once every child has POD/CMR in we skip
+  // `documents_received` on the PARENT and jump straight to
+  // `ready_for_invoicing` (rank 14). Reasoning: `documents_received` was
+  // a transient "we received the paperwork" state that always required a
+  // manual click to advance to `ready_for_invoicing` — operators were
+  // unanimously skipping that click, so it became dead UI. The two states
+  // are now semantically merged from the parent's perspective: convergence
+  // means the order is ready for invoicing.
+  //
+  // The leg-level / forwarder-level `documents_received` statuses STILL
+  // exist (they tell us "this specific child has docs in") — we just
+  // don't echo that as a separate parent state any more.
   if (minRank >= 13) {
-    // Only auto-promote if the parent isn't already past 13.
-    if (currentRank < 13) {
+    // Only auto-promote if the parent isn't already AT or past rank 14.
+    if (currentRank < 14) {
       return {
-        status: "documents_received",
+        status: "ready_for_invoicing",
         mode,
         chip: buildChip(active, cancelledCount, onHoldCount, "docs"),
         hasSideways,

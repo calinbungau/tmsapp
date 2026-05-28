@@ -182,6 +182,46 @@ export async function POST(req: NextRequest) {
       performed_by_id: integration.admin_id,
     });
 
+    // ── Auto-advance parent order to `completed` when fully paid ──
+    // The customer invoice being paid in full is the final back-office
+    // gate. If this payment closed the balance (status went to "paid"
+    // above) we promote the parent order to `completed` so the operator
+    // doesn't have to click Change Status afterwards.
+    //
+    // Guards:
+    //   • Only the PARENT order (parent_order_id IS NULL) — subcontract
+    //     children have their own forwarder lifecycle.
+    //   • Only advance from `documents_and_invoice_sent` (the expected
+    //     prior state). Anything else means the order is in an unusual
+    //     spot (e.g. already cancelled) and we shouldn't silently move it.
+    //   • Only OUTGOING customer invoices — incoming carrier invoices on
+    //     the same order have nothing to do with customer payment.
+    if (newStatus === "paid" && invoice.direction === "outgoing") {
+      const targetOrderId = orderId || invoice.order_id;
+      const { data: parentOrder } = await supabase
+        .from("orders")
+        .select("id, status, parent_order_id")
+        .eq("id", targetOrderId)
+        .single();
+      if (parentOrder && !parentOrder.parent_order_id && parentOrder.status === "documents_and_invoice_sent") {
+        const { error: advErr } = await supabase
+          .from("orders")
+          .update({ status: "completed" })
+          .eq("id", targetOrderId);
+        if (advErr) {
+          console.error("[smartbill-payment] auto-complete failed", advErr);
+        } else {
+          await supabase.from("order_status_history").insert({
+            order_id: targetOrderId,
+            from_status: "documents_and_invoice_sent",
+            to_status: "completed",
+            changed_by_type: "system",
+            notes: "Auto-completed: customer invoice fully paid (Smartbill)",
+          });
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       paymentNumber: responseData.number,
