@@ -826,48 +826,52 @@ export default function DriverOrdersPage() {
             ))}
           </div>
         </div>
-        {/* Trip-level action buttons. We keep them visually grouped so
-            the driver always has the same chrome regardless of stop
-            status: scan an expense, or attach a CMR/POD scan to one of
-            the trip's orders. The CMR/POD button is the safety net for
-            when the driver completes a stop without filling the
-            attached form. */}
+        {/* Header is now title-only. The trip-level action buttons
+            (CMR/POD + Expense) moved down next to the view-mode tabs
+            so the labels are always visible — on a 360 px phone the
+            header was forcing us to hide the text behind icons, and
+            drivers couldn't tell what each button did. */}
+      </div>
+
+      {/* View mode tabs + trip-level actions. The tabs sit on the left
+          and the trip-level action buttons (CMR/POD, Expense) on the
+          right, both on the same row. This row stays sticky above the
+          scrollable content area. */}
+      <div className="flex items-center gap-1 px-4 py-2 border-b shrink-0">
+        <div className="flex items-center gap-1 flex-1 min-w-0">
+          {(["map", "list", "chat"] as const).map(mode => (
+            <button key={mode} onClick={() => setViewMode(mode)}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>
+              {mode === "map" && <MapIcon className="h-3 w-3" />}
+              {mode === "list" && <List className="h-3 w-3" />}
+              {mode === "chat" && <MessageSquare className="h-3 w-3" />}
+              {mode.charAt(0).toUpperCase() + mode.slice(1)}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-1 shrink-0">
           <Button
             variant="outline"
             size="sm"
-            className="h-8 gap-1.5"
+            className="h-7 gap-1 px-2"
             onClick={() => {
               setDocsDefaultOrderId(null);
               setDocsOpen(true);
             }}
           >
-            <FileText className="h-3.5 w-3.5" />
-            <span className="text-xs hidden sm:inline">CMR / POD</span>
+            <FileText className="h-3 w-3" />
+            <span className="text-[11px] font-medium">CMR/POD</span>
           </Button>
           <Button
             variant="outline"
             size="sm"
-            className="h-8 gap-1.5"
+            className="h-7 gap-1 px-2"
             onClick={() => setExpenseOpen(true)}
           >
-            <Receipt className="h-3.5 w-3.5" />
-            <span className="text-xs hidden sm:inline">Expense</span>
+            <Receipt className="h-3 w-3" />
+            <span className="text-[11px] font-medium">Expense</span>
           </Button>
         </div>
-      </div>
-
-      {/* View mode tabs */}
-      <div className="flex items-center gap-1 px-4 py-2 border-b shrink-0">
-        {(["map", "list", "chat"] as const).map(mode => (
-          <button key={mode} onClick={() => setViewMode(mode)}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>
-            {mode === "map" && <MapIcon className="h-3 w-3" />}
-            {mode === "list" && <List className="h-3 w-3" />}
-            {mode === "chat" && <MessageSquare className="h-3 w-3" />}
-            {mode.charAt(0).toUpperCase() + mode.slice(1)}
-          </button>
-        ))}
       </div>
 
       <div className="flex-1 overflow-y-auto">
