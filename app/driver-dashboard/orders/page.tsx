@@ -553,8 +553,25 @@ export default function DriverOrdersPage() {
             .select("id").eq("order_id", ord.id)
             .neq("status", "completed").neq("status", "cancelled");
           if (!pendingStops?.length) {
-            await s.from("orders").update({ status: "delivered" }).eq("id", ord.id);
-            await s.from("order_status_history").insert({ order_id: ord.id, from_status: "in_transit", to_status: "delivered", changed_by_type: "system", notes: "All stops completed" });
+            // Status v3 (see lib/tms/status/registry.ts): once every
+            // stop on an order is completed, the natural next state
+            // is "Docs Pending" — the leg has physically delivered
+            // the goods, but POD/CMR has not yet been uploaded. We
+            // promote to "Docs Received" only after the driver
+            // actually attaches a document (see CMR/POD upload
+            // success handler in the parent layout). Using the
+            // legacy "delivered" string here would leave the order
+            // sitting at the umbrella "in_execution" state per the
+            // legacy alias map and never auto-advance, which is the
+            // bug we're fixing.
+            await s.from("orders").update({ status: "documents_pending" }).eq("id", ord.id);
+            await s.from("order_status_history").insert({
+              order_id: ord.id,
+              from_status: "in_transit",
+              to_status: "documents_pending",
+              changed_by_type: "system",
+              notes: "All stops completed — awaiting POD/CMR upload",
+            });
           }
         }
         setActiveTrip(prev => prev ? { ...prev, status: "completed" } : prev);

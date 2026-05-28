@@ -124,7 +124,7 @@ export function DriverChatFab({ driverId, driverName, adminId, unreadCount, onUn
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed right-4 bottom-[5.5rem] z-[60] flex items-center justify-center h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 transition-all duration-300 active:scale-95"
+          className="fixed right-4 bottom-[5.5rem] z-40 flex items-center justify-center h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 transition-all duration-300 active:scale-95"
         >
           <MessageSquare className="h-6 w-6" />
           {unreadCount > 0 && (

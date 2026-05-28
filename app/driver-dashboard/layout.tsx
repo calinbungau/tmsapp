@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { LogOut, Bell, ClipboardList, FileText, User, Wrench, FolderOpen, Car, LogIn, CalendarDays, Route, Radio, Package } from "lucide-react";
+import { LogOut, Bell, ClipboardList, FileText, User, Wrench, FolderOpen, Car, LogIn, CalendarDays, Route, Radio, Package, MoreHorizontal } from "lucide-react";
 import { DriverChatFab } from "@/components/chat/driver-chat-fab";
 import { isModuleEnabled } from "@/lib/modules";
 import { Switch } from "@/components/ui/switch";
@@ -22,6 +22,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import Link from "next/link";
 import { VehicleSessionPrompt } from "@/components/driver/vehicle-session-prompt";
 
@@ -511,17 +516,33 @@ export default function DriverDashboardLayout({
     );
   }
 
+  // Bottom nav order (per product: Orders → Jobs → Tasks → Forms first,
+  // everything else collapses behind a "More" overflow). The first four
+  // get a dedicated tab; the rest live in a popover so the bar stays
+  // readable on a 360 px phone (5 items + sensible tap targets is the
+  // documented sweet spot for shadcn bottom navs).
+  //
+  // NOTE on `module: "core"`: `isModuleEnabled` returns false for "core",
+  // so we still gate it through the special-case in the filter below —
+  // that mirrors the previous behavior where the Tasks tab (root path)
+  // was always shown regardless of which modules an admin had toggled.
   const allNavItems = [
-  { href: "/driver-dashboard", label: "Tasks", icon: ClipboardList, module: "core" },
-  { href: "/driver-dashboard/tasks", label: "Jobs", icon: Route, module: "fsm" },
-  { href: "/driver-dashboard/orders", label: "Orders", icon: Package, module: "tms" },
-  { href: "/driver-dashboard/forms", label: "Forms", icon: FileText, module: "forms" },
-  { href: "/driver-dashboard/documents", label: "Docs", icon: FolderOpen, module: "documents" },
-  { href: "/driver-dashboard/maintenance", label: "Issues", icon: Wrench, module: "maintenance" },
+    { href: "/driver-dashboard/orders", label: "Orders", icon: Package, module: "tms" },
+    { href: "/driver-dashboard/tasks", label: "Jobs", icon: Route, module: "fsm" },
+    { href: "/driver-dashboard", label: "Tasks", icon: ClipboardList, module: "core" },
+    { href: "/driver-dashboard/forms", label: "Forms", icon: FileText, module: "forms" },
+    { href: "/driver-dashboard/documents", label: "Docs", icon: FolderOpen, module: "documents" },
+    { href: "/driver-dashboard/maintenance", label: "Issues", icon: Wrench, module: "maintenance" },
   ];
-  const navItems = allNavItems.filter(
+  const enabledNavItems = allNavItems.filter(
     (item) => item.module === "core" || isModuleEnabled(item.module)
   );
+  // First four items render as primary tabs, the rest go into the
+  // "More" overflow. We pick four (not five) so the More button always
+  // has a slot — otherwise hiding a single overflow item would shift
+  // the remaining icons and break muscle memory between sessions.
+  const primaryNavItems = enabledNavItems.slice(0, 4);
+  const overflowNavItems = enabledNavItems.slice(4);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -604,7 +625,7 @@ export default function DriverDashboardLayout({
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-card border-t z-50">
         <div className="flex items-center justify-around py-2">
-          {navItems.map((item) => {
+          {primaryNavItems.map((item) => {
             const isActive = pathname === item.href || 
               (item.href !== "/driver-dashboard" && pathname.startsWith(item.href));
             const isTasksActive = item.href === "/driver-dashboard" && 
@@ -639,6 +660,80 @@ export default function DriverDashboardLayout({
               </Link>
             );
           })}
+
+          {/* "More" overflow — shown only when there's something to put
+              behind it. We keep this OUTSIDE the loop so the Popover
+              never thinks one of the dashboard tabs is its trigger;
+              that previously caused a flash where the active route
+              briefly opened the menu on navigation. */}
+          {overflowNavItems.length > 0 && (() => {
+            // The More button is "active" whenever the current route
+            // matches one of the overflow items, so the user gets a
+            // visual confirmation of where they are even though the
+            // tab itself isn't visible.
+            const moreActive = overflowNavItems.some(
+              (item) => pathname === item.href || pathname.startsWith(item.href)
+            );
+            // Aggregate the overflow badges so the driver can tell
+            // there's something needing attention without opening the
+            // menu. Today only Docs has a count.
+            const moreBadge = overflowNavItems.some(i => i.href === "/driver-dashboard/documents") ? expiringDocsCount : 0;
+            return (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors relative ${
+                      moreActive
+                        ? "text-primary"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    aria-label="More navigation"
+                  >
+                    <div className="relative">
+                      <MoreHorizontal className={`h-5 w-5 ${moreActive ? "text-primary" : ""}`} />
+                      {moreBadge > 0 && (
+                        <span className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 rounded-full bg-orange-500 text-white text-[10px] font-bold flex items-center justify-center">
+                          {moreBadge > 9 ? "9+" : moreBadge}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs font-medium">More</span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  side="top"
+                  className="w-48 p-1"
+                >
+                  {overflowNavItems.map((item) => {
+                    const isActive = pathname === item.href || pathname.startsWith(item.href);
+                    const showDocsBadge = item.href === "/driver-dashboard/documents" && expiringDocsCount > 0;
+                    const badgeCount = showDocsBadge ? expiringDocsCount : 0;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
+                          isActive
+                            ? "bg-primary/10 text-primary"
+                            : "text-foreground hover:bg-muted"
+                        }`}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <span className="flex-1">{item.label}</span>
+                        {badgeCount > 0 && (
+                          <span className="min-w-4 h-4 px-1 rounded-full bg-orange-500 text-white text-[10px] font-bold flex items-center justify-center">
+                            {badgeCount > 9 ? "9+" : badgeCount}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </PopoverContent>
+              </Popover>
+            );
+          })()}
         </div>
       </nav>
 

@@ -220,6 +220,66 @@ export function DriverDocsUploadDialog({
         title: success === files.length ? "Uploaded" : "Partial upload",
         description: `${success} of ${files.length} file(s) attached to order ${selectedOrder.reference_number}.`,
       })
+
+      // Auto-advance order status when CMR/POD has actually been
+      // attached. Per the v3 status registry (lib/tms/status/registry.ts):
+      //   • when all stops complete → orders.status becomes
+      //     "documents_pending" (handled in orders/page.tsx)
+      //   • once POD/CMR is uploaded → "documents_received"
+      // We only promote when the upload was a CMR-class document AND
+      // every order_stop is already completed/cancelled — otherwise
+      // attaching a bill_of_lading mid-trip would prematurely close
+      // the order. The advance is best-effort: a failure here must
+      // never break the upload flow itself, so it's wrapped in
+      // try/catch with a swallowed error.
+      const isPodLike =
+        docType === "cmr_pod" ||
+        docType === "proof_of_delivery" ||
+        docType === "bill_of_lading"
+      if (isPodLike && success > 0) {
+        try {
+          const { data: pendingStops } = await supabase
+            .from("order_stops")
+            .select("id")
+            .eq("order_id", orderId)
+            .neq("status", "completed")
+            .neq("status", "cancelled")
+          if (!pendingStops || pendingStops.length === 0) {
+            const { data: orderRow } = await supabase
+              .from("orders")
+              .select("status")
+              .eq("id", orderId)
+              .maybeSingle()
+            // Only advance forward — never override a status that's
+            // already past convergence (ready_for_invoicing, etc.) or
+            // a sideways state (cancelled/on_hold).
+            const advanceableFrom = new Set([
+              "documents_pending",
+              "delivered",
+              "in_transit",
+              "in_execution",
+              "dispatched",
+              "accepted",
+            ])
+            if (orderRow?.status && advanceableFrom.has(orderRow.status)) {
+              await supabase
+                .from("orders")
+                .update({ status: "documents_received" })
+                .eq("id", orderId)
+              await supabase.from("order_status_history").insert({
+                order_id: orderId,
+                from_status: orderRow.status,
+                to_status: "documents_received",
+                changed_by_type: "driver",
+                notes: "Driver uploaded POD/CMR — auto-advance",
+              })
+            }
+          }
+        } catch {
+          // Non-fatal — admin can still flip the status manually.
+        }
+      }
+
       onOpenChange(false)
     } catch (err: any) {
       toast({
@@ -267,18 +327,25 @@ export function DriverDocsUploadDialog({
         </DialogHeader>
 
         <div className="space-y-2.5">
-          {/* Order selector — auto-selected when there's only one. */}
-          <div className="space-y-1">
+          {/* Order selector — auto-selected when there's only one.
+              The trigger has `min-w-0` + the value uses `truncate` so a
+              long "REFERENCE — Customer Name with many words" label
+              cannot push the dialog wider than the viewport. The
+              SelectContent dropdown has its own width and shows the
+              full label there, so no information is lost — we just
+              prevent the trigger row from forcing a horizontal-scroll
+              layout that hides the action buttons under the chat FAB. */}
+          <div className="space-y-1 min-w-0">
             <Label className="text-[11px] text-muted-foreground">Order</Label>
             <Select
               value={orderId ?? ""}
               onValueChange={v => setOrderId(v)}
               disabled={uploading}
             >
-              <SelectTrigger className="h-9 text-xs">
+              <SelectTrigger className="h-9 text-xs w-full min-w-0 [&>span]:truncate [&>span]:block [&>span]:max-w-full">
                 <SelectValue placeholder="Select order..." />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-w-[min(90vw,28rem)]">
                 {orders.map(o => (
                   <SelectItem key={o.id} value={o.id} className="text-xs">
                     <span className="font-medium">{o.reference_number}</span>
