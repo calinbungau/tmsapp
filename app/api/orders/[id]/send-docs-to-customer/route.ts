@@ -445,6 +445,48 @@ export async function POST(
       performed_by_id: adminId,
     });
 
+    // ── Auto-advance parent status ──
+    // Once docs land in the customer's inbox, the order has crossed
+    // the second of three back-office gates (the first being convergence
+    // → ready_for_invoicing, the third being customer payment →
+    // completed). We promote the parent to `documents_and_invoice_sent`
+    // here so the operator no longer needs to click into Change Status
+    // afterwards.
+    //
+    // Only auto-promote PARENT orders (parent_order_id IS NULL) and only
+    // FROM ready_for_invoicing — earlier states would skip the
+    // convergence gate entirely, and later states (`completed`,
+    // `cancelled`) must never be silently overwritten. Subcontract
+    // children get their own forwarder lifecycle and aren't touched.
+    //
+    // Failures here are logged but never surfaced to the operator: the
+    // email already went out successfully, and a stale parent status is
+    // a smaller problem than a misleading toast saying the send failed.
+    if (!order.parent_order_id) {
+      const { data: freshOrder } = await supabase
+        .from("orders")
+        .select("status")
+        .eq("id", orderId)
+        .single();
+      if (freshOrder?.status === "ready_for_invoicing") {
+        const { error: advErr } = await supabase
+          .from("orders")
+          .update({ status: "documents_and_invoice_sent" })
+          .eq("id", orderId);
+        if (advErr) {
+          console.error("[send-docs] auto-advance to documents_and_invoice_sent failed", advErr);
+        } else {
+          await supabase.from("order_status_history").insert({
+            order_id: orderId,
+            from_status: "ready_for_invoicing",
+            to_status: "documents_and_invoice_sent",
+            changed_by_type: "system",
+            notes: "Auto-advanced after Send Docs to Customer succeeded",
+          });
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: `Sent ${attachments.length} attachment${attachments.length === 1 ? "" : "s"} to ${recipient_email}`,

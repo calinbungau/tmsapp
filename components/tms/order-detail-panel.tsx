@@ -2860,6 +2860,42 @@ const handleSaveInvoice = async (formData: {
       }
       await supabase.from("order_invoices").update(updates).eq("id", invoiceId);
 
+      // ── Auto-advance parent to `completed` when fully paid ──
+      // Mirrors the same logic in app/api/smartbill/payment/route.ts so
+      // the manual "Mark as paid" path produces the same UX as recording
+      // a payment via Smartbill. We re-read the parent's current state
+      // so we don't accidentally regress an already-cancelled or
+      // already-completed order. Outgoing-only because incoming carrier
+      // invoices have no bearing on customer-side completion.
+      if (status === 'paid' && invoice?.direction === 'outgoing' && order?.id) {
+        try {
+          const { data: parentRow } = await supabase
+            .from("orders")
+            .select("id, status, parent_order_id")
+            .eq("id", order.id)
+            .single();
+          if (
+            parentRow &&
+            !parentRow.parent_order_id &&
+            parentRow.status === "documents_and_invoice_sent"
+          ) {
+            await supabase
+              .from("orders")
+              .update({ status: "completed" })
+              .eq("id", order.id);
+            await supabase.from("order_status_history").insert({
+              order_id: order.id,
+              from_status: "documents_and_invoice_sent",
+              to_status: "completed",
+              changed_by_type: "admin",
+              notes: "Auto-completed: customer invoice marked paid manually",
+            });
+          }
+        } catch (err) {
+          console.error("[v0] auto-complete on manual paid failed", err);
+        }
+      }
+
       // Audit trail: every manual status change is logged so the
       // operator can later see who marked what as paid and when.
       if (order?.id) {
