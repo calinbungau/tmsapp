@@ -1056,11 +1056,18 @@ useEffect(() => { fetchRefData(); }, [fetchRefData]);
   const loadDrafts = useCallback(async () => {
     if (!adminSession?.id) return;
     const s = createClient();
+    // Scope drafts to the logged-in user. We accept BOTH the users.id and
+    // the legacy tenant id (admins.id) as creator: the former is what new
+    // drafts are stamped with, the latter covers historical owner-only
+    // sessions that still write the tenant id. This way each dispatcher
+    // sees only their own in-progress drafts on a multi-user tenant.
+    const creatorIds = [adminSession.user_id, adminSession.id].filter(Boolean) as string[];
     const { data: drafts } = await s.from("orders")
       .select("*")
-  .eq("admin_id", adminSession.id)
-  .in("status", ["draft", "fwd_draft"])
-  .order("updated_at", { ascending: false });
+      .eq("admin_id", adminSession.id)
+      .in("status", ["draft", "fwd_draft"])
+      .in("created_by", creatorIds)
+      .order("updated_at", { ascending: false });
 
     if (!drafts || drafts.length === 0) {
       draftsLoadedRef.current = true;
@@ -1669,7 +1676,11 @@ created_from: tab.createdFrom,
         ...calculateVatAmounts(f.carrier_cost, f.carrier_vat_type, f.carrier_vat_rate, "carrier"),
         payment_terms_carrier_days: f.payment_terms_carrier_days ? parseInt(f.payment_terms_carrier_days) : null,
         created_from: activeTab.createdFrom,
-        created_by: adminSession.id,
+        // Prefer the logged-in user's id (users.id) so the dispatcher
+        // resolves to the user's linked employee. Fall back to the
+        // tenant id only for legacy sessions that have no users-table
+        // record (e.g. owner-only logins).
+        created_by: adminSession.user_id ?? adminSession.id,
         source_document_url: activeTab.pdfUrl || null,
         is_draft: true,
         commercial_role: "customer_order", // This is a direct customer order
@@ -2099,6 +2110,7 @@ created_from: tab.createdFrom,
               // Create the forwarding order (subcontract) linked to parent order
               const { data: fwdOrder, error: fwdErr } = await s.from("orders").insert({
                 admin_id: adminSession.id,
+                created_by: adminSession.user_id ?? adminSession.id,
                 reference_number: fwdRef,
                 order_type: "forwarding",
                 status: fwdStatus,

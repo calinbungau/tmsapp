@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "@/lib/encryption";
 import nodemailer from "nodemailer";
 import { randomUUID } from "crypto";
+import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,6 +13,7 @@ const supabase = createClient(
 export async function POST(request: NextRequest) {
   try {
     const adminId = request.headers.get("x-admin-id");
+    const userId = request.headers.get("x-user-id");
     if (!adminId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const {
@@ -52,23 +54,94 @@ export async function POST(request: NextRequest) {
     }
     const primaryEmail = recipients[0];
 
-    // Get the order to verify it exists and get reference number
+    // Get the order to verify it exists and get reference number.
+    // We grab the full row + stops here because we want to snapshot
+    // every operationally-meaningful field at send-time. The dispatcher
+    // needs to be able to look back later and ask "what did we send to
+    // the carrier last week?" — without a snapshot we'd only see the
+    // current order data, which by then has already been mutated (new
+    // dates, swapped stops, repriced).
     const { data: order, error: orderErr } = await supabase
       .from("orders")
-      .select("id, reference_number, status, admin_id")
+      .select(
+        "id, reference_number, status, admin_id, customer_id, carrier_id, " +
+          "customer_price, customer_currency, carrier_cost, carrier_currency, " +
+          "weight_kg, pallet_count, volume_m3, loading_meters, " +
+          "cargo_description, goods_type, adr_class, special_instructions, " +
+          "temperature_min, temperature_max, " +
+          "estimated_distance_km, estimated_duration_hours"
+      )
       .eq("id", orderId)
       .single();
 
     if (orderErr || !order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
+    // Supabase's typed client widens to GenericStringError when the
+    // select string is concatenated, so we narrow back to a permissive
+    // shape for snapshot construction. Runtime fields are guaranteed
+    // by the SQL select above.
+    const o = order as any;
 
-    // Get SMTP settings for this admin
-    const { data: settings } = await supabase
-      .from("user_email_settings")
-      .select("*")
-      .eq("admin_id", adminId)
-      .single();
+    // Pull stops separately and order them by sequence so the snapshot
+    // mirrors what the operator sees in the dialog left-to-right.
+    const { data: stopsRows } = await supabase
+      .from("order_stops")
+      .select(
+        "id, sequence_order, stop_type, company_name, address, city, country, " +
+          "postal_code, planned_date, planned_time_from, planned_time_to, " +
+          "reference_number, contact_name, contact_phone, contact_email"
+      )
+      .eq("order_id", orderId)
+      .order("sequence_order", { ascending: true });
+
+    // The activity-log snapshot. Trimmed to the fields a dispatcher
+    // actually compares against ("did the date slip? did the price
+    // change? did the route reroute?"). Anything not here can't be
+    // compared retroactively — keep this list aligned with the diff
+    // logic in components/tms/send-to-carrier-dialog.tsx.
+    const orderSnapshot = {
+      order: {
+        reference_number: o.reference_number,
+        status: o.status,
+        customer_price: o.customer_price,
+        customer_currency: o.customer_currency,
+        carrier_cost: o.carrier_cost,
+        carrier_currency: o.carrier_currency,
+        weight_kg: o.weight_kg,
+        pallet_count: o.pallet_count,
+        volume_m3: o.volume_m3,
+        loading_meters: o.loading_meters,
+        cargo_description: o.cargo_description,
+        goods_type: o.goods_type,
+        adr_class: o.adr_class,
+        special_instructions: o.special_instructions,
+        temperature_min: o.temperature_min,
+        temperature_max: o.temperature_max,
+        estimated_distance_km: o.estimated_distance_km,
+        estimated_duration_hours: o.estimated_duration_hours,
+      },
+      stops: ((stopsRows ?? []) as any[]).map((s: any) => ({
+        sequence_order: s.sequence_order,
+        stop_type: s.stop_type,
+        company_name: s.company_name,
+        address: s.address,
+        city: s.city,
+        country: s.country,
+        postal_code: s.postal_code,
+        planned_date: s.planned_date,
+        planned_time_from: s.planned_time_from,
+        planned_time_to: s.planned_time_to,
+        reference_number: s.reference_number,
+        contact_name: s.contact_name,
+        contact_phone: s.contact_phone,
+        contact_email: s.contact_email,
+      })),
+    };
+
+    // Get SMTP settings for the acting user (per-user mailbox), with
+    // legacy fallback to the tenant's pre-migration mailbox row.
+    const settings = await getUserEmailSettingsRow(supabase, adminId, userId);
 
     if (!settings || !settings.smtp_password_encrypted) {
       return NextResponse.json({ error: "SMTP not configured. Please set up email settings first." }, { status: 400 });
@@ -112,7 +185,7 @@ export async function POST(request: NextRequest) {
     const uploadLink = `${baseUrl}/carrier/confirm/${token}`;
 
     // Build email body with the upload link
-    const refNumber = order.reference_number || orderId.slice(0, 8);
+    const refNumber = o.reference_number || orderId.slice(0, 8);
     const emailHtml = buildCarrierEmailHtml({
       carrierName: carrierName || "Carrier",
       refNumber,
@@ -205,7 +278,7 @@ export async function POST(request: NextRequest) {
     // managed by the recompute trigger on child status changes; we never
     // write parent status from here. For internal orders, dispatch lives
     // on trip_legs, not on orders.status — so we skip the flip entirely.
-    const fromStatus = order.status;
+    const fromStatus = o.status;
     let toStatus: string | null = null;
     if (fromStatus?.startsWith("fwd_")) {
       toStatus = "fwd_carrier_confirmation_required";
@@ -230,25 +303,92 @@ export async function POST(request: NextRequest) {
       console.log("[v0] send-to-carrier on internal order — no status flip", { orderId, fromStatus });
     }
 
-    // Log activity
-    await supabase.from("order_activity_log").insert({
-      order_id: orderId,
-      action: "order_sent_to_carrier",
-      details: {
-        carrier_name: carrierName,
-        carrier_email: primaryEmail,
-        // Keep the full recipient list so the activity log shows
-        // every address the email was actually delivered to.
-        carrier_emails: recipients,
-        recipient_count: recipients.length,
-        upload_link: uploadLink,
-        upload_token: token,
-        language: lang || "en",
-        sent_at: new Date().toISOString(),
-      },
-      performed_by_type: "admin",
-      performed_by_id: adminId,
-    });
+    // Log activity (with the full order snapshot so future operators
+    // can diff "what was sent then" vs. "what the order looks like now").
+    // We insert first to get an id, then upload the exact PDF that was
+    // attached to the email under that id so each historical send has
+    // its own immutable copy in storage. If the upload fails we still
+    // keep the log row — the snapshot data alone is still useful.
+    const sentAtIso = new Date().toISOString();
+    const { data: logRow } = await supabase
+      .from("order_activity_log")
+      .insert({
+        order_id: orderId,
+        action: "order_sent_to_carrier",
+        details: {
+          carrier_name: carrierName,
+          carrier_email: primaryEmail,
+          // Keep the full recipient list so the activity log shows
+          // every address the email was actually delivered to.
+          carrier_emails: recipients,
+          recipient_count: recipients.length,
+          upload_link: uploadLink,
+          upload_token: token,
+          language: lang || "en",
+          subject: mailSubject,
+          message: message || null,
+          sent_at: sentAtIso,
+          // Frozen snapshot of the order at send-time. Used by the
+          // dialog's "Previously sent" panel to highlight what has
+          // changed in the order since this send (dates slipped,
+          // price changed, stops swapped, etc.).
+          order_snapshot: orderSnapshot,
+        },
+        performed_by_type: "admin",
+        performed_by_id: adminId,
+      })
+      .select("id")
+      .single();
+
+    // Persist the exact attached PDF so the dispatcher can re-download
+    // the document that was actually sent on a given date — not a fresh
+    // re-render against today's (possibly modified) order data.
+    if (logRow?.id && orderPdfBase64 && typeof orderPdfBase64 === "string") {
+      try {
+        const cleanBase64 = orderPdfBase64.replace(/^data:application\/pdf;base64,/, "");
+        const pdfBuffer = Buffer.from(cleanBase64, "base64");
+        const safeFilename = (typeof orderPdfFilename === "string" && orderPdfFilename.trim())
+          ? orderPdfFilename.trim()
+          : `Order_${refNumber}.pdf`;
+        // Path: orders/<orderId>/sent/<logId>.pdf — stable, predictable,
+        // and scoped under the order so RLS / cleanup is straightforward.
+        const storagePath = `orders/${orderId}/sent/${logRow.id}.pdf`;
+        const { error: upErr } = await supabase.storage
+          .from("documents")
+          .upload(storagePath, pdfBuffer, {
+            contentType: "application/pdf",
+            upsert: true,
+          });
+        if (upErr) {
+          console.error("[v0] send-to-carrier: pdf archive upload failed", upErr);
+        } else {
+          // Patch the log row with the storage pointer + filename so
+          // the UI can build a download URL later.
+          await supabase
+            .from("order_activity_log")
+            .update({
+              details: {
+                carrier_name: carrierName,
+                carrier_email: primaryEmail,
+                carrier_emails: recipients,
+                recipient_count: recipients.length,
+                upload_link: uploadLink,
+                upload_token: token,
+                language: lang || "en",
+                subject: mailSubject,
+                message: message || null,
+                sent_at: sentAtIso,
+                order_snapshot: orderSnapshot,
+                pdf_storage_path: storagePath,
+                pdf_filename: safeFilename,
+              },
+            })
+            .eq("id", logRow.id);
+        }
+      } catch (e) {
+        console.error("[v0] send-to-carrier: pdf archive exception", e);
+      }
+    }
 
     return NextResponse.json({
       success: true,

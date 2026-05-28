@@ -258,6 +258,22 @@
   contain: layout style;
   transition: none !important; /* Prevent CSS transition lag */
 }
+
+/*
+ * Keep Leaflet under modal overlays.
+ *
+ * Leaflet's default stylesheet uses z-index values up to 1000 for the
+ * tile container, marker pane and especially the zoom / attribution
+ * controls. shadcn DialogOverlay + DialogContent ship at z-50, so any
+ * dialog opened over a visible map (driver CMR/POD upload, expense
+ * capture, etc.) renders BEHIND the map controls and tiles. Clamping
+ * the Leaflet container to z-0 forces every internal pane back into a
+ * lower stacking context without breaking marker/popup ordering inside
+ * the map itself, while letting Radix portals win.
+ */
+.leaflet-container {
+  z-index: 0;
+}
 /* Optimize pane rendering for smooth pan/zoom */
 .leaflet-marker-pane {
   will-change: transform;

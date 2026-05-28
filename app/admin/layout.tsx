@@ -94,6 +94,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (adminSession.isOwner) return true;
     if (!adminSession.user_id) return true;
     if (adminSession.permissions && Object.keys(adminSession.permissions).length === 0 && adminSession.role) return true;
+    // A role explicitly named "All" / "Full Access" / "Administrator" is treated as full access,
+    // even if its permission set hasn't been backfilled with newer module keys yet.
+    if (adminSession.role && /^(all|full[\s_-]?access|administrator|admin)$/i.test(adminSession.role.trim())) return true;
     return false;
   }, [adminSession]);
 
@@ -234,9 +237,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // Fetch email unread count
   try {
-  const emailRes = await fetch("/api/email/unread-count", {
-    headers: { "x-admin-id": adminSession.id },
-  });
+      const emailRes = await fetch("/api/email/unread-count", {
+        headers: { "x-admin-id": adminSession.id, "x-user-id": adminSession.user_id || "" },
+      });
   const emailData = await emailRes.json();
   setEmailUnread(emailData.count || 0);
   } catch {}
@@ -253,16 +256,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   } catch {}
 
   // Background email sync (fire-and-forget) so new emails appear in DB
-  fetch("/api/email/sync", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-admin-id": adminSession.id },
-    body: JSON.stringify({ folder: "INBOX" }),
-  }).then(async () => {
-    // Re-fetch unread count after sync completes
-    try {
-      const res = await fetch("/api/email/unread-count", {
-        headers: { "x-admin-id": adminSession.id },
-      });
+    fetch("/api/email/sync", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-id": adminSession.id,
+        "x-user-id": adminSession.user_id || "",
+      },
+      body: JSON.stringify({ folder: "INBOX" }),
+    }).then(async () => {
+      // Re-fetch unread count after sync completes
+      try {
+        const res = await fetch("/api/email/unread-count", {
+          headers: { "x-admin-id": adminSession.id, "x-user-id": adminSession.user_id || "" },
+        });
       const data = await res.json();
       setEmailUnread(data.count || 0);
     } catch {}

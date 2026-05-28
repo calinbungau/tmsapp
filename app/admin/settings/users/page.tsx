@@ -498,9 +498,16 @@ export default function UsersPage() {
                               <Badge variant="outline" className="text-xs">Owner</Badge>
                             )}
                           </div>
-                          {user.employee && (
+                          {user.employee ? (
                             <div className="text-sm text-muted-foreground">
                               {user.employee.first_name} {user.employee.last_name}
+                            </div>
+                          ) : (
+                            // Surface the missing employee link explicitly so admins
+                            // can spot accounts whose dispatcher name will fall back
+                            // to the email local-part on orders and other lists.
+                            <div className="text-xs text-amber-600 dark:text-amber-400">
+                              Not linked to an employee
                             </div>
                           )}
                         </div>
@@ -526,42 +533,52 @@ export default function UsersPage() {
                       {formatDate(user.last_login_at)}
                     </TableCell>
                     <TableCell>
-                      {!user.is_owner && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEditDialog(user)}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleToggleStatus(user)}>
-                              {user.status === "active" ? (
-                                <>
-                                  <XCircle className="h-4 w-4 mr-2" />
-                                  Suspend
-                                </>
-                              ) : (
-                                <>
-                                  <CheckCircle className="h-4 w-4 mr-2" />
-                                  Activate
-                                </>
-                              )}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              onClick={() => handleDelete(user)}
-                              className="text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
+                      {/*
+                        Owners can also need their settings edited (most
+                        commonly: linking the owner login to an Employee
+                        record so the dispatcher name shows up on orders
+                        instead of the email local-part). We still hide
+                        Suspend / Delete for owners — only the Edit action
+                        is exposed for them.
+                      */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEditDialog(user)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          {!user.is_owner && (
+                            <>
+                              <DropdownMenuItem onClick={() => handleToggleStatus(user)}>
+                                {user.status === "active" ? (
+                                  <>
+                                    <XCircle className="h-4 w-4 mr-2" />
+                                    Suspend
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle className="h-4 w-4 mr-2" />
+                                    Activate
+                                  </>
+                                )}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => handleDelete(user)}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))

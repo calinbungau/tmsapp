@@ -147,11 +147,26 @@ export async function GET(req: NextRequest) {
   }
 
   // Resolve "added by" — orders.created_by → users.employee_id → employees.first_name/last_name
+  // We resolve it for BOTH parent orders and subcontract children so the
+  // client can filter by the user who created the parent forwarding order.
+  const { data: parentRows } = await sb
+    .from("orders")
+    .select("id, created_by")
+    .in("id", parentIds);
+  const parentCreatorById = new Map<string, string | null>();
+  for (const p of parentRows ?? []) {
+    parentCreatorById.set(
+      (p as any).id as string,
+      ((p as any).created_by as string | null) ?? null,
+    );
+  }
+
   const creatorIds = Array.from(
     new Set(
-      subList
-        .map(s => (s as any).created_by as string | null)
-        .filter(Boolean) as string[],
+      [
+        ...subList.map(s => (s as any).created_by as string | null),
+        ...Array.from(parentCreatorById.values()),
+      ].filter(Boolean) as string[],
     ),
   );
   const creatorMap = new Map<string, string>();
@@ -182,6 +197,24 @@ export async function GET(req: NextRequest) {
       const fallback = ((u as any).email as string | null) || null;
       const name = (eid && empNameMap.get(eid)) || fallback || null;
       if (name) creatorMap.set(uid, name);
+    }
+    // Legacy fallback: created_by may point at the tenant id (admins.id)
+    // for orders created before user-scoped attribution. Resolve those too
+    // so they don't show up as "Unknown" in the user filter dropdown.
+    const unresolvedIds = creatorIds.filter(id => !creatorMap.has(id));
+    if (unresolvedIds.length) {
+      const { data: adminRows } = await sb
+        .from("admins")
+        .select("id, name, email")
+        .in("id", unresolvedIds);
+      for (const a of adminRows ?? []) {
+        const aid = (a as any).id as string;
+        const nm =
+          ((a as any).name as string | null)?.trim() ||
+          ((a as any).email as string | null) ||
+          null;
+        if (nm) creatorMap.set(aid, nm);
+      }
     }
   }
 
@@ -380,12 +413,17 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const enriched = items.map(r => ({
-    ...r,
-    subcontracts: subsByParent.get(r.order_id) ?? [],
-    customer_invoices: customerInvoicesByParent.get(r.order_id) ?? [],
-    carrier_invoices: carrierInvoicesByParent.get(r.order_id) ?? [],
-  }));
+  const enriched = items.map(r => {
+    const cid = parentCreatorById.get(r.order_id) ?? null;
+    return {
+      ...r,
+      subcontracts: subsByParent.get(r.order_id) ?? [],
+      customer_invoices: customerInvoicesByParent.get(r.order_id) ?? [],
+      carrier_invoices: carrierInvoicesByParent.get(r.order_id) ?? [],
+      created_by_id: cid,
+      created_by_name: cid ? creatorMap.get(cid) ?? null : null,
+    };
+  });
 
   return NextResponse.json({ items: enriched });
 }

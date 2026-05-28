@@ -419,6 +419,7 @@ export default function CarrierConsolidationPage() {
         .from("orders")
         .insert({
           admin_id: adminSession.id,
+          created_by: adminSession.user_id ?? adminSession.id,
           reference_number: fwdRef,
           order_type: "forwarding",
           status: "fwd_assigned",

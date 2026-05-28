@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FileDown, Send, Printer, Globe, LayoutTemplate, Loader2, CheckCircle2, Link2, Copy, Check, Mail } from "lucide-react";
+import { FileDown, Send, Printer, Globe, LayoutTemplate, Loader2, CheckCircle2, Link2, Copy, Check, Mail, History } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { EmailRecipientInput } from "@/components/tms/email-recipient-input";
 import { recordEmailRecipients } from "@/lib/email-recipients";
+import { buildEmailAuthHeaders } from "@/lib/client-email-headers";
+import { PreviousSendsList } from "@/components/tms/previous-sends-list";
 import {
   fetchOrderData, fetchCompanyProfile, fetchOrderTemplates,
   renderOrderHtml, parseTemplate, openPrintWindow,
@@ -205,6 +207,9 @@ export function SendToCarrierDialog({ open, onOpenChange, orderId, adminId, admi
   const [uploadLink, setUploadLink] = useState("");
   const [copied, setCopied] = useState(false);
   const [sendError, setSendError] = useState("");
+  // Bumped after each successful send so PreviousSendsList re-fetches
+  // its history rows without us having to thread a callback through.
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   // Recipient list — chip-style input. Seeded once per dialog-open from
   // the carrier's `email` field on the order (if it exists), but the
   // user can add more recipients manually or remove the default. This
@@ -308,6 +313,53 @@ export function SendToCarrierDialog({ open, onOpenChange, orderId, adminId, admi
     if (!orderData?.order || !company) return "";
     return renderOrderHtml({ order: orderData.order, stops: orderData.stops, company }, currentTemplate, lang);
   }, [orderData, company, currentTemplate, lang]);
+
+  // Snapshot of the *current* order data, in the same shape that the
+  // API persists into order_activity_log.details.order_snapshot. The
+  // PreviousSendsList component diffs each historical entry against
+  // this so dispatchers see what's changed since the last send.
+  // Keep field list in sync with the API route — both must move
+  // together or the diff will surface bogus changes.
+  const currentSnapshot = useMemo(() => {
+    const o = orderData?.order || {};
+    const stops = (orderData?.stops || []) as any[];
+    return {
+      order: {
+        customer_price: o.customer_price,
+        customer_currency: o.customer_currency,
+        carrier_cost: o.carrier_cost,
+        carrier_currency: o.carrier_currency,
+        weight_kg: o.weight_kg,
+        pallet_count: o.pallet_count,
+        volume_m3: o.volume_m3,
+        loading_meters: o.loading_meters,
+        cargo_description: o.cargo_description,
+        goods_type: o.goods_type,
+        adr_class: o.adr_class,
+        special_instructions: o.special_instructions,
+        temperature_min: o.temperature_min,
+        temperature_max: o.temperature_max,
+        estimated_distance_km: o.estimated_distance_km,
+        estimated_duration_hours: o.estimated_duration_hours,
+      },
+      stops: stops.map((s: any) => ({
+        sequence_order: s.sequence_order,
+        stop_type: s.stop_type,
+        company_name: s.company_name,
+        address: s.address,
+        city: s.city,
+        country: s.country,
+        postal_code: s.postal_code,
+        planned_date: s.planned_date,
+        planned_time_from: s.planned_time_from,
+        planned_time_to: s.planned_time_to,
+        reference_number: s.reference_number,
+        contact_name: s.contact_name,
+        contact_phone: s.contact_phone,
+        contact_email: s.contact_email,
+      })),
+    };
+  }, [orderData]);
 
   // Preview iframe content. Strips the toolbar, kills its top padding,
   // forces a white background, and rewrites `.page` so it fills the
@@ -413,7 +465,7 @@ export function SendToCarrierDialog({ open, onOpenChange, orderId, adminId, admi
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-id": adminId,
+          ...buildEmailAuthHeaders(adminId),
         },
         body: JSON.stringify({
           orderId,
@@ -444,6 +496,9 @@ export function SendToCarrierDialog({ open, onOpenChange, orderId, adminId, admi
 
       setUploadLink(data.uploadLink || "");
       setSent(true);
+      // Force PreviousSendsList to re-fetch so the just-completed send
+      // shows up at the top of the history immediately.
+      setHistoryRefreshKey((k) => k + 1);
       // Best-effort: stamp these recipients into the per-user
       // autocomplete history so they surface as suggestions next
       // time. Linked to the carrier BP when known. Never blocks the
@@ -474,15 +529,24 @@ export function SendToCarrierDialog({ open, onOpenChange, orderId, adminId, admi
   const refNumber = orderData?.order?.reference_number || "";
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[95vw] w-[1600px] h-[92vh] flex flex-col p-0 gap-0 bg-background border-border/50">
-        <DialogHeader className="px-6 py-4 border-b border-border/50 shrink-0">
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle className="text-base font-bold">Send Order to Carrier</DialogTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">{refNumber} {carrierName ? `- ${carrierName}` : ""}</p>
+      {/*
+        Responsive sizing rules:
+          - Width caps at 1400px on huge desktops, fills the viewport
+            on small/medium screens.
+          - Height caps at 88vh on desktop and 100dvh on phones, with
+            a max-height of 820px so on huge monitors the dialog stays
+            a comfortable size instead of stretching to fill 4K.
+          - Mobile is full-screen (no rounded corners, no inset).
+      */}
+      <DialogContent className="w-[100vw] sm:max-w-[95vw] sm:w-[1400px] max-h-[100dvh] h-[100dvh] sm:max-h-[820px] sm:h-[88vh] flex flex-col p-0 gap-0 bg-background border-border/50 sm:rounded-lg rounded-none">
+        <DialogHeader className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border/50 shrink-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <DialogTitle className="text-sm sm:text-base font-bold">Send Order to Carrier</DialogTitle>
+              <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5 truncate">{refNumber} {carrierName ? `- ${carrierName}` : ""}</p>
             </div>
             {sent && (
-              <Badge className="bg-green-500/10 text-green-400 border-green-500/20 gap-1">
+              <Badge className="bg-green-500/10 text-green-400 border-green-500/20 gap-1 shrink-0">
                 <CheckCircle2 className="h-3 w-3" /> Sent
               </Badge>
             )}
@@ -498,9 +562,9 @@ export function SendToCarrierDialog({ open, onOpenChange, orderId, adminId, admi
             Order not found. Please check if the order exists.
           </div>
         ) : (
-          <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
             {/* Left: Document Preview - scaled A4 */}
-            <div className="flex-1 bg-muted/20 overflow-auto p-6 flex justify-center">
+            <div className="flex-1 bg-muted/20 overflow-auto p-3 sm:p-6 flex justify-center min-h-0">
               <div className="w-full max-w-[900px]">
                 <iframe
                   ref={previewIframeRef}
@@ -513,8 +577,17 @@ export function SendToCarrierDialog({ open, onOpenChange, orderId, adminId, admi
               </div>
             </div>
 
-            {/* Right: Controls Panel */}
-            <div className="w-[300px] border-l border-border/50 flex flex-col shrink-0">
+            {/* Right: Controls Panel — full-width on mobile (stacks below
+                the preview), fixed 320px on desktop. Layout:
+                  - inner scroll area for carrier/template/recipients/
+                    message/history (`overflow-y-auto`, `min-h-0`)
+                  - sticky footer with Print/Download + Send buttons so
+                    they remain reachable no matter how far the operator
+                    has scrolled the form (this is what the user asked
+                    for: actions docked to the right side).
+            */}
+            <div className="w-full md:w-[320px] border-t md:border-t-0 md:border-l border-border/50 flex flex-col shrink-0 min-h-0 max-h-[60dvh] md:max-h-none">
+              <div className="flex-1 overflow-y-auto min-h-0">
               {/* Carrier Info */}
               <div className="p-4 border-b border-border/30 space-y-3">
                 <div>
@@ -636,8 +709,26 @@ export function SendToCarrierDialog({ open, onOpenChange, orderId, adminId, admi
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="p-4 space-y-2 mt-auto">
+              {/* Previously sent — pulled from order_activity_log so a
+                  dispatcher can audit what was sent before, when, to
+                  whom, and what's changed in the order since. */}
+              <div className="p-4 border-b border-border/30 space-y-2">
+                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                  <History className="h-3 w-3" /> Previously sent
+                </label>
+                <PreviousSendsList
+                  orderId={orderId}
+                  currentSnapshot={currentSnapshot}
+                  refreshKey={historyRefreshKey}
+                  adminId={adminId}
+                />
+              </div>
+              </div>
+
+              {/* Sticky action footer — sits outside the scroll area so
+                  Print/Download and Send are always visible at the
+                  bottom of the right sidebar. */}
+              <div className="p-4 space-y-2 border-t border-border/50 bg-background/95 backdrop-blur sticky bottom-0">
                 <Button
                   variant="outline"
                   className="w-full h-9 text-xs gap-1.5 border-border/50"

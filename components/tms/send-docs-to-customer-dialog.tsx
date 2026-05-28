@@ -401,7 +401,7 @@ export function SendDocsToCustomerDialog({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(adminId ? { "x-admin-id": adminId } : {}),
+          ...(adminId ? { "x-admin-id": adminId, "x-user-id": (typeof window !== "undefined" ? (() => { try { return JSON.parse(window.localStorage.getItem("admin_session") || "{}").user_id || ""; } catch { return ""; } })() : "") } : {}),
         },
         body: JSON.stringify({
           recipient_email: recipient.trim(),

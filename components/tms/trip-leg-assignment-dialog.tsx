@@ -14,6 +14,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Truck, Building2, HelpCircle, User, Check, ChevronsUpDown, Phone, Container, Loader2, FileText, Plus, Link2, UserPlus, Trash2 } from "lucide-react";
 import { QuickCreatePartnerDialog, type CreatedPartner } from "@/components/tms/quick-create-partner-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useAdminSession } from "@/hooks/use-admin-session";
 import { deriveLegStatus, canAutoRollLegStatus } from "@/lib/tms/status/derive-leg-status";
 import { recomputeParentStatus } from "@/lib/tms/status/recompute-parent";
 
@@ -42,7 +43,12 @@ interface TripLegAssignmentDialogProps {
   onSave: (updatedLeg: any) => void;
 }
 
-export function TripLegAssignmentDialog({ open, onOpenChange, tripLeg, adminId, parentOrderId, onSave }: TripLegAssignmentDialogProps) {
+  export function TripLegAssignmentDialog({ open, onOpenChange, tripLeg, adminId, parentOrderId, onSave }: TripLegAssignmentDialogProps) {
+  // Resolve the logged-in user's id so created_by on any FWD orders /
+  // trips we create here points at users.id (which links to an Employee
+  // record) rather than the tenant id (which collapses to the owner).
+  const { session: adminSession } = useAdminSession();
+  const creatorId = adminSession?.user_id ?? adminId;
   const supabase = createClient();
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
@@ -443,6 +449,29 @@ export function TripLegAssignmentDialog({ open, onOpenChange, tripLeg, adminId, 
               .select("*, order_stops(*)")
               .eq("id", parentOrderId)
               .single();
+
+            // Pull the company-level default payment terms so the carrier
+            // payment window on the new FWD matches what the operator
+            // configured in Settings → Company Profile → Defaults (e.g. 45)
+            // instead of falling back to a hardcoded 30. Customer-side
+            // terms are inherited from the parent order when available,
+            // and default to the same company value otherwise so the two
+            // never diverge silently.
+            const { data: companyProfile } = await supabase
+              .from("company_profiles")
+              .select("default_payment_terms_days")
+              .eq("admin_id", adminId)
+              .maybeSingle();
+            const defaultPaymentDays =
+              (companyProfile as any)?.default_payment_terms_days ?? 30;
+            const carrierPaymentDays =
+              (parentOrder as any)?.payment_terms_carrier_days ?? defaultPaymentDays;
+            const customerPaymentDays =
+              (parentOrder as any)?.payment_terms_customer_days ?? defaultPaymentDays;
+            console.log(
+              "[v0] TripLegAssignmentDialog: payment terms resolved",
+              { defaultPaymentDays, carrierPaymentDays, customerPaymentDays },
+            );
             
             console.log("[v0] TripLegAssignmentDialog: Parent order fetched:", {
               orderId: parentOrder?.id,
@@ -467,6 +496,9 @@ export function TripLegAssignmentDialog({ open, onOpenChange, tripLeg, adminId, 
               .from("orders")
               .insert({
                 admin_id: adminId,
+                // Stamp the actual logged-in user so the dispatcher
+                // resolves to their linked employee on the Forwarder Board.
+                created_by: creatorId,
                 reference_number: newRef,
                 order_type: "forwarding",
                 commercial_role: "carrier_subcontract",
@@ -499,6 +531,14 @@ export function TripLegAssignmentDialog({ open, onOpenChange, tripLeg, adminId, 
                 customer_vat_amount: parentOrder?.customer_vat_amount,
                 customer_price_without_vat: parentOrder?.customer_price_without_vat,
                 customer_price_with_vat: parentOrder?.customer_price_with_vat,
+                // Payment terms — carrier window is taken from the
+                // company default (Settings → Company Profile), customer
+                // window mirrors whatever the parent order already has
+                // so the dispatcher doesn't have to retype it after
+                // every leg split. Both are still editable on the
+                // resulting FWD order page.
+                payment_terms_carrier_days: carrierPaymentDays,
+                payment_terms_customer_days: customerPaymentDays,
               })
               .select()
               .single();
@@ -992,7 +1032,7 @@ export function TripLegAssignmentDialog({ open, onOpenChange, tripLeg, adminId, 
                 //
                 // The parent transport order has a route_geometry that
                 // covers the ENTIRE trip across all legs. We can't reuse
-                // it verbatim — each FWD order needs only the segment for
+                // it verbatim ��� each FWD order needs only the segment for
                 // ITS leg. trip_stops.route_to_geometry stores per-segment
                 // geometry (geometry from previous stop to this stop), and
                 // distance_to_km/duration_to_minutes the segment metrics.
@@ -1060,6 +1100,7 @@ export function TripLegAssignmentDialog({ open, onOpenChange, tripLeg, adminId, 
                   .from("trips")
                   .insert({
                     admin_id: adminId,
+                    created_by: creatorId,
                     reference_number: `TRIP-FWD-${Date.now()}`,
                     assignment_type: "forwarding",
                   // Trip-level status is administrative metadata only; the

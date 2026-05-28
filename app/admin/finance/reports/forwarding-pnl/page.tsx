@@ -119,6 +119,8 @@ type Row = {
   subcontracts?: Subcontract[];
   customer_invoices?: InvoiceLite[];
   carrier_invoices?: InvoiceLite[];
+  created_by_id?: string | null;
+  created_by_name?: string | null;
 };
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
@@ -267,6 +269,7 @@ export default function ForwardingPnLPage() {
     React.useState<string>("all");
   const [carrierInvFilter, setCarrierInvFilter] = React.useState<string>("all");
   const [dueFilter, setDueFilter] = React.useState<string>("all"); // any | overdue | soon | ok
+  const [userFilter, setUserFilter] = React.useState<string>("all");
   const [page, setPage] = React.useState<number>(1);
   const [pageSize, setPageSize] = React.useState<number>(25);
 
@@ -356,6 +359,19 @@ export default function ForwardingPnLPage() {
     return Array.from(s).sort();
   }, [data]);
 
+  const userOptions = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of data?.items ?? []) {
+      const id = r.created_by_id;
+      if (!id) continue;
+      const name = r.created_by_name || id;
+      if (!m.has(id)) m.set(id, name);
+    }
+    return Array.from(m.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [data]);
+
   const rows = React.useMemo(() => {
     // This report is dedicated to forwarding orders, so we only consider
     // parents that have at least one subcontracted leg (subcontracted or
@@ -389,6 +405,9 @@ export default function ForwardingPnLPage() {
       items = items.filter(r =>
         (r.subcontracts ?? []).some(s => s.status === childStatusFilter),
       );
+    }
+    if (userFilter !== "all") {
+      items = items.filter(r => r.created_by_id === userFilter);
     }
     if (dueFilter !== "all") {
       items = items.filter(r => {
@@ -426,6 +445,7 @@ export default function ForwardingPnLPage() {
     parentStatusFilter,
     childStatusFilter,
     dueFilter,
+    userFilter,
     search,
     todayMs,
   ]);
@@ -507,6 +527,7 @@ export default function ForwardingPnLPage() {
     parentStatusFilter,
     childStatusFilter,
     dueFilter,
+    userFilter,
     search,
     pageSize,
   ]);
@@ -571,6 +592,7 @@ export default function ForwardingPnLPage() {
         parentStatus: parentStatusFilter,
         childStatus: childStatusFilter,
         due: dueFilter,
+        user: userFilter,
         search,
       },
       company: {
@@ -781,6 +803,16 @@ export default function ForwardingPnLPage() {
               />
             </div>
             <div className="space-y-1">
+              <Label className="text-xs">User</Label>
+              <TypeaheadSelect
+                options={userOptions}
+                value={userFilter}
+                onChange={setUserFilter}
+                placeholder="All users"
+                emptyLabel="All users"
+              />
+            </div>
+            <div className="space-y-1">
               <Label className="text-xs">Parent status</Label>
               <select
                 value={parentStatusFilter}
@@ -879,6 +911,7 @@ export default function ForwardingPnLPage() {
                 setParentStatusFilter("all");
                 setChildStatusFilter("all");
                 setDueFilter("all");
+                setUserFilter("all");
                 setSearch("");
               }}
             >

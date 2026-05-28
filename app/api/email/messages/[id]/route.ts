@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "@/lib/encryption";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
+import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,26 +15,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params;
     const adminId = request.headers.get("x-admin-id");
+    const userId = request.headers.get("x-user-id");
     if (!adminId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // Get the cached email record
+    // Get IMAP settings for the acting user
+    const settings = await getUserEmailSettingsRow(supabase, adminId, userId);
+
+    // Get the cached email record. We scope by the resolved mailbox
+    // (user_email_setting_id) so per-user inboxes stay isolated; admin
+    // is still checked as a tenancy guard.
     const { data: email, error: emailErr } = await supabase
       .from("user_emails")
       .select("*")
       .eq("id", id)
       .eq("admin_id", adminId)
+      .eq("user_email_setting_id", settings?.id ?? "")
       .single();
 
     if (emailErr || !email) {
       return NextResponse.json({ error: "Email not found" }, { status: 404 });
     }
-
-    // Get IMAP settings
-    const { data: settings } = await supabase
-      .from("user_email_settings")
-      .select("*")
-      .eq("admin_id", adminId)
-      .single();
 
     if (!settings || !settings.imap_password_encrypted) {
       return NextResponse.json({ error: "Email not configured" }, { status: 400 });

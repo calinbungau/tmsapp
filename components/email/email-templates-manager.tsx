@@ -95,7 +95,11 @@ export function EmailTemplatesManager({ adminId }: { adminId: string }) {
   const [activeLang, setActiveLang] = useState("en");
   const [previewMode, setPreviewMode] = useState(false);
 
-  const headers = useCallback(() => ({ "Content-Type": "application/json", "x-admin-id": adminId }), [adminId]);
+  const headers = useCallback(() => ({
+    "Content-Type": "application/json",
+    "x-admin-id": adminId,
+    "x-user-id": (typeof window !== "undefined" ? (() => { try { return JSON.parse(window.localStorage.getItem("admin_session") || "{}").user_id || ""; } catch { return ""; } })() : ""),
+  }), [adminId]);
 
   const fetchTemplates = useCallback(async () => {
     setLoading(true);

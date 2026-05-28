@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "@/lib/encryption";
 import nodemailer from "nodemailer";
 import { randomUUID } from "crypto";
+import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -44,6 +45,7 @@ const supabase = createClient(
 export async function POST(request: NextRequest) {
   try {
     const adminId = request.headers.get("x-admin-id");
+    const userId = request.headers.get("x-user-id");
     if (!adminId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json().catch(() => ({} as any));
@@ -106,11 +108,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No recipient email available — provide a custom recipient or set one on the carrier." }, { status: 400 });
     }
 
-    const { data: settings } = await supabase
-      .from("user_email_settings")
-      .select("*")
-      .eq("admin_id", adminId)
-      .single();
+    const settings = await getUserEmailSettingsRow(supabase, adminId, userId);
 
     if (!settings?.smtp_password_encrypted) {
       return NextResponse.json({ error: "SMTP not configured" }, { status: 400 });

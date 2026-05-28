@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "@/lib/encryption";
 import { ImapFlow } from "imapflow";
+import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,13 +12,10 @@ const supabase = createClient(
 export async function GET(request: NextRequest) {
   try {
     const adminId = request.headers.get("x-admin-id");
+    const userId = request.headers.get("x-user-id");
     if (!adminId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { data: settings } = await supabase
-      .from("user_email_settings")
-      .select("*")
-      .eq("admin_id", adminId)
-      .single();
+    const settings = await getUserEmailSettingsRow(supabase, adminId, userId);
 
     if (!settings || !settings.imap_password_encrypted) {
       return NextResponse.json({ error: "Email not configured" }, { status: 400 });

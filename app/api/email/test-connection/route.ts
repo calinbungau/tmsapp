@@ -14,6 +14,7 @@ const MASKED = "••••••••";
 export async function POST(request: NextRequest) {
   try {
     const adminId = request.headers.get("x-admin-id");
+    const userId = request.headers.get("x-user-id");
     const body = await request.json();
 
     // If passwords are masked, look up the real ones from DB
@@ -21,11 +22,26 @@ export async function POST(request: NextRequest) {
     let smtpPass = body.smtp_password;
 
     if ((imapPass === MASKED || smtpPass === MASKED) && adminId) {
-      const { data: saved } = await supabase
-        .from("user_email_settings")
-        .select("imap_password_encrypted, smtp_password_encrypted")
-        .eq("admin_id", adminId)
-        .single();
+      // Prefer the per-user row; fall back to a tenant-scoped legacy row.
+      let saved: any = null;
+      if (userId) {
+        const { data } = await supabase
+          .from("user_email_settings")
+          .select("imap_password_encrypted, smtp_password_encrypted")
+          .eq("admin_id", adminId)
+          .eq("user_id", userId)
+          .maybeSingle();
+        saved = data ?? null;
+      }
+      if (!saved) {
+        const { data } = await supabase
+          .from("user_email_settings")
+          .select("imap_password_encrypted, smtp_password_encrypted")
+          .eq("admin_id", adminId)
+          .is("user_id", null)
+          .maybeSingle();
+        saved = data ?? null;
+      }
 
       if (saved) {
         if (imapPass === MASKED && saved.imap_password_encrypted) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,6 +11,7 @@ const supabase = createClient(
 export async function GET(request: NextRequest) {
   try {
     const adminId = request.headers.get("x-admin-id");
+    const userId = request.headers.get("x-user-id");
     if (!adminId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { searchParams } = new URL(request.url);
@@ -19,10 +21,17 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || "";
     const offset = (page - 1) * limit;
 
+    // Resolve the acting user's mailbox so we list only their inbox.
+    const settings = await getUserEmailSettingsRow(supabase, adminId, userId);
+    if (!settings) {
+      return NextResponse.json({ emails: [], total: 0, page, limit });
+    }
+
     let query = supabase
       .from("user_emails")
       .select("*", { count: "exact" })
       .eq("admin_id", adminId)
+      .eq("user_email_setting_id", settings.id)
       .eq("mailbox", folder)
       .order("date", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -50,6 +59,7 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const adminId = request.headers.get("x-admin-id");
+    const userId = request.headers.get("x-user-id");
     if (!adminId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
@@ -63,10 +73,17 @@ export async function PATCH(request: NextRequest) {
     if (typeof is_read === "boolean") update.is_read = is_read;
     if (typeof is_starred === "boolean") update.is_starred = is_starred;
 
+    // Resolve the acting user's mailbox to scope the update.
+    const settings = await getUserEmailSettingsRow(supabase, adminId, userId);
+    if (!settings) {
+      return NextResponse.json({ error: "Mailbox not configured" }, { status: 400 });
+    }
+
     const { error } = await supabase
       .from("user_emails")
       .update(update)
       .eq("admin_id", adminId)
+      .eq("user_email_setting_id", settings.id)
       .in("id", emailIds);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

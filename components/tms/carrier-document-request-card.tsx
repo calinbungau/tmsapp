@@ -115,7 +115,11 @@ export function CarrierDocumentRequestCard({
     try {
       const res = await fetch("/api/orders/request-cmr-pod", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-id": adminId },
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-id": adminId,
+          "x-user-id": (typeof window !== "undefined" ? (() => { try { return JSON.parse(window.localStorage.getItem("admin_session") || "{}").user_id || ""; } catch { return ""; } })() : ""),
+        },
         body: JSON.stringify({
           orderId,
           forceResend: force,

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "@/lib/encryption";
 import { randomBytes } from "crypto";
 import nodemailer from "nodemailer";
+import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
 
 /**
  * Admin-side API for managing customer-facing tracking-link shares.
@@ -42,6 +43,10 @@ const supabase = createClient(
 
 function getAdminId(req: NextRequest): string | null {
   return req.headers.get("x-admin-id");
+}
+
+function getUserId(req: NextRequest): string | null {
+  return req.headers.get("x-user-id");
 }
 
 /**
@@ -341,6 +346,7 @@ export async function POST(
   if (recipient_email) {
     const sent = await sendTrackingEmail({
       adminId,
+      userId: getUserId(req),
       orderId,
       recipientEmail: recipient_email,
       customMessage: custom_message,
@@ -463,6 +469,7 @@ export async function PATCH(
     const publicUrl = `${(base_url || "").replace(/\/$/, "")}/track/${existing.token}`;
     const sent = await sendTrackingEmail({
       adminId,
+      userId: getUserId(req),
       orderId,
       recipientEmail: toEmail,
       customMessage: custom_message,
@@ -521,18 +528,15 @@ export async function DELETE(
 // ─────────────────────────────────────────────────────────────────────────
 async function sendTrackingEmail(args: {
   adminId: string;
+  userId: string | null;
   orderId: string;
   recipientEmail: string;
   customMessage?: string;
   publicUrl: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { adminId, orderId, recipientEmail, customMessage, publicUrl } = args;
+  const { adminId, userId, orderId, recipientEmail, customMessage, publicUrl } = args;
 
-  const { data: settings } = await supabase
-    .from("user_email_settings")
-    .select("*")
-    .eq("admin_id", adminId)
-    .single();
+  const settings = await getUserEmailSettingsRow(supabase, adminId, userId);
   if (!settings) {
     return {
       ok: false,

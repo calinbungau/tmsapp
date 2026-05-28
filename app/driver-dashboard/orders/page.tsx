@@ -28,6 +28,7 @@ import { TripChat } from "@/components/chat/trip-chat";
 import { SignaturePad } from "@/components/driver/signature-pad";
 import { PhotoCapture } from "@/components/driver/photo-capture";
 import { ExpenseCaptureDialog } from "@/components/driver/expense-capture-dialog";
+import { DriverDocsUploadDialog } from "@/components/driver/driver-docs-upload-dialog";
 
 const RouteMap = dynamic(
   () => import("@/components/driver/route-map").then(m => ({ default: m.RouteMap })),
@@ -79,6 +80,11 @@ interface TripStop {
 interface DriverTrip {
   id: string;
   status: string;
+  // The driver's active leg id for this trip, when v3 leg-based dispatch
+  // is in use. All status transitions ("Accept Trip", "Start Route") must
+  // be written to this leg row — updating trips.status is a no-op for the
+  // driver UI because fetchTrips overlays the leg status back on top.
+  leg_id: string | null;
   vehicle_plate: string | null;
   trailer_plate: string | null;
   distance_km: number | null;
@@ -145,6 +151,12 @@ export default function DriverOrdersPage() {
   // Expense capture dialog (manual + scan-and-confirm). Lives at the page
   // level so it can sit above the trip detail and survive view-mode changes.
   const [expenseOpen, setExpenseOpen] = useState(false);
+  // CMR/POD upload dialog state. Lives at the page level (sibling of
+  // expenseOpen) so the driver can attach documents from the trip
+  // header at any time, even after every stop is completed. Acts as a
+  // safety net on top of the per-stop required-form flow.
+  const [docsOpen, setDocsOpen] = useState(false);
+  const [docsDefaultOrderId, setDocsDefaultOrderId] = useState<string | null>(null);
   const posRef = useRef<NodeJS.Timeout | null>(null);
 
   // Form state
@@ -153,6 +165,11 @@ export default function DriverOrdersPage() {
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [formContext, setFormContext] = useState<{ formId: string; stopId: string; orderId: string | null } | null>(null);
   const [submittingForm, setSubmittingForm] = useState(false);
+  // Set of trip_stop_ids that already have at least one submission for
+  // their assigned form. Used to gate the "Complete" button: when a
+  // stop has a `form_id` (e.g. CMR/POD upload) the driver MUST fill the
+  // form before they can mark the stop done. Refreshed alongside trips.
+  const [submittedStopIds, setSubmittedStopIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const stored = localStorage.getItem("driver_session");
@@ -333,6 +350,7 @@ export default function DriverOrdersPage() {
       return {
         id: t.id,
         status: effectiveStatus,
+        leg_id: leg?.id ?? null,
         vehicle_plate: effectiveVehiclePlate,
         trailer_plate: effectiveTrailerPlate,
         distance_km: t.distance_km,
@@ -379,8 +397,34 @@ export default function DriverOrdersPage() {
   useEffect(() => {
     if (!activeTrip) return;
     const fresh = [...trips, ...completedTrips].find(t => t.id === activeTrip.id);
-    if (fresh && fresh !== activeTrip) setActiveTrip(fresh);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (fresh && fresh !== activeTrip) setActiveTrip(fresh);  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trips, completedTrips]);
+
+  // Track which stops already have a submitted form so the UI can gate
+  // "Complete" and visually mark the form as done. We only fetch the
+  // ids relevant to the currently visible trips to keep the payload
+  // small even on busy days.
+  useEffect(() => {
+    const stopIds = [...trips, ...completedTrips]
+      .flatMap(t => t.stops.map(s => s.id))
+      .filter(Boolean);
+    if (stopIds.length === 0) {
+      setSubmittedStopIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const s = createClient();
+      const { data } = await s
+        .from("trip_stop_form_submissions")
+        .select("trip_stop_id")
+        .in("trip_stop_id", stopIds);
+      if (cancelled) return;
+      setSubmittedStopIds(new Set(((data as any[]) || []).map(r => r.trip_stop_id)));
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [trips, completedTrips]);
 
   // ── GPS tracking ──
@@ -402,8 +446,32 @@ export default function DriverOrdersPage() {
   // ── Trip status transitions ──
   const updateTripStatus = async (tripId: string, newStatus: string) => {
     const s = createClient();
-    const { error } = await s.from("trips").update({ status: newStatus }).eq("id", tripId);
-    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+
+    // V3 leg-based dispatch: the driver-facing status lives on the
+    // driver's trip_leg, not the trip. fetchTrips overlays the leg
+    // status onto the trip object, so writing to trips.status alone is
+    // a no-op for the UI (the next refetch reverts it to the leg
+    // status). Resolve the leg id and translate the legacy v2 status
+    // value into the v3 leg vocabulary before writing.
+    const trip = trips.find(t => t.id === tripId) || (activeTrip?.id === tripId ? activeTrip : null);
+    const legId = trip?.leg_id ?? null;
+
+    const legStatusMap: Record<string, string> = {
+      accepted: "accepted_by_driver",
+      in_progress: "in_progress",
+      completed: "completed",
+      cancelled: "cancelled",
+    };
+
+    if (legId) {
+      const legStatus = legStatusMap[newStatus] ?? newStatus;
+      const { error } = await s.from("trip_legs").update({ status: legStatus }).eq("id", legId);
+      if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    } else {
+      // Legacy v2 fallback — trip-level driver assignment with no leg.
+      const { error } = await s.from("trips").update({ status: newStatus }).eq("id", tripId);
+      if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    }
 
     // Order status is auto-synced via DB trigger (sync_order_status_on_trip_change)
 
@@ -469,7 +537,15 @@ export default function DriverOrdersPage() {
         st.id === stopId ? true : ["completed", "skipped"].includes(st.status)
       );
       if (allDone) {
-        await s.from("trips").update({ status: "completed" }).eq("id", activeTrip.id);
+        // Mark the leg as completed in v3 mode (trips.status stays at
+        // 'planned'). The leg-status trigger on the DB side propagates
+        // the completion down to trip-level / order-level wherever it
+        // is supposed to.
+        if (activeTrip.leg_id) {
+          await s.from("trip_legs").update({ status: "completed" }).eq("id", activeTrip.leg_id);
+        } else {
+          await s.from("trips").update({ status: "completed" }).eq("id", activeTrip.id);
+        }
         // Auto-derive order delivered status
         for (const ord of activeTrip.orders) {
           // Check if ALL order_stops for this order are completed
@@ -508,9 +584,15 @@ export default function DriverOrdersPage() {
     setSubmittingForm(true);
     const s = createClient();
     try {
-      await s.from("order_stop_form_submissions").insert({
-        order_id: formContext.orderId,
-        stop_id: formContext.stopId,
+      // Persist into the new TMS-side submission table created in
+      // migration 171. The legacy `order_stop_form_submissions` table
+      // never existed in the schema; we write against the actual
+      // `trip_stop_form_submissions` table so the dispatcher panels
+      // (and the email-to-carrier archive) can read it back. The
+      // `trip_id` column lets us index by trip without an extra join.
+      await s.from("trip_stop_form_submissions").insert({
+        trip_stop_id: formContext.stopId,
+        trip_id: activeTrip.id,
         form_id: formContext.formId,
         submitted_by: driver.id,
         submitted_by_type: "driver",
@@ -518,6 +600,14 @@ export default function DriverOrdersPage() {
         submitted_at: new Date().toISOString(),
       });
       toast({ title: "Form Submitted" });
+      // Optimistically mark this stop as submitted so the Complete
+      // button immediately unlocks without waiting for the next
+      // trips refresh.
+      setSubmittedStopIds(prev => {
+        const next = new Set(prev);
+        next.add(formContext.stopId);
+        return next;
+      });
       setFormOpen(false);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -537,7 +627,15 @@ export default function DriverOrdersPage() {
         label: "Start Route", icon: <PlayCircle className="h-4 w-4 mr-2" />,
         action: async () => {
           const s = createClient();
-          await s.from("trips").update({ status: "in_progress" }).eq("id", trip.id);
+          // Mirror updateTripStatus: write to the leg in v3 mode, fall
+          // back to trip-level for legacy data. Without this, hitting
+          // "Start Route" only flips trips.status (which the UI ignores)
+          // and the page still shows "Accept Trip / Start Route" buttons.
+          if (trip.leg_id) {
+            await s.from("trip_legs").update({ status: "in_progress" }).eq("id", trip.leg_id);
+          } else {
+            await s.from("trips").update({ status: "in_progress" }).eq("id", trip.id);
+          }
           // Set first stop to en_route
           const firstStop = trip.stops.find(st => st.status === "pending");
           if (firstStop) await s.from("trip_stops").update({ status: "en_route" }).eq("id", firstStop.id);
@@ -728,18 +826,35 @@ export default function DriverOrdersPage() {
             ))}
           </div>
         </div>
-        {/* Expenses entry point: drivers tap here to scan a fuel/toll/parking
-            receipt or enter the amount manually. The submission lands in the
-            finance Review Queue (status='pending_review', source='driver'). */}
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 gap-1.5 shrink-0"
-          onClick={() => setExpenseOpen(true)}
-        >
-          <Receipt className="h-3.5 w-3.5" />
-          <span className="text-xs">Expense</span>
-        </Button>
+        {/* Trip-level action buttons. We keep them visually grouped so
+            the driver always has the same chrome regardless of stop
+            status: scan an expense, or attach a CMR/POD scan to one of
+            the trip's orders. The CMR/POD button is the safety net for
+            when the driver completes a stop without filling the
+            attached form. */}
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={() => {
+              setDocsDefaultOrderId(null);
+              setDocsOpen(true);
+            }}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            <span className="text-xs hidden sm:inline">CMR / POD</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={() => setExpenseOpen(true)}
+          >
+            <Receipt className="h-3.5 w-3.5" />
+            <span className="text-xs hidden sm:inline">Expense</span>
+          </Button>
+        </div>
       </div>
 
       {/* View mode tabs */}
@@ -836,18 +951,59 @@ export default function DriverOrdersPage() {
                         <PlayCircle className="h-3.5 w-3.5 mr-1.5" /> Start {getActionLabel(currentStop)}
                       </Button>
                     )}
-                    {currentStop.status === "in_action" && (
-                      <>
-                        {currentStop.form_id && (
-                          <Button size="sm" variant="outline" className="h-9" onClick={() => openStopForm(currentStop.form_id!, currentStop.id, currentStop.order_id)}>
-                            <FileText className="h-3.5 w-3.5 mr-1.5" /> Fill Form
+                    {currentStop.status === "in_action" && (() => {
+                      // CMR/POD gating: when a stop has a form attached,
+                      // the driver must submit it before they can mark
+                      // the stop completed. The form button itself
+                      // changes to a primary "Upload CMR/POD" call to
+                      // action when it's still required.
+                      const formRequired = !!currentStop.form_id;
+                      const formDone = formRequired && submittedStopIds.has(currentStop.id);
+                      const completeBlocked = formRequired && !formDone;
+                      return (
+                        <>
+                          {currentStop.form_id && (
+                            <Button
+                              size="sm"
+                              variant={formDone ? "outline" : "default"}
+                              className="h-9 flex-1"
+                              onClick={() => openStopForm(currentStop.form_id!, currentStop.id, currentStop.order_id)}
+                            >
+                              <FileText className="h-3.5 w-3.5 mr-1.5" />
+                              {formDone ? "Form submitted" : "Upload CMR/POD"}
+                            </Button>
+                          )}
+                          {/* Quick CMR/POD photo upload, available even
+                              when no form is configured. Pre-fills the
+                              dialog with the stop's order so the driver
+                              just opens the camera and shoots. This is
+                              the primary "happy path" for paper CMR. */}
+                          {!currentStop.form_id && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-9 flex-1"
+                              onClick={() => {
+                                setDocsDefaultOrderId(currentStop.order_id || null);
+                                setDocsOpen(true);
+                              }}
+                            >
+                              <FileText className="h-3.5 w-3.5 mr-1.5" />
+                              CMR / POD
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            className="flex-1 h-9"
+                            disabled={completeBlocked}
+                            title={completeBlocked ? "Submit the required form first" : undefined}
+                            onClick={() => updateTripStopStatus(currentStop.id, "completed")}
+                          >
+                            <CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Complete {getActionLabel(currentStop)}
                           </Button>
-                        )}
-                        <Button size="sm" className="flex-1 h-9" onClick={() => updateTripStopStatus(currentStop.id, "completed")}>
-                          <CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Complete {getActionLabel(currentStop)}
-                        </Button>
-                      </>
-                    )}
+                        </>
+                      );
+                    })()}
                   </div>
                   {currentStop.status === "en_route" && currentStop.auto_checkin && (
                     <p className="text-[9px] text-muted-foreground mt-1.5 flex items-center gap-1">
@@ -958,18 +1114,34 @@ export default function DriverOrdersPage() {
                             Start
                           </Button>
                         )}
-                        {stop.status === "in_action" && (
-                          <div className="flex gap-1">
-                            {stop.form_id && (
-                              <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={() => openStopForm(stop.form_id!, stop.id, stop.order_id)}>
-                                <FileText className="h-3 w-3" />
+                        {stop.status === "in_action" && (() => {
+                          const formRequired = !!stop.form_id;
+                          const formDone = formRequired && submittedStopIds.has(stop.id);
+                          const completeBlocked = formRequired && !formDone;
+                          return (
+                            <div className="flex gap-1">
+                              {stop.form_id && (
+                                <Button
+                                  size="sm"
+                                  variant={formDone ? "outline" : "default"}
+                                  className="h-7 text-[10px]"
+                                  onClick={() => openStopForm(stop.form_id!, stop.id, stop.order_id)}
+                                >
+                                  <FileText className="h-3 w-3" />
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                className="h-7 text-[10px]"
+                                disabled={completeBlocked}
+                                title={completeBlocked ? "Submit the required form first" : undefined}
+                                onClick={() => updateTripStopStatus(stop.id, "completed")}
+                              >
+                                Done
                               </Button>
-                            )}
-                            <Button size="sm" className="h-7 text-[10px]" onClick={() => updateTripStopStatus(stop.id, "completed")}>
-                              Done
-                            </Button>
-                          </div>
-                        )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -1070,6 +1242,30 @@ export default function DriverOrdersPage() {
           onOpenChange={setExpenseOpen}
           tripId={activeTrip.id}
           driverId={driver.id}
+        />
+      )}
+
+      {/* Driver-side CMR/POD upload dialog. We feed it the trip's
+          linked orders so the driver picks one (auto-selected when the
+          trip carries a single order) and uploads photos / a PDF scan
+          straight into `order_documents`. The same files surface in
+          the admin order detail panel without any reader-side change. */}
+      {driver && (
+        <DriverDocsUploadDialog
+          open={docsOpen}
+          onOpenChange={setDocsOpen}
+          orders={activeTrip.orders.map(o => ({
+            id: o.id,
+            reference_number: o.reference_number,
+            customer_name: o.customer_name,
+            // Drivers belong to a single admin tenant, so all orders
+            // they touch share that admin_id. Passing it explicitly
+            // saves a DB round-trip in the dialog.
+            admin_id: driver.admin_id,
+          }))}
+          defaultOrderId={docsDefaultOrderId}
+          driverId={driver.id}
+          driverName={driver.name}
         />
       )}
     </div>

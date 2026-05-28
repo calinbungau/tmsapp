@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 // POST: Render a template with variables and send the email
 export async function POST(request: Request) {
   const adminId = request.headers.get("x-admin-id");
+  const userId = request.headers.get("x-user-id");
   if (!adminId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
@@ -39,12 +40,27 @@ export async function POST(request: Request) {
   const renderedHtml = renderTemplate(translation.body_html);
   const renderedText = renderTemplate(translation.body_text || "");
 
-  // Send via the existing send endpoint logic
-  const { data: settings } = await supabase
-    .from("user_email_settings")
-    .select("smtp_host, smtp_port, smtp_user, smtp_pass, email_address, display_name")
-    .eq("admin_id", adminId)
-    .single();
+  // Send via the existing send endpoint logic.
+  // Per-user mailbox first, then fall back to a legacy tenant-scoped row.
+  let settings: any = null;
+  if (userId) {
+    const { data } = await supabase
+      .from("user_email_settings")
+      .select("smtp_host, smtp_port, smtp_user, smtp_pass, email_address, display_name")
+      .eq("admin_id", adminId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    settings = data ?? null;
+  }
+  if (!settings) {
+    const { data } = await supabase
+      .from("user_email_settings")
+      .select("smtp_host, smtp_port, smtp_user, smtp_pass, email_address, display_name")
+      .eq("admin_id", adminId)
+      .is("user_id", null)
+      .maybeSingle();
+    settings = data ?? null;
+  }
 
   if (!settings?.smtp_host) {
     return NextResponse.json({ error: "SMTP not configured" }, { status: 400 });
