@@ -50,6 +50,10 @@ export function RouteMap({ stops, driverLat, driverLng, routeHistory, className 
   const historyLineRef = useRef<L.Polyline | null>(null);
   const driverMarkerRef = useRef<L.Marker | null>(null);
   const hasFitBoundsRef = useRef(false);
+  // Tracks the last set of stop coordinates we've fitted to, so we
+  // re-fit whenever the active trip changes but stay still while only
+  // the driver position updates.
+  const lastFitSignatureRef = useRef<string>("");
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -67,9 +71,24 @@ export function RouteMap({ stops, driverLat, driverLng, routeHistory, className 
     L.control.zoom({ position: "bottomright" }).addTo(mapRef.current);
     markersRef.current = L.layerGroup().addTo(mapRef.current);
 
-    // Invalidate size when container resizes (e.g. panel expand/collapse)
+    // Invalidate size when container resizes (e.g. panel expand/collapse,
+    // or when the user toggles between Map / List tabs and the map panel
+    // re-mounts with its real size). After invalidating we also clear
+    // the fit-bounds signature so the next stops-effect run re-fits the
+    // visible bounds against the now-correct viewport.
     const observer = new ResizeObserver(() => {
-      mapRef.current?.invalidateSize();
+      if (!mapRef.current) return;
+      mapRef.current.invalidateSize();
+      lastFitSignatureRef.current = "";
+      // Manually re-fit to the most recently rendered route so the user
+      // doesn't have to wait for a stops-prop change.
+      const layers: L.LatLngExpression[] = [];
+      if (routeLineRef.current) {
+        (routeLineRef.current.getLatLngs() as L.LatLng[]).forEach(p => layers.push(p));
+      }
+      if (layers.length > 0) {
+        mapRef.current.fitBounds(L.latLngBounds(layers), { padding: [40, 40], maxZoom: 13 });
+      }
     });
     observer.observe(containerRef.current);
 
@@ -213,8 +232,19 @@ export function RouteMap({ stops, driverLat, driverLng, routeHistory, className 
       }).addTo(mapRef.current);
     }
 
-    // Fit bounds only on first render (not on every driver position update)
-    if (!hasFitBoundsRef.current) {
+    // Fit bounds whenever the set of stop coordinates changes. We
+    // recompute a stable signature of the visible coordinates so we
+    // re-fit only when the route itself changes (not on every driver
+    // GPS heartbeat). We also force a Leaflet `invalidateSize()` first
+    // because the map container is rendered inside a `flex-1` panel
+    // that often finishes its layout AFTER the map has initialized,
+    // which would otherwise leave fitBounds running against a 0-px
+    // viewport and zoom out to the whole world.
+    const signature = routeCoords
+      .map((c: any) => `${(c[0] as number).toFixed(4)},${(c[1] as number).toFixed(4)}`)
+      .join("|");
+
+    if (signature && signature !== lastFitSignatureRef.current) {
       const allPoints: L.LatLngExpression[] = [...routeCoords];
       if (driverLat && driverLng) allPoints.push([driverLat, driverLng]);
       if (routeHistory?.length) {
@@ -222,9 +252,17 @@ export function RouteMap({ stops, driverLat, driverLng, routeHistory, className 
       }
 
       if (allPoints.length > 0) {
-        const bounds = L.latLngBounds(allPoints);
-        mapRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
-        hasFitBoundsRef.current = true;
+        // Two-pass fit: once immediately, and once on the next animation
+        // frame after invalidateSize, so we catch the late layout settle.
+        const doFit = () => {
+          if (!mapRef.current) return;
+          mapRef.current.invalidateSize();
+          const bounds = L.latLngBounds(allPoints);
+          mapRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+        };
+        doFit();
+        requestAnimationFrame(doFit);
+        lastFitSignatureRef.current = signature;
       }
     }
   }, [stops, driverLat, driverLng, routeHistory, onStopClick]);
