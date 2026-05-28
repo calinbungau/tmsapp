@@ -30,6 +30,12 @@ interface RouteMapProps {
   routeHistory?: RouteHistoryPoint[];
   className?: string;
   onStopClick?: (stopId: string) => void;
+  // Real road-routed polyline computed by the dispatcher when the trip
+  // was planned (stored on `trips.route_geometry` as [lat,lng] pairs).
+  // When provided we draw THIS line instead of straight stop-to-stop
+  // segments, so the driver sees the actual route they're supposed to
+  // follow rather than a Mercator-distorted dashed line.
+  initialRouteGeometry?: [number, number][] | null;
 }
 
 const STOP_COLORS: Record<string, string> = {
@@ -42,7 +48,7 @@ const STOP_COLORS: Record<string, string> = {
   failed: "#ef4444",
 };
 
-export function RouteMap({ stops, driverLat, driverLng, routeHistory, className = "", onStopClick }: RouteMapProps) {
+export function RouteMap({ stops, driverLat, driverLng, routeHistory, className = "", onStopClick, initialRouteGeometry }: RouteMapProps) {
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
@@ -158,13 +164,23 @@ export function RouteMap({ stops, driverLat, driverLng, routeHistory, className 
       }
     });
 
-    // Draw route line between stops only
-    if (routeCoords.length > 1) {
-      routeLineRef.current = L.polyline(routeCoords, {
+    // Draw route line.
+    //  - If the dispatcher saved a road-routed geometry on the trip, use
+    //    THAT as the visible polyline. It already follows real roads.
+    //  - Otherwise fall back to a straight dashed line between stops so
+    //    the user still sees the order of stops connected.
+    const polylineCoords: L.LatLngExpression[] =
+      initialRouteGeometry && initialRouteGeometry.length > 1
+        ? initialRouteGeometry.map(([lat, lng]) => [lat, lng] as L.LatLngExpression)
+        : routeCoords;
+    const isRoadRoute = !!(initialRouteGeometry && initialRouteGeometry.length > 1);
+
+    if (polylineCoords.length > 1) {
+      routeLineRef.current = L.polyline(polylineCoords, {
         color: "#3b82f6",
-        weight: 3,
-        opacity: 0.6,
-        dashArray: "8 6",
+        weight: isRoadRoute ? 4 : 3,
+        opacity: isRoadRoute ? 0.85 : 0.6,
+        dashArray: isRoadRoute ? undefined : "8 6",
       }).addTo(mapRef.current);
     }
 
@@ -265,7 +281,7 @@ export function RouteMap({ stops, driverLat, driverLng, routeHistory, className 
         lastFitSignatureRef.current = signature;
       }
     }
-  }, [stops, driverLat, driverLng, routeHistory, onStopClick]);
+  }, [stops, driverLat, driverLng, routeHistory, onStopClick, initialRouteGeometry]);
 
   return <div ref={containerRef} className={`w-full ${className}`} style={{ minHeight: "200px" }} />;
 }

@@ -28,6 +28,7 @@ import { TripChat } from "@/components/chat/trip-chat";
 import { SignaturePad } from "@/components/driver/signature-pad";
 import { PhotoCapture } from "@/components/driver/photo-capture";
 import { ExpenseCaptureDialog } from "@/components/driver/expense-capture-dialog";
+import { DriverDocsUploadDialog } from "@/components/driver/driver-docs-upload-dialog";
 
 const RouteMap = dynamic(
   () => import("@/components/driver/route-map").then(m => ({ default: m.RouteMap })),
@@ -150,6 +151,12 @@ export default function DriverOrdersPage() {
   // Expense capture dialog (manual + scan-and-confirm). Lives at the page
   // level so it can sit above the trip detail and survive view-mode changes.
   const [expenseOpen, setExpenseOpen] = useState(false);
+  // CMR/POD upload dialog state. Lives at the page level (sibling of
+  // expenseOpen) so the driver can attach documents from the trip
+  // header at any time, even after every stop is completed. Acts as a
+  // safety net on top of the per-stop required-form flow.
+  const [docsOpen, setDocsOpen] = useState(false);
+  const [docsDefaultOrderId, setDocsDefaultOrderId] = useState<string | null>(null);
   const posRef = useRef<NodeJS.Timeout | null>(null);
 
   // Form state
@@ -819,18 +826,35 @@ export default function DriverOrdersPage() {
             ))}
           </div>
         </div>
-        {/* Expenses entry point: drivers tap here to scan a fuel/toll/parking
-            receipt or enter the amount manually. The submission lands in the
-            finance Review Queue (status='pending_review', source='driver'). */}
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 gap-1.5 shrink-0"
-          onClick={() => setExpenseOpen(true)}
-        >
-          <Receipt className="h-3.5 w-3.5" />
-          <span className="text-xs">Expense</span>
-        </Button>
+        {/* Trip-level action buttons. We keep them visually grouped so
+            the driver always has the same chrome regardless of stop
+            status: scan an expense, or attach a CMR/POD scan to one of
+            the trip's orders. The CMR/POD button is the safety net for
+            when the driver completes a stop without filling the
+            attached form. */}
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={() => {
+              setDocsDefaultOrderId(null);
+              setDocsOpen(true);
+            }}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            <span className="text-xs hidden sm:inline">CMR / POD</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={() => setExpenseOpen(true)}
+          >
+            <Receipt className="h-3.5 w-3.5" />
+            <span className="text-xs hidden sm:inline">Expense</span>
+          </Button>
+        </div>
       </div>
 
       {/* View mode tabs */}
@@ -947,6 +971,25 @@ export default function DriverOrdersPage() {
                             >
                               <FileText className="h-3.5 w-3.5 mr-1.5" />
                               {formDone ? "Form submitted" : "Upload CMR/POD"}
+                            </Button>
+                          )}
+                          {/* Quick CMR/POD photo upload, available even
+                              when no form is configured. Pre-fills the
+                              dialog with the stop's order so the driver
+                              just opens the camera and shoots. This is
+                              the primary "happy path" for paper CMR. */}
+                          {!currentStop.form_id && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-9 flex-1"
+                              onClick={() => {
+                                setDocsDefaultOrderId(currentStop.order_id || null);
+                                setDocsOpen(true);
+                              }}
+                            >
+                              <FileText className="h-3.5 w-3.5 mr-1.5" />
+                              CMR / POD
                             </Button>
                           )}
                           <Button
@@ -1199,6 +1242,30 @@ export default function DriverOrdersPage() {
           onOpenChange={setExpenseOpen}
           tripId={activeTrip.id}
           driverId={driver.id}
+        />
+      )}
+
+      {/* Driver-side CMR/POD upload dialog. We feed it the trip's
+          linked orders so the driver picks one (auto-selected when the
+          trip carries a single order) and uploads photos / a PDF scan
+          straight into `order_documents`. The same files surface in
+          the admin order detail panel without any reader-side change. */}
+      {driver && (
+        <DriverDocsUploadDialog
+          open={docsOpen}
+          onOpenChange={setDocsOpen}
+          orders={activeTrip.orders.map(o => ({
+            id: o.id,
+            reference_number: o.reference_number,
+            customer_name: o.customer_name,
+            // Drivers belong to a single admin tenant, so all orders
+            // they touch share that admin_id. Passing it explicitly
+            // saves a DB round-trip in the dialog.
+            admin_id: driver.admin_id,
+          }))}
+          defaultOrderId={docsDefaultOrderId}
+          driverId={driver.id}
+          driverName={driver.name}
         />
       )}
     </div>
