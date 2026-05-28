@@ -158,6 +158,11 @@ export default function DriverOrdersPage() {
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [formContext, setFormContext] = useState<{ formId: string; stopId: string; orderId: string | null } | null>(null);
   const [submittingForm, setSubmittingForm] = useState(false);
+  // Set of trip_stop_ids that already have at least one submission for
+  // their assigned form. Used to gate the "Complete" button: when a
+  // stop has a `form_id` (e.g. CMR/POD upload) the driver MUST fill the
+  // form before they can mark the stop done. Refreshed alongside trips.
+  const [submittedStopIds, setSubmittedStopIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const stored = localStorage.getItem("driver_session");
@@ -385,8 +390,34 @@ export default function DriverOrdersPage() {
   useEffect(() => {
     if (!activeTrip) return;
     const fresh = [...trips, ...completedTrips].find(t => t.id === activeTrip.id);
-    if (fresh && fresh !== activeTrip) setActiveTrip(fresh);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (fresh && fresh !== activeTrip) setActiveTrip(fresh);  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trips, completedTrips]);
+
+  // Track which stops already have a submitted form so the UI can gate
+  // "Complete" and visually mark the form as done. We only fetch the
+  // ids relevant to the currently visible trips to keep the payload
+  // small even on busy days.
+  useEffect(() => {
+    const stopIds = [...trips, ...completedTrips]
+      .flatMap(t => t.stops.map(s => s.id))
+      .filter(Boolean);
+    if (stopIds.length === 0) {
+      setSubmittedStopIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const s = createClient();
+      const { data } = await s
+        .from("trip_stop_form_submissions")
+        .select("trip_stop_id")
+        .in("trip_stop_id", stopIds);
+      if (cancelled) return;
+      setSubmittedStopIds(new Set(((data as any[]) || []).map(r => r.trip_stop_id)));
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [trips, completedTrips]);
 
   // ── GPS tracking ──
@@ -562,6 +593,14 @@ export default function DriverOrdersPage() {
         submitted_at: new Date().toISOString(),
       });
       toast({ title: "Form Submitted" });
+      // Optimistically mark this stop as submitted so the Complete
+      // button immediately unlocks without waiting for the next
+      // trips refresh.
+      setSubmittedStopIds(prev => {
+        const next = new Set(prev);
+        next.add(formContext.stopId);
+        return next;
+      });
       setFormOpen(false);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -888,18 +927,40 @@ export default function DriverOrdersPage() {
                         <PlayCircle className="h-3.5 w-3.5 mr-1.5" /> Start {getActionLabel(currentStop)}
                       </Button>
                     )}
-                    {currentStop.status === "in_action" && (
-                      <>
-                        {currentStop.form_id && (
-                          <Button size="sm" variant="outline" className="h-9" onClick={() => openStopForm(currentStop.form_id!, currentStop.id, currentStop.order_id)}>
-                            <FileText className="h-3.5 w-3.5 mr-1.5" /> Fill Form
+                    {currentStop.status === "in_action" && (() => {
+                      // CMR/POD gating: when a stop has a form attached,
+                      // the driver must submit it before they can mark
+                      // the stop completed. The form button itself
+                      // changes to a primary "Upload CMR/POD" call to
+                      // action when it's still required.
+                      const formRequired = !!currentStop.form_id;
+                      const formDone = formRequired && submittedStopIds.has(currentStop.id);
+                      const completeBlocked = formRequired && !formDone;
+                      return (
+                        <>
+                          {currentStop.form_id && (
+                            <Button
+                              size="sm"
+                              variant={formDone ? "outline" : "default"}
+                              className="h-9 flex-1"
+                              onClick={() => openStopForm(currentStop.form_id!, currentStop.id, currentStop.order_id)}
+                            >
+                              <FileText className="h-3.5 w-3.5 mr-1.5" />
+                              {formDone ? "Form submitted" : "Upload CMR/POD"}
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            className="flex-1 h-9"
+                            disabled={completeBlocked}
+                            title={completeBlocked ? "Submit the required form first" : undefined}
+                            onClick={() => updateTripStopStatus(currentStop.id, "completed")}
+                          >
+                            <CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Complete {getActionLabel(currentStop)}
                           </Button>
-                        )}
-                        <Button size="sm" className="flex-1 h-9" onClick={() => updateTripStopStatus(currentStop.id, "completed")}>
-                          <CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Complete {getActionLabel(currentStop)}
-                        </Button>
-                      </>
-                    )}
+                        </>
+                      );
+                    })()}
                   </div>
                   {currentStop.status === "en_route" && currentStop.auto_checkin && (
                     <p className="text-[9px] text-muted-foreground mt-1.5 flex items-center gap-1">
@@ -1010,18 +1071,34 @@ export default function DriverOrdersPage() {
                             Start
                           </Button>
                         )}
-                        {stop.status === "in_action" && (
-                          <div className="flex gap-1">
-                            {stop.form_id && (
-                              <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={() => openStopForm(stop.form_id!, stop.id, stop.order_id)}>
-                                <FileText className="h-3 w-3" />
+                        {stop.status === "in_action" && (() => {
+                          const formRequired = !!stop.form_id;
+                          const formDone = formRequired && submittedStopIds.has(stop.id);
+                          const completeBlocked = formRequired && !formDone;
+                          return (
+                            <div className="flex gap-1">
+                              {stop.form_id && (
+                                <Button
+                                  size="sm"
+                                  variant={formDone ? "outline" : "default"}
+                                  className="h-7 text-[10px]"
+                                  onClick={() => openStopForm(stop.form_id!, stop.id, stop.order_id)}
+                                >
+                                  <FileText className="h-3 w-3" />
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                className="h-7 text-[10px]"
+                                disabled={completeBlocked}
+                                title={completeBlocked ? "Submit the required form first" : undefined}
+                                onClick={() => updateTripStopStatus(stop.id, "completed")}
+                              >
+                                Done
                               </Button>
-                            )}
-                            <Button size="sm" className="h-7 text-[10px]" onClick={() => updateTripStopStatus(stop.id, "completed")}>
-                              Done
-                            </Button>
-                          </div>
-                        )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 
