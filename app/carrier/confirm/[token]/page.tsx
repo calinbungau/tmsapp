@@ -169,7 +169,7 @@ export default function CarrierConfirmPage() {
               <AlertTriangle className="h-7 w-7 text-red-400" />
             </div>
             <h2 className="text-lg font-semibold text-white mb-2">
-              {state === "expired" ? "Link Expired" : state === "used" ? "Already Completed" : "Invalid Link"}
+              {state === "expired" ? "Link Expired" : state === "used" ? "Document Already Submitted" : "Invalid Link"}
             </h2>
             <p className="text-sm text-[#a0a0b0] leading-relaxed">{errorMsg}</p>
           </div>

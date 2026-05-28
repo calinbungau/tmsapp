@@ -49,10 +49,14 @@ export async function GET(
 
     const tokenType = tokenData.token_type || "order_confirmation";
 
-    // Legacy single-step confirmation: hard-block re-uploads
+    // Legacy single-step confirmation: hard-block re-uploads.
+    // Wording deliberately avoids "confirmed" — this token type is
+    // a one-shot signed-document upload, not a legal confirmation
+    // of the order itself, and the previous text confused carriers
+    // who had only uploaded their CMR/POD.
     if (tokenType !== "cmr_pod" && tokenData.used_at) {
       return NextResponse.json({
-        error: "This order has already been confirmed. The signed document was uploaded.",
+        error: "The signed document for this order has already been uploaded. There is nothing more to do.",
         alreadyUsed: true,
         usedAt: tokenData.used_at,
       }, { status: 409 });
