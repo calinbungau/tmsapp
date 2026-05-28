@@ -308,17 +308,24 @@ export function DriverDocsUploadDialog({
       */}
       {/*
         Width + height tuning for the driver phone:
-          - max-w-[calc(100%-1.5rem)] keeps a 12 px gutter (was 24 px,
-            still left content overflowing on 360 px screens because of
-            the dialog's own padding).
-          - sm:max-w-sm caps tablet width.
+          - w-[calc(100vw-1.5rem)] sm:w-auto pins the dialog to the
+            viewport width on phones (minus a 12 px gutter on each
+            side). Without an explicit width, Radix's DialogContent
+            shrinks to the intrinsic width of its tallest/widest child
+            — which on a 360 px phone is the Select trigger displaying
+            "INT-2026-566229 — EUROWELT Scarl Trasporti Internazionali"
+            and that single string was making the entire popup wider
+            than the viewport, producing the horizontal scroll the user
+            saw.
+          - sm:max-w-sm caps tablet width so we don't get a tiny form
+            stretched across half the screen.
           - max-h-[90dvh] + overflow-y-auto means the popup never grows
-            past the visible viewport — important on phones where the
-            URL bar reduces the usable height — and the body scrolls
-            instead of pushing the action buttons off-screen.
+            past the visible viewport vertically. We pair it with
+            overflow-x-hidden so a misbehaving child can never reopen
+            the horizontal scroll bug.
           - p-4 overrides the default p-6 to claw back vertical space.
       */}
-      <DialogContent className="max-w-[calc(100%-1.5rem)] sm:max-w-sm p-4 gap-3 max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] sm:w-auto sm:max-w-sm p-4 gap-3 max-h-[90dvh] overflow-y-auto overflow-x-hidden">
         <DialogHeader className="space-y-1">
           <DialogTitle className="flex items-center gap-2 text-sm">
             <FileText className="h-4 w-4" />
@@ -326,7 +333,11 @@ export function DriverDocsUploadDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-2.5">
+        {/* min-w-0 on the body wrapper is the second half of the fix:
+            without it, flex/grid children can still report an
+            intrinsic min-content size larger than the dialog and
+            silently widen the layout. */}
+        <div className="space-y-2.5 min-w-0">
           {/* Order selector — auto-selected when there's only one.
               The trigger has `min-w-0` + the value uses `truncate` so a
               long "REFERENCE — Customer Name with many words" label

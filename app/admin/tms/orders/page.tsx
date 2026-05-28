@@ -483,8 +483,17 @@ export default function TMSOrdersPage() {
         if (!showExec) return { ...o, executionStatus: null, executionInternal: null, executionForwarder: null, isMixedExecution: false };
 
         // Lowest internal leg status across all this parent's trips.
+        // We deliberately EXCLUDE subcontract legs here — they are
+        // already represented by the FWD child status further down,
+        // and including them double-counts. Without this filter the
+        // row showed "Assigned"/"Delivered" (the leg's local status)
+        // even when the subcontract pill on the order detail panel
+        // said "Carrier Confirm. Req."/"Docs Received", because the
+        // leg's internal rank ("assigned" = early) outranked the
+        // forwarder rank in the comparison below.
         const legStatuses: string[] = (o.trips || [])
           .flatMap((t: any) => (t.legs || [])
+            .filter((l: any) => l.assignment_type === "own_fleet")
             .map((l: any) => l.status)
             .filter(Boolean) as string[]);
         let bestInternal: { status: string; rank: number } | null = null;
