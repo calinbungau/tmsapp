@@ -104,6 +104,15 @@ export function DriverDocsUploadDialog({
   // When the dialog opens, pick a sensible default order. If a specific
   // order was passed in, use it; otherwise auto-pick when there's only
   // one linked order on the trip.
+  //
+  // IMPORTANT: this effect MUST only react to the dialog opening. The
+  // parent page recomputes the `orders` array on every render (it's
+  // built inline from `activeTrip.orders.map(...)`), and the trip list
+  // refetches every few seconds, so depending on `orders` as a
+  // reference would clear the file list a few seconds after the driver
+  // captures photos — exactly the bug we're fixing here. We read
+  // `orders` and `defaultOrderId` inside the effect but only re-run on
+  // `open` transitions.
   useEffect(() => {
     if (!open) return
     if (defaultOrderId) {
@@ -115,7 +124,8 @@ export function DriverDocsUploadDialog({
     }
     setDocType("cmr_pod")
     setFiles([])
-  }, [open, defaultOrderId, orders])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   const selectedOrder = useMemo(
     () => orders.find(o => o.id === orderId) || null,
@@ -227,7 +237,17 @@ export function DriverDocsUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      {/*
+        Width tuning:
+          - On mobile we cap at calc(100% - 3rem) so the dialog leaves a
+            visible 24 px gutter on each side (the shadcn default of
+            calc(100% - 2rem) feels edge-to-edge on a 360 px phone and
+            made the close button hard to tap).
+          - On >= sm we keep the dialog narrow (max-w-sm) because this
+            form is one column of small inputs; max-w-lg was wasting
+            horizontal space.
+      */}
+      <DialogContent className="max-w-[calc(100%-3rem)] sm:max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <FileText className="h-4 w-4" />
