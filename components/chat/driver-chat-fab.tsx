@@ -120,11 +120,23 @@ export function DriverChatFab({ driverId, driverName, adminId, unreadCount, onUn
 
   return (
     <>
-      {/* FAB Button - only show when sheet is closed */}
+      {/* FAB Button - only show when sheet is closed.
+          Positioned bottom-LEFT (not bottom-right) because every
+          action button on the driver screens — "Complete Loading",
+          "Complete Unloading", "Submit", "Upload files" — is
+          right-aligned by convention. A bottom-right FAB physically
+          covers the orange primary CTA on the trip-detail page (see
+          the user's screenshot from 5/28). The left corner is unused
+          across all driver routes, so the FAB has its own safe
+          territory and never fights for the same pixels as a primary
+          action. We also bump it slightly higher (bottom-24 instead
+          of bottom-[5.5rem]) so the chat icon doesn't crowd the
+          bottom-nav badge on the active tab. */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed right-4 bottom-[5.5rem] z-40 flex items-center justify-center h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 transition-all duration-300 active:scale-95"
+          className="fixed left-4 bottom-24 z-40 flex items-center justify-center h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 transition-all duration-300 active:scale-95"
+          aria-label="Open chat"
         >
           <MessageSquare className="h-6 w-6" />
           {unreadCount > 0 && (
