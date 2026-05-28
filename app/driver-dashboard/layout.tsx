@@ -175,7 +175,13 @@ export default function DriverDashboardLayout({
       .eq("status", "active")
       .order("check_in_time", { ascending: false })
       .limit(1)
-      .single();
+      // maybeSingle() instead of single() because a driver with no
+      // active vehicle session is the normal idle state. single()
+      // makes PostgREST return HTTP 406 when zero rows match, which
+      // shows up as a noisy red error in the browser console even
+      // though the app handles `null` correctly. maybeSingle() returns
+      // `data: null` with HTTP 200 in that case.
+      .maybeSingle();
     
     setActiveSession(data as VehicleSession | null);
   };
