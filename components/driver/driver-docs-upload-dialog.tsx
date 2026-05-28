@@ -30,9 +30,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -247,19 +244,27 @@ export function DriverDocsUploadDialog({
             form is one column of small inputs; max-w-lg was wasting
             horizontal space.
       */}
-      <DialogContent className="max-w-[calc(100%-3rem)] sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
+      {/*
+        Width + height tuning for the driver phone:
+          - max-w-[calc(100%-1.5rem)] keeps a 12 px gutter (was 24 px,
+            still left content overflowing on 360 px screens because of
+            the dialog's own padding).
+          - sm:max-w-sm caps tablet width.
+          - max-h-[90dvh] + overflow-y-auto means the popup never grows
+            past the visible viewport — important on phones where the
+            URL bar reduces the usable height — and the body scrolls
+            instead of pushing the action buttons off-screen.
+          - p-4 overrides the default p-6 to claw back vertical space.
+      */}
+      <DialogContent className="max-w-[calc(100%-1.5rem)] sm:max-w-sm p-4 gap-3 max-h-[90dvh] overflow-y-auto">
+        <DialogHeader className="space-y-1">
+          <DialogTitle className="flex items-center gap-2 text-sm">
             <FileText className="h-4 w-4" />
             Upload CMR / POD
           </DialogTitle>
-          <DialogDescription className="text-xs">
-            Attach photos or a PDF scan to one of the orders on this trip.
-            You can upload at any time — even after the stop is completed.
-          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3 py-1">
+        <div className="space-y-2.5">
           {/* Order selector — auto-selected when there's only one. */}
           <div className="space-y-1">
             <Label className="text-[11px] text-muted-foreground">Order</Label>
@@ -310,21 +315,21 @@ export function DriverDocsUploadDialog({
             <Button
               type="button"
               variant="outline"
-              className="h-10 text-xs"
+              className="h-9 text-xs"
               onClick={() => cameraInputRef.current?.click()}
               disabled={uploading}
             >
-              <Camera className="h-4 w-4 mr-1.5" />
+              <Camera className="h-3.5 w-3.5 mr-1.5" />
               Take photo
             </Button>
             <Button
               type="button"
               variant="outline"
-              className="h-10 text-xs"
+              className="h-9 text-xs"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
             >
-              <Plus className="h-4 w-4 mr-1.5" />
+              <Plus className="h-3.5 w-3.5 mr-1.5" />
               Add file
             </Button>
           </div>
@@ -347,11 +352,13 @@ export function DriverDocsUploadDialog({
             onChange={e => addFiles(e.target.files)}
           />
 
-          {/* Selected files preview. We deliberately don't render image
-              thumbnails inline because some CMR photos can be 8 MB and
-              would freeze the dialog on a low-end phone. */}
+          {/* Selected files preview — compact list. We deliberately
+              don't render image thumbnails inline because some CMR
+              photos can be 8 MB and would freeze the dialog on a
+              low-end phone. The list height is capped so it scrolls
+              within the dialog rather than pushing the actions out. */}
           {files.length > 0 && (
-            <div className="space-y-1 max-h-40 overflow-y-auto rounded-md border border-border/50 p-1.5">
+            <div className="space-y-1 max-h-32 overflow-y-auto rounded-md border border-border/50 p-1.5">
               {files.map((f, i) => (
                 <div
                   key={`${f.name}-${i}`}
