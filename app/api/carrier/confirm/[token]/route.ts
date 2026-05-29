@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Avoid creating the client at module load. During `next build` page-data
+// collection the env vars aren't guaranteed to be present, which threw
+// "supabaseUrl is required" and failed the build. Instantiate lazily inside
+// the request handlers instead.
+export const dynamic = "force-dynamic";
+
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Two-step carrier upload portal
@@ -31,6 +39,7 @@ export async function GET(
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
+    const supabase = getSupabase();
     const { token } = await params;
 
     const { data: tokenData, error } = await supabase
@@ -111,6 +120,7 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
+    const supabase = getSupabase();
     const { token } = await params;
 
     const { data: tokenData, error: tokenErr } = await supabase
