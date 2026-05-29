@@ -274,6 +274,42 @@ export function DriverDocsUploadDialog({
                 notes: "Driver uploaded POD/CMR — auto-advance",
               })
             }
+
+            // Keep the execution leg in sync with the order. When all
+            // stops were completed the leg was parked at
+            // "documents_pending" (see orders/page.tsx). Now that the
+            // POD/CMR is attached, the own-fleet leg's contribution is
+            // closed, so advance it to "documents_received" (rank 13).
+            // We resolve the leg(s) via the trip(s) that carry stops for
+            // this order, and only touch own-fleet / undecided legs that
+            // are sitting in an execution state — never override a
+            // forwarder leg (carrier-owned) or a sideways/closed leg.
+            // Best-effort: a failure here must not break the upload.
+            try {
+              const { data: orderTripStops } = await supabase
+                .from("trip_stops")
+                .select("trip_id")
+                .eq("order_id", orderId)
+              const tripIds = [
+                ...new Set((orderTripStops || []).map(r => r.trip_id).filter(Boolean)),
+              ]
+              if (tripIds.length > 0) {
+                const legAdvanceableFrom = [
+                  "documents_pending",
+                  "delivered",
+                  "in_progress",
+                  "completed", // legacy rows that were wrongly closed
+                ]
+                await supabase
+                  .from("trip_legs")
+                  .update({ status: "documents_received" })
+                  .in("trip_id", tripIds)
+                  .in("assignment_type", ["own_fleet", "undecided"])
+                  .in("status", legAdvanceableFrom)
+              }
+            } catch {
+              // Non-fatal — leg can be corrected from the dispatch board.
+            }
           }
         } catch {
           // Non-fatal — admin can still flip the status manually.
