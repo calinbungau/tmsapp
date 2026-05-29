@@ -70,6 +70,11 @@ export function mapInvoiceToSaga(input: MapToSagaInput): SagaFactura {
   const tip = currency === "RON" ? "RON" : "VALUTA"
   const defaultVat = config?.saga_default_vat_rate ?? DEFAULT_VAT_RATE
 
+  // The "Invoice Line Description" the user types in the dialog is stored in
+  // invoice.notes. It is the human-written article/line name and takes
+  // priority over the order's cargo description.
+  const lineDescription = (invoice.notes || "").trim()
+
   // Line items: prefer explicit invoice.line_items, otherwise synthesize one line.
   let linii: SagaLinie[] = []
   const rawLines = Array.isArray(invoice.line_items) ? invoice.line_items : []
@@ -85,7 +90,10 @@ export function mapInvoiceToSaga(input: MapToSagaInput): SagaFactura {
       const procTVA = resolveVat(li.vat_rate ?? li.procTVA ?? invoice.tax_rate ?? defaultVat)
       const tva = round(valoare * (procTVA / 100), 2)
       return {
-        descriere: clamp(li.description ?? li.descriere ?? order?.cargo_description ?? "Servicii transport", 60),
+        descriere: clamp(
+          li.description ?? li.descriere ?? lineDescription || order?.cargo_description || "Servicii transport",
+          200,
+        ),
         um: clamp(li.unit ?? li.um ?? "BUC", 5),
         cantitate,
         pret,
@@ -100,7 +108,10 @@ export function mapInvoiceToSaga(input: MapToSagaInput): SagaFactura {
     const tva = round(valoare * (procTVA / 100), 2)
     linii = [
       {
-        descriere: clamp(order?.cargo_description || `Servicii transport ${order?.reference_number ?? ""}`.trim(), 60),
+        descriere: clamp(
+          lineDescription || order?.cargo_description || `Servicii transport ${order?.reference_number ?? ""}`.trim(),
+          200,
+        ),
         um: "BUC",
         cantitate: 1,
         pret: round(valoare, 4),
