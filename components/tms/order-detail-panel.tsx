@@ -73,6 +73,8 @@ interface OrderInvoice {
   accounting_system: string | null; accounting_sync_status: string | null;
   business_partner_id: string | null;
   smartbill_series: string | null; smartbill_number: string | null;
+  line_items: { description: string; quantity: number; unit: string; unit_price: number; tax_rate: number }[] | null;
+  notes: string | null;
   }
 interface InvoicePayment {
   id: string; invoice_id: string; amount: number; currency: string;
