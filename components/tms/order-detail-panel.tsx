@@ -264,6 +264,38 @@ function InvoiceDialog({
     return line;
   };
 
+  // ── Invoice line item type ──
+  type InvoiceLineItem = {
+    description: string;
+    quantity: number;
+    unit: string;
+    unit_price: number;
+    tax_rate: number;
+  };
+
+  // Helper to build a default first line with auto-template
+  const buildDefaultLineItem = (currency: string): InvoiceLineItem => ({
+    description: buildLineDescription({ invoiceCurrency: currency }),
+    quantity: 1,
+    unit: 'BUC',
+    unit_price: direction === 'outgoing' ? (order?.customer_price || 0) : (order?.carrier_cost || 0),
+    tax_rate: 21,
+  });
+
+  // Initialize line items from existing invoice or create a default first line
+  const initLineItems = (): InvoiceLineItem[] => {
+    if (invoice?.line_items && Array.isArray(invoice.line_items) && invoice.line_items.length > 0) {
+      return invoice.line_items.map((li: any) => ({
+        description: li.description || li.descriere || '',
+        quantity: li.quantity ?? li.cantitate ?? 1,
+        unit: li.unit || li.um || 'BUC',
+        unit_price: li.unit_price ?? li.pret ?? 0,
+        tax_rate: li.tax_rate ?? li.procTVA ?? 21,
+      }));
+    }
+    return [buildDefaultLineItem(invoice?.currency || order?.currency || 'EUR')];
+  };
+
   // The auto-generated description as of the most recent successful
   // build. We compare against this when the user changes the currency
   // again so we don't clobber a hand-edited description silently — if
@@ -305,7 +337,6 @@ function InvoiceDialog({
   const [formData, setFormData] = useState({
     invoice_number: invoice?.invoice_number || '',
     external_invoice_number: invoice?.external_invoice_number || '',
-    amount: invoice?.amount || (direction === 'outgoing' ? order?.customer_price || 0 : order?.carrier_cost || 0),
     currency: invoice?.currency || order?.currency || 'EUR',
     tax_rate: invoice?.tax_rate ?? 21,
     tax_type: 'Normala' as string, // Smartbill tax type
@@ -314,19 +345,45 @@ function InvoiceDialog({
     skonto_percentage: invoice?.skonto_percentage || 0,
     skonto_days: invoice?.skonto_days || 0,
     business_partner_id: invoice?.business_partner_id || '',
-    // Editable text that becomes the Smartbill product/article line.
-    // Pre-filled with the Romanian template; the user can overwrite it
-    // before clicking "Create in Smartbill". When the user later picks
-    // a different currency, this text auto-updates to include the BNR
-    // tariff suffix UNLESS the user has manually edited it.
-    line_description: initialAutoDescription,
   });
+
+  // Line items state (multi-position support)
+  const [lineItems, setLineItems] = useState<InvoiceLineItem[]>(initLineItems);
+
+  // Computed totals from line items
+  const totalNetAmount = lineItems.reduce((sum, li) => sum + (li.quantity * li.unit_price), 0);
+  const totalWithTax = lineItems.reduce((sum, li) => {
+    const lineNet = li.quantity * li.unit_price;
+    return sum + lineNet * (1 + (li.tax_rate || 0) / 100);
+  }, 0);
+
+  // Add new line item
+  const addLineItem = () => {
+    setLineItems(prev => [...prev, {
+      description: '',
+      quantity: 1,
+      unit: 'BUC',
+      unit_price: 0,
+      tax_rate: formData.tax_rate,
+    }]);
+  };
+
+  // Update a line item
+  const updateLineItem = (index: number, field: keyof InvoiceLineItem, value: any) => {
+    setLineItems(prev => prev.map((li, i) => i === index ? { ...li, [field]: value } : li));
+  };
+
+  // Remove a line item (keep at least one)
+  const removeLineItem = (index: number) => {
+    if (lineItems.length <= 1) return;
+    setLineItems(prev => prev.filter((_, i) => i !== index));
+  };
 
   // ── Currency change handler ──
   // When the user picks a different currency for the invoice:
   //   - same as original → restore the original amount and drop the BNR suffix
   //   - different       → fetch BNR rates, convert, append BNR suffix
-  // The line_description is only auto-rewritten if the user hasn't
+  // The first line's description is only auto-rewritten if the user hasn't
   // manually edited it (compared against lastAutoDescriptionRef).
   const handleCurrencyChange = async (newCurrency: string) => {
     setConversionError(null);
@@ -335,23 +392,21 @@ function InvoiceDialog({
     if (newCurrency === originalCurrency) {
       setBnrInfo(null);
       const nextDescription = buildLineDescription({ invoiceCurrency: newCurrency, bnr: null });
-      setFormData(prev => {
-        const userEdited = prev.line_description !== lastAutoDescriptionRef.current;
-        const description = userEdited ? prev.line_description : nextDescription;
+      setFormData(prev => ({ ...prev, currency: newCurrency }));
+      // Update first line if it's auto-generated
+      setLineItems(prev => {
+        if (prev.length === 0) return prev;
+        const userEdited = prev[0].description !== lastAutoDescriptionRef.current;
+        if (userEdited) return prev.map((li, i) => i === 0 ? { ...li, unit_price: originalAmount } : li);
         lastAutoDescriptionRef.current = nextDescription;
-        return {
-          ...prev,
-          currency: newCurrency,
-          amount: originalAmount,
-          line_description: description,
-        };
+        return prev.map((li, i) => i === 0 ? { ...li, description: nextDescription, unit_price: originalAmount } : li);
       });
       return;
     }
 
     // Different currency — fetch BNR and convert. Optimistically apply
     // the currency change first so the UI feels responsive; we'll
-    // update the amount once the rates come in.
+    // update the amounts once the rates come in.
     setFormData(prev => ({ ...prev, currency: newCurrency }));
     setConversionLoading(true);
     try {
@@ -367,8 +422,7 @@ function InvoiceDialog({
       // RON-per-unit so:
       //   amount_in_RON     = origAmount * origRate
       //   amount_in_target  = amount_in_RON / targetRate
-      const amountInRon = originalAmount * origRate;
-      const convertedAmount = amountInRon / targetRate;
+      const conversionFactor = origRate / targetRate;
       const bnr = { date: data.date, rate: origRate };
       const nextDescription = buildLineDescription({ invoiceCurrency: newCurrency, bnr });
 
@@ -379,23 +433,24 @@ function InvoiceDialog({
         toCurrency: newCurrency,
       });
 
-      setFormData(prev => {
-        const userEdited = prev.line_description !== lastAutoDescriptionRef.current;
-        const description = userEdited ? prev.line_description : nextDescription;
+      // Update first line description (if auto) and convert all line prices
+      setLineItems(prev => {
+        if (prev.length === 0) return prev;
+        const userEdited = prev[0].description !== lastAutoDescriptionRef.current;
         lastAutoDescriptionRef.current = nextDescription;
-        return {
-          ...prev,
-          currency: newCurrency,
-          // Round to 2 decimals — standard invoice precision.
-          amount: Math.round(convertedAmount * 100) / 100,
-          line_description: description,
-        };
+        return prev.map((li, i) => {
+          const newPrice = Math.round(li.unit_price * conversionFactor * 100) / 100;
+          if (i === 0 && !userEdited) {
+            return { ...li, description: nextDescription, unit_price: newPrice };
+          }
+          return { ...li, unit_price: newPrice };
+        });
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch BNR rate';
       setConversionError(message);
       // The currency was already applied optimistically; we leave the
-      // amount unchanged so the operator can correct it manually.
+      // amounts unchanged so the operator can correct them manually.
     } finally {
       setConversionLoading(false);
     }
@@ -509,15 +564,16 @@ function InvoiceDialog({
           orderId: order?.id,
           series: selectedSeries,
           invoiceData: {
-            amount: formData.amount,
+            amount: totalNetAmount,
             currency: formData.currency,
-            tax_rate: formData.tax_rate,
+            tax_rate: lineItems[0]?.tax_rate ?? 21,
             tax_type: formData.tax_type,
             issue_date: formData.issue_date,
             due_date: formData.due_date,
-            // User-editable article description. The API falls back to
-            // a server-built template if this is empty.
-            line_description: formData.line_description,
+            // Pass full line items for multi-line support
+            lineItems: lineItems,
+            // Backwards-compatible fallback: first line's description
+            line_description: lineItems[0]?.description || '',
           },
         }),
       });
@@ -543,7 +599,6 @@ function InvoiceDialog({
     }
   };
 
-  const totalWithTax = formData.amount * (1 + (formData.tax_rate || 0) / 100);
   const skontoAmount = formData.skonto_percentage ? totalWithTax * (1 - formData.skonto_percentage / 100) : null;
 
   // Handle file selection for incoming invoices
@@ -596,11 +651,12 @@ function InvoiceDialog({
       hasUploadedFile: !!uploadedFile,
       currentUploadedFileUrl: uploadedFileUrl,
       formDataSummary: {
-        amount: formData.amount,
+        totalNetAmount,
         currency: formData.currency,
         external_invoice_number: formData.external_invoice_number,
         issue_date: formData.issue_date,
         due_date: formData.due_date,
+        lineItemsCount: lineItems.length,
       },
     });
     let fileUrl = uploadedFileUrl;
@@ -617,9 +673,9 @@ function InvoiceDialog({
       console.log("[v0] handleSaveWithFile no file selected, skipping upload");
     }
 
-    // Include file_url in the save data
-    console.log("[v0] handleSaveWithFile calling onSave with payload", { ...formData, file_url: fileUrl });
-    onSave({ ...formData, file_url: fileUrl });
+    // Include file_url and lineItems in the save data
+    console.log("[v0] handleSaveWithFile calling onSave with payload", { ...formData, file_url: fileUrl, lineItems });
+    onSave({ ...formData, file_url: fileUrl, lineItems });
   };
 
   if (!isOpen) return null;
@@ -748,50 +804,168 @@ function InvoiceDialog({
               derived from the order; the operator can edit before
               sending so they're never stuck with a wrong text. */}
           {direction === 'outgoing' && (
-            <div>
-              <label className="text-[11px] font-medium text-muted-foreground mb-1 block">
-                Invoice Line Description
-              </label>
-              <Textarea
-                value={formData.line_description}
-                onChange={(e) => setFormData({ ...formData, line_description: e.target.value })}
-                placeholder="TRANSPORT MARFA CONFORM COMENZII ... - LKW .../..."
-                rows={2}
-                className="text-sm resize-none"
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-medium text-muted-foreground">
+                  Invoice Line Items ({lineItems.length})
+                </label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addLineItem}
+                  className="h-7 text-[11px] gap-1"
+                >
+                  <Plus className="h-3 w-3" /> Add Line
+                </Button>
+              </div>
+              
+              {lineItems.map((li, idx) => (
+                <div key={idx} className="rounded-lg border border-border/50 bg-muted/5 p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-[10px] font-medium text-muted-foreground">Line {idx + 1}</span>
+                    {lineItems.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeLineItem(idx)}
+                        className="h-5 w-5 p-0 text-muted-foreground hover:text-red-400"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <label className="text-[10px] text-muted-foreground mb-0.5 block">Description</label>
+                    <Textarea
+                      value={li.description}
+                      onChange={(e) => updateLineItem(idx, 'description', e.target.value)}
+                      placeholder={idx === 0 ? "TRANSPORT MARFA CONFORM COMENZII ..." : "Line description"}
+                      rows={2}
+                      className="text-sm resize-none"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-5 gap-2">
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-0.5 block">Qty</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={li.quantity}
+                        onChange={(e) => updateLineItem(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-0.5 block">Unit</label>
+                      <Select value={li.unit} onValueChange={(v) => updateLineItem(idx, 'unit', v)}>
+                        <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                        <SelectContent className="z-[10001]" position="popper" sideOffset={4}>
+                          <SelectItem value="BUC">BUC</SelectItem>
+                          <SelectItem value="KM">KM</SelectItem>
+                          <SelectItem value="TO">TO</SelectItem>
+                          <SelectItem value="H">H</SelectItem>
+                          <SelectItem value="ZI">ZI</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-0.5 block">Unit Price</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={li.unit_price}
+                        onChange={(e) => updateLineItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-0.5 block">VAT %</label>
+                      <Select 
+                        value={String(li.tax_rate)} 
+                        onValueChange={(v) => updateLineItem(idx, 'tax_rate', parseFloat(v))}
+                      >
+                        <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                        <SelectContent className="z-[10001]" position="popper" sideOffset={4}>
+                          <SelectItem value="21">21%</SelectItem>
+                          <SelectItem value="9">9%</SelectItem>
+                          <SelectItem value="5">5%</SelectItem>
+                          <SelectItem value="0">0%</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-0.5 block">Line Total</label>
+                      <div className="h-8 flex items-center text-sm font-medium">
+                        {(li.quantity * li.unit_price * (1 + li.tax_rate / 100)).toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              
+              <p className="text-[10px] text-muted-foreground">
                 {createInSaga
-                  ? 'This text becomes the invoice line shown to the accountant in Saga.'
-                  : 'This text is sent to Smartbill as the article name.'}
+                  ? 'Line descriptions are shown to the accountant in Saga.'
+                  : 'Line descriptions are sent to Smartbill as article names.'}
               </p>
             </div>
           )}
 
-          {/* Amount & Currency */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Net Amount *</label>
-              <Input
-                type="number"
-                step="0.01"
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
-                className="h-9 text-sm"
-              />
+          {/* Currency selector (for outgoing) */}
+          {direction === 'outgoing' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Currency</label>
+                <Select value={formData.currency} onValueChange={handleCurrencyChange}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent className="z-[10001]" position="popper" sideOffset={4}>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="RON">RON</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="GBP">GBP</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Total with VAT</label>
+                <div className="h-9 flex items-center text-lg font-semibold text-amber-400">
+                  {formData.currency} {totalWithTax.toFixed(2)}
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Currency</label>
-              <Select value={formData.currency} onValueChange={handleCurrencyChange}>
-                <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent className="z-[10001]" position="popper" sideOffset={4}>
-                  <SelectItem value="EUR">EUR</SelectItem>
-                  <SelectItem value="RON">RON</SelectItem>
-                  <SelectItem value="USD">USD</SelectItem>
-                  <SelectItem value="GBP">GBP</SelectItem>
-                </SelectContent>
-              </Select>
+          )}
+
+          {/* Incoming invoice: simple amount + currency */}
+          {direction === 'incoming' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Net Amount *</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={lineItems[0]?.unit_price || 0}
+                  onChange={(e) => updateLineItem(0, 'unit_price', parseFloat(e.target.value) || 0)}
+                  className="h-9 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Currency</label>
+                <Select value={formData.currency} onValueChange={handleCurrencyChange}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent className="z-[10001]" position="popper" sideOffset={4}>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="RON">RON</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="GBP">GBP</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* BNR conversion status — only shown when the invoice
               currency differs from the order's original currency. Lets
@@ -852,13 +1026,15 @@ function InvoiceDialog({
             
           </div>
 
-          {/* Total Preview */}
-          <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Total with VAT</span>
-              <span className="font-semibold">{formData.currency} {totalWithTax.toFixed(2)}</span>
+          {/* Total Preview (incoming only — outgoing shows total in line items section) */}
+          {direction === 'incoming' && (
+            <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Total with VAT</span>
+                <span className="font-semibold">{formData.currency} {totalWithTax.toFixed(2)}</span>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Dates */}
           <div className="grid grid-cols-2 gap-3">
@@ -1102,7 +1278,7 @@ function InvoiceDialog({
             <Button 
               size="sm" 
               onClick={handleCreateInSmartbill} 
-              disabled={creatingInSmartbill || !formData.amount || !selectedSeries}
+              disabled={creatingInSmartbill || totalNetAmount <= 0 || !selectedSeries}
               className="gap-1.5 bg-blue-600 hover:bg-blue-700"
             >
               {creatingInSmartbill ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : (
@@ -1122,7 +1298,7 @@ function InvoiceDialog({
                   uploadedFileName: uploadedFile?.name ?? null,
                   uploadedFileSize: uploadedFile?.size ?? null,
                   uploadedFileUrl,
-                  disabled: saving || uploadingFile || !formData.amount || (direction === 'outgoing' && !createInSaga && !formData.invoice_number),
+                  disabled: saving || uploadingFile || totalNetAmount <= 0 || (direction === 'outgoing' && !createInSaga && !formData.invoice_number),
                   saving,
                   uploadingFile,
                 });
@@ -1131,14 +1307,14 @@ function InvoiceDialog({
                     console.log("[v0] Create Invoice → handleSaveWithFile path (incoming)");
                     handleSaveWithFile();
                   } else {
-                    console.log("[v0] Create Invoice → onSave(formData) path (outgoing)");
-                    onSave(formData);
+                    console.log("[v0] Create Invoice → onSave(formData, lineItems) path (outgoing)");
+                    onSave({ ...formData, lineItems });
                   }
                 } catch (err) {
                   console.log("[v0] Create Invoice click threw synchronously:", err);
                 }
               }}
-              disabled={saving || uploadingFile || !formData.amount || (direction === 'outgoing' && !createInSaga && !formData.invoice_number)}
+              disabled={saving || uploadingFile || totalNetAmount <= 0 || (direction === 'outgoing' && !createInSaga && !formData.invoice_number)}
               className={`gap-1.5 ${direction === 'outgoing' && createInSaga ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
             >
               {(saving || uploadingFile) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : (
@@ -2769,15 +2945,14 @@ setEditData({
 const handleSaveInvoice = async (formData: {
     invoice_number?: string;
     external_invoice_number?: string;
-    amount?: number;
     currency?: string;
-    tax_rate?: number;
     issue_date?: string;
     due_date?: string;
     skonto_percentage?: number;
     skonto_days?: number;
     file_url?: string;
     business_partner_id?: string;
+    lineItems?: { description: string; quantity: number; unit: string; unit_price: number; tax_rate: number }[];
     _refreshOnly?: boolean;
     _skipSave?: boolean;
     }) => {
@@ -2789,14 +2964,22 @@ const handleSaveInvoice = async (formData: {
       return;
     }
     
-    console.log("[v0] handleSaveInvoice ENTER", { invoiceDirection, editingInvoiceId: editingInvoice?.id, formData });
+    const lines = formData.lineItems || [];
+    const totalNet = lines.reduce((sum, li) => sum + (li.quantity * li.unit_price), 0);
+    const totalWithTax = lines.reduce((sum, li) => {
+      const lineNet = li.quantity * li.unit_price;
+      return sum + lineNet * (1 + (li.tax_rate || 0) / 100);
+    }, 0);
+    // Use the first line's tax_rate as the "invoice tax rate" for backwards compatibility
+    const mainTaxRate = lines[0]?.tax_rate ?? 21;
+
+    console.log("[v0] handleSaveInvoice ENTER", { invoiceDirection, editingInvoiceId: editingInvoice?.id, lines: lines.length, totalNet, totalWithTax });
     if (!order) {
       console.log("[v0] handleSaveInvoice EARLY EXIT — no order");
       return;
     }
     setSavingInvoice(true);
     try {
-      const totalWithTax = (formData.amount ?? 0) * (1 + (formData.tax_rate || 0) / 100);
       const skontoDeadline = formData.skonto_days && formData.issue_date
         ? new Date(new Date(formData.issue_date).getTime() + formData.skonto_days * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
         : null;
@@ -2807,9 +2990,9 @@ const handleSaveInvoice = async (formData: {
         direction: invoiceDirection,
         invoice_number: formData.invoice_number || null,
         external_invoice_number: formData.external_invoice_number || null,
-        amount: formData.amount,
+        amount: Math.round(totalNet * 100) / 100,
         currency: formData.currency,
-        tax_rate: formData.tax_rate,
+        tax_rate: mainTaxRate,
         total_with_tax: Math.round(totalWithTax * 100) / 100,
         issue_date: formData.issue_date,
         due_date: formData.due_date,
@@ -2818,6 +3001,10 @@ const handleSaveInvoice = async (formData: {
         skonto_deadline: skontoDeadline,
         file_url: formData.file_url || null,
         business_partner_id: formData.business_partner_id || null,
+        // Store line items as JSONB and also put the first line's description in notes
+        // for the Saga mapper's backwards-compatible fallback
+        line_items: lines,
+        notes: lines[0]?.description || null,
         status: 'draft',
         paid_amount: 0,
         remaining_amount: Math.round(totalWithTax * 100) / 100,
