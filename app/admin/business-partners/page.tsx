@@ -66,6 +66,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
+  UserPlus,
+  Star,
 } from "lucide-react";
 import { useAdminSession } from "@/hooks/use-admin-session";
 import Link from "next/link";
@@ -108,6 +110,23 @@ interface BusinessPartner {
   created_at: string;
 }
 
+interface BusinessPartnerContact {
+  id: string;
+  business_partner_id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  whatsapp: string | null;
+  position: string | null;
+  department: string | null;
+  language: string | null;
+  notes: string | null;
+  is_primary: boolean;
+  is_active: boolean;
+  created_at: string;
+}
+
 const PARTNER_TYPES: { value: PartnerType; label: string; icon: React.ElementType; color: string }[] = [
   { value: "shipper", label: "Shipper", icon: Package, color: "bg-blue-500/10 text-blue-600 border-blue-500/30" },
   { value: "carrier", label: "Carrier", icon: Truck, color: "bg-green-500/10 text-green-600 border-green-500/30" },
@@ -143,6 +162,25 @@ export default function BusinessPartnersPage() {
   const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
   
   const [anafLoading, setAnafLoading] = useState(false);
+
+  // Contacts state
+  const [contacts, setContacts] = useState<BusinessPartnerContact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactFormOpen, setContactFormOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState<BusinessPartnerContact | null>(null);
+  const [contactForm, setContactForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    mobile: "",
+    whatsapp: "",
+    position: "",
+    department: "",
+    language: "",
+    notes: "",
+    is_primary: false,
+    is_active: true,
+  });
 
   const [formData, setFormData] = useState({
     name: "",
@@ -253,6 +291,8 @@ useEffect(() => {
     });
     setEditingPartner(null);
     setActiveTab("general");
+    setContacts([]);
+    resetContactForm();
   };
 
   const handleOpenDialog = (partner?: BusinessPartner) => {
@@ -292,8 +332,11 @@ useEffect(() => {
         notes: partner.notes || "",
         same_billing_address: !partner.billing_address_line1,
       });
+      // Fetch contacts for this partner
+      fetchContacts(partner.id);
     } else {
       resetForm();
+      setContacts([]);
     }
     setDialogOpen(true);
   };
@@ -403,6 +446,151 @@ useEffect(() => {
         ? prev.types.filter((t) => t !== type)
         : [...prev.types, type],
     }));
+  };
+
+  // Fetch contacts for the currently editing partner
+  const fetchContacts = async (partnerId: string) => {
+    if (!adminSession?.id) return;
+    setContactsLoading(true);
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("business_partner_contacts")
+      .select("*")
+      .eq("business_partner_id", partnerId)
+      .eq("admin_id", adminSession.id)
+      .order("is_primary", { ascending: false })
+      .order("name");
+    if (data) setContacts(data);
+    setContactsLoading(false);
+  };
+
+  const resetContactForm = () => {
+    setContactForm({
+      name: "",
+      email: "",
+      phone: "",
+      mobile: "",
+      whatsapp: "",
+      position: "",
+      department: "",
+      language: "",
+      notes: "",
+      is_primary: false,
+      is_active: true,
+    });
+    setEditingContact(null);
+    setContactFormOpen(false);
+  };
+
+  const handleOpenContactForm = (contact?: BusinessPartnerContact) => {
+    if (contact) {
+      setEditingContact(contact);
+      setContactForm({
+        name: contact.name || "",
+        email: contact.email || "",
+        phone: contact.phone || "",
+        mobile: contact.mobile || "",
+        whatsapp: contact.whatsapp || "",
+        position: contact.position || "",
+        department: contact.department || "",
+        language: contact.language || "",
+        notes: contact.notes || "",
+        is_primary: contact.is_primary,
+        is_active: contact.is_active,
+      });
+    } else {
+      resetContactForm();
+    }
+    setContactFormOpen(true);
+  };
+
+  const handleSaveContact = async () => {
+    if (!editingPartner?.id || !adminSession?.id) return;
+    if (!contactForm.name.trim() && !contactForm.email.trim()) {
+      alert("Please enter a name or email for the contact");
+      return;
+    }
+
+    const supabase = createClient();
+    const contactData = {
+      name: contactForm.name.trim() || null,
+      email: contactForm.email.trim() || null,
+      phone: contactForm.phone.trim() || null,
+      mobile: contactForm.mobile.trim() || null,
+      whatsapp: contactForm.whatsapp.trim() || null,
+      position: contactForm.position.trim() || null,
+      department: contactForm.department.trim() || null,
+      language: contactForm.language.trim() || null,
+      notes: contactForm.notes.trim() || null,
+      is_primary: contactForm.is_primary,
+      is_active: contactForm.is_active,
+    };
+
+    // If setting as primary, unset other primaries first
+    if (contactForm.is_primary) {
+      await supabase
+        .from("business_partner_contacts")
+        .update({ is_primary: false })
+        .eq("business_partner_id", editingPartner.id)
+        .eq("admin_id", adminSession.id);
+    }
+
+    if (editingContact) {
+      const { error } = await supabase
+        .from("business_partner_contacts")
+        .update(contactData)
+        .eq("id", editingContact.id);
+      if (error) {
+        alert("Failed to update contact: " + error.message);
+        return;
+      }
+    } else {
+      const { error } = await supabase
+        .from("business_partner_contacts")
+        .insert({
+          ...contactData,
+          business_partner_id: editingPartner.id,
+          admin_id: adminSession.id,
+        });
+      if (error) {
+        alert("Failed to create contact: " + error.message);
+        return;
+      }
+    }
+
+    resetContactForm();
+    fetchContacts(editingPartner.id);
+  };
+
+  const handleDeleteContact = async (contactId: string) => {
+    if (!confirm("Are you sure you want to delete this contact?")) return;
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("business_partner_contacts")
+      .delete()
+      .eq("id", contactId);
+    if (error) {
+      alert("Failed to delete contact: " + error.message);
+      return;
+    }
+    if (editingPartner?.id) fetchContacts(editingPartner.id);
+  };
+
+  const handleSetPrimaryContact = async (contactId: string) => {
+    if (!editingPartner?.id || !adminSession?.id) return;
+    const supabase = createClient();
+    // Unset all primaries
+    await supabase
+      .from("business_partner_contacts")
+      .update({ is_primary: false })
+      .eq("business_partner_id", editingPartner.id)
+      .eq("admin_id", adminSession.id);
+    // Set the new primary
+    await supabase
+      .from("business_partner_contacts")
+      .update({ is_primary: true })
+      .eq("id", contactId);
+    fetchContacts(editingPartner.id);
   };
 
   // EU country codes for VIES
@@ -931,8 +1119,11 @@ useEffect(() => {
           </DialogHeader>
           
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="general">General</TabsTrigger>
+              <TabsTrigger value="contacts" disabled={!editingPartner}>
+                Contacts {contacts.length > 0 && `(${contacts.length})`}
+              </TabsTrigger>
               <TabsTrigger value="address">Address</TabsTrigger>
               <TabsTrigger value="financial">Financial</TabsTrigger>
               <TabsTrigger value="contract">Contract</TabsTrigger>
@@ -1084,6 +1275,267 @@ useEffect(() => {
                   Partner is active
                 </Label>
               </div>
+            </TabsContent>
+            
+            <TabsContent value="contacts" className="space-y-4 mt-4">
+              {!editingPartner ? (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  Save the partner first to add contacts
+                </p>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      Manage contact persons for this business partner. These contacts will appear as suggestions when sending emails.
+                    </p>
+                    <Button size="sm" onClick={() => handleOpenContactForm()}>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Add Contact
+                    </Button>
+                  </div>
+
+                  {contactsLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : contacts.length === 0 ? (
+                    <div className="text-center py-8 border rounded-lg bg-muted/20">
+                      <Users className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
+                      <p className="text-sm text-muted-foreground">No contacts yet</p>
+                      <p className="text-xs text-muted-foreground">Click &quot;Add Contact&quot; to add people you communicate with at this company</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {contacts.map((contact) => (
+                        <div
+                          key={contact.id}
+                          className={`flex items-center justify-between p-3 rounded-lg border ${
+                            contact.is_primary ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-sm font-medium">
+                              {contact.name?.[0]?.toUpperCase() || contact.email?.[0]?.toUpperCase() || "?"}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">
+                                  {contact.name || contact.email || "Unnamed"}
+                                </p>
+                                {contact.is_primary && (
+                                  <Badge variant="outline" className="text-xs border-primary text-primary">
+                                    <Star className="h-3 w-3 mr-1 fill-current" />
+                                    Primary
+                                  </Badge>
+                                )}
+                                {!contact.is_active && (
+                                  <Badge variant="secondary" className="text-xs">Inactive</Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                {contact.position && <span>{contact.position}</span>}
+                                {contact.email && (
+                                  <span className="flex items-center gap-1">
+                                    <Mail className="h-3 w-3" />
+                                    {contact.email}
+                                  </span>
+                                )}
+                                {contact.phone && (
+                                  <span className="flex items-center gap-1">
+                                    <Phone className="h-3 w-3" />
+                                    {contact.phone}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {!contact.is_primary && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => handleSetPrimaryContact(contact.id)}
+                                title="Set as primary contact"
+                              >
+                                <Star className="h-4 w-4" />
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleOpenContactForm(contact)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteContact(contact.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Contact Form Dialog */}
+                  {contactFormOpen && (
+                    <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
+                      <div className="bg-background border rounded-lg shadow-lg w-full max-w-md p-6 space-y-4">
+                        <h3 className="font-semibold text-lg">
+                          {editingContact ? "Edit Contact" : "Add Contact"}
+                        </h3>
+                        
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="contact_name">Name</Label>
+                            <Input
+                              id="contact_name"
+                              value={contactForm.name}
+                              onChange={(e) => setContactForm((p) => ({ ...p, name: e.target.value }))}
+                              placeholder="Contact name"
+                            />
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="contact_email">Email</Label>
+                              <Input
+                                id="contact_email"
+                                type="email"
+                                value={contactForm.email}
+                                onChange={(e) => setContactForm((p) => ({ ...p, email: e.target.value }))}
+                                placeholder="email@company.com"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="contact_phone">Phone</Label>
+                              <Input
+                                id="contact_phone"
+                                value={contactForm.phone}
+                                onChange={(e) => setContactForm((p) => ({ ...p, phone: e.target.value }))}
+                                placeholder="+40..."
+                              />
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="contact_mobile">Mobile</Label>
+                              <Input
+                                id="contact_mobile"
+                                value={contactForm.mobile}
+                                onChange={(e) => setContactForm((p) => ({ ...p, mobile: e.target.value }))}
+                                placeholder="+40..."
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="contact_whatsapp">WhatsApp</Label>
+                              <Input
+                                id="contact_whatsapp"
+                                value={contactForm.whatsapp}
+                                onChange={(e) => setContactForm((p) => ({ ...p, whatsapp: e.target.value }))}
+                                placeholder="+40..."
+                              />
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="contact_position">Position</Label>
+                              <Input
+                                id="contact_position"
+                                value={contactForm.position}
+                                onChange={(e) => setContactForm((p) => ({ ...p, position: e.target.value }))}
+                                placeholder="e.g. Dispatcher"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="contact_department">Department</Label>
+                              <Input
+                                id="contact_department"
+                                value={contactForm.department}
+                                onChange={(e) => setContactForm((p) => ({ ...p, department: e.target.value }))}
+                                placeholder="e.g. Operations"
+                              />
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label htmlFor="contact_language">Preferred Language</Label>
+                            <Select
+                              value={contactForm.language}
+                              onValueChange={(v) => setContactForm((p) => ({ ...p, language: v }))}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select language" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ro">Romanian</SelectItem>
+                                <SelectItem value="en">English</SelectItem>
+                                <SelectItem value="de">German</SelectItem>
+                                <SelectItem value="hu">Hungarian</SelectItem>
+                                <SelectItem value="fr">French</SelectItem>
+                                <SelectItem value="it">Italian</SelectItem>
+                                <SelectItem value="es">Spanish</SelectItem>
+                                <SelectItem value="pl">Polish</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label htmlFor="contact_notes">Notes</Label>
+                            <Textarea
+                              id="contact_notes"
+                              value={contactForm.notes}
+                              onChange={(e) => setContactForm((p) => ({ ...p, notes: e.target.value }))}
+                              placeholder="Additional notes about this contact..."
+                              rows={2}
+                            />
+                          </div>
+                          
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center space-x-2">
+                              <Checkbox
+                                id="contact_is_primary"
+                                checked={contactForm.is_primary}
+                                onCheckedChange={(checked) => setContactForm((p) => ({ ...p, is_primary: !!checked }))}
+                              />
+                              <Label htmlFor="contact_is_primary" className="font-normal cursor-pointer">
+                                Primary contact
+                              </Label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <Checkbox
+                                id="contact_is_active"
+                                checked={contactForm.is_active}
+                                onCheckedChange={(checked) => setContactForm((p) => ({ ...p, is_active: !!checked }))}
+                              />
+                              <Label htmlFor="contact_is_active" className="font-normal cursor-pointer">
+                                Active
+                              </Label>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex justify-end gap-2 pt-4 border-t">
+                          <Button variant="outline" onClick={resetContactForm}>
+                            Cancel
+                          </Button>
+                          <Button onClick={handleSaveContact}>
+                            {editingContact ? "Update" : "Add"} Contact
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </TabsContent>
             
             <TabsContent value="address" className="space-y-4 mt-4">
