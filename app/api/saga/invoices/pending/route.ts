@@ -32,10 +32,10 @@ export async function GET(req: NextRequest) {
 
   const supabase = getServiceClient()
 
-  // Load Saga config for this tenant (defaults for accounts / VAT).
+  // Load Saga config for this tenant (default VAT rate).
   const { data: config } = await supabase
     .from("billing_integrations")
-    .select("saga_default_cont, saga_default_tip_o, saga_client_account_prefix, saga_default_vat_rate")
+    .select("saga_default_vat_rate")
     .eq("admin_id", adminId)
     .eq("provider", "saga")
     .maybeSingle()
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
   const { data: invoices, error } = await supabase
     .from("order_invoices")
     .select(
-      "id, order_id, invoice_number, direction, business_partner_id, amount, currency, tax_rate, total_with_tax, issue_date, due_date, line_items, notes",
+      "id, order_id, direction, business_partner_id, amount, currency, tax_rate, issue_date, due_date, line_items, notes",
     )
     .eq("admin_id", adminId)
     .eq("direction", "outgoing")
@@ -65,34 +65,25 @@ export async function GET(req: NextRequest) {
   const orderIds = [...new Set(list.map((i) => i.order_id).filter(Boolean))]
   const partnerIds = [...new Set(list.map((i) => i.business_partner_id).filter(Boolean))]
 
-  const [{ data: orders }, { data: partners }, { data: mappings }] = await Promise.all([
+  const [{ data: orders }, { data: partners }] = await Promise.all([
     orderIds.length
       ? supabase.from("orders").select("id, reference_number, cargo_description").in("id", orderIds)
       : Promise.resolve({ data: [] as any[] }),
     partnerIds.length
-      ? supabase.from("business_partners").select("id, name").in("id", partnerIds)
-      : Promise.resolve({ data: [] as any[] }),
-    partnerIds.length
-      ? supabase
-          .from("saga_partner_mappings")
-          .select("business_partner_id, saga_cod, cont_client, default_cont, default_tip_o")
-          .eq("admin_id", adminId)
-          .in("business_partner_id", partnerIds)
+      ? supabase.from("business_partners").select("id, name, vat_number, tax_id").in("id", partnerIds)
       : Promise.resolve({ data: [] as any[] }),
   ])
 
   const orderMap = new Map((orders ?? []).map((o: any) => [o.id, o]))
   const partnerMap = new Map((partners ?? []).map((p: any) => [p.id, p]))
-  const mappingMap = new Map((mappings ?? []).map((m: any) => [m.business_partner_id, m]))
 
   const payload: SagaPendingInvoice[] = list.map((inv) => {
     const order = orderMap.get(inv.order_id) ?? null
     const partner = partnerMap.get(inv.business_partner_id) ?? null
-    const mapping = mappingMap.get(inv.business_partner_id) ?? null
     return {
       tmsInvoiceId: inv.id,
       orderReference: order?.reference_number ?? null,
-      factura: mapInvoiceToSaga({ invoice: inv as any, order, partner, mapping, config: config ?? null }),
+      factura: mapInvoiceToSaga({ invoice: inv as any, order, partner, config: config ?? null }),
     }
   })
 
