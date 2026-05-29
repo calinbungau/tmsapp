@@ -61,25 +61,35 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ count: 0, invoices: [] })
   }
 
-  // Batch-load related orders and partners.
+  // Batch-load related orders first (the order carries the customer link).
   const orderIds = [...new Set(list.map((i) => i.order_id).filter(Boolean))]
-  const partnerIds = [...new Set(list.map((i) => i.business_partner_id).filter(Boolean))]
-
-  const [{ data: orders }, { data: partners }] = await Promise.all([
-    orderIds.length
-      ? supabase.from("orders").select("id, reference_number, cargo_description").in("id", orderIds)
-      : Promise.resolve({ data: [] as any[] }),
-    partnerIds.length
-      ? supabase.from("business_partners").select("id, name, vat_number, tax_id").in("id", partnerIds)
-      : Promise.resolve({ data: [] as any[] }),
-  ])
+  const { data: orders } = orderIds.length
+    ? await supabase.from("orders").select("id, reference_number, cargo_description, customer_id").in("id", orderIds)
+    : { data: [] as any[] }
 
   const orderMap = new Map((orders ?? []).map((o: any) => [o.id, o]))
+
+  // The customer can come from the invoice (business_partner_id) or, more
+  // commonly, from the parent order (customer_id). Resolve both.
+  const partnerIds = [
+    ...new Set(
+      [
+        ...list.map((i) => i.business_partner_id),
+        ...(orders ?? []).map((o: any) => o.customer_id),
+      ].filter(Boolean),
+    ),
+  ]
+
+  const { data: partners } = partnerIds.length
+    ? await supabase.from("business_partners").select("id, name, vat_number, tax_id").in("id", partnerIds)
+    : { data: [] as any[] }
+
   const partnerMap = new Map((partners ?? []).map((p: any) => [p.id, p]))
 
   const payload: SagaPendingInvoice[] = list.map((inv) => {
     const order = orderMap.get(inv.order_id) ?? null
-    const partner = partnerMap.get(inv.business_partner_id) ?? null
+    const partner =
+      partnerMap.get(inv.business_partner_id) ?? (order ? partnerMap.get(order.customer_id) : null) ?? null
     return {
       tmsInvoiceId: inv.id,
       orderReference: order?.reference_number ?? null,
