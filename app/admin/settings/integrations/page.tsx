@@ -17,6 +17,7 @@ import {
   AlertTriangle, Check, ChevronRight, FileSpreadsheet,
 } from "lucide-react";
 import { CostProvidersTab } from "@/components/finance/cost-providers-tab";
+import { SagaIntegrationTab } from "@/components/finance/saga-integration-tab";
 
 interface BillingIntegration {
   id: string;
@@ -368,6 +369,10 @@ export default function IntegrationsPage() {
             <FileSpreadsheet className="h-4 w-4" />
             Cost Providers
           </TabsTrigger>
+          <TabsTrigger value="saga" className="text-xs md:text-sm gap-1.5">
+            <Building2 className="h-4 w-4" />
+            Saga &amp; API
+          </TabsTrigger>
           <TabsTrigger value="other" className="text-xs md:text-sm gap-1.5" disabled>
             <Link2 className="h-4 w-4" />
             Other
@@ -377,6 +382,10 @@ export default function IntegrationsPage() {
 
         <TabsContent value="cost-providers" className="space-y-4">
           <CostProvidersTab adminId={adminSession?.id ?? null} />
+        </TabsContent>
+
+        <TabsContent value="saga" className="space-y-4">
+          <SagaIntegrationTab adminId={adminSession?.id ?? null} />
         </TabsContent>
 
         <TabsContent value="billing" className="space-y-4">

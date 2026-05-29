@@ -1,0 +1,130 @@
+/**
+ * POST /api/saga/invoices/validated
+ *
+ * Called by the Saga agent after the accountant validates an invoice in Saga.
+ * Writes the final Saga invoice number back onto the TMS invoice, applies any
+ * edits the accountant made, and remembers the customer's Saga client code.
+ *
+ * Auth: x-api-key / x-api-username / x-api-secret  (scope: saga:write)
+ *
+ * Body: SagaValidatedPayload
+ *   {
+ *     tmsInvoiceId: string,
+ *     sagaNumber: string,
+ *     cod?: string,
+ *     contClient?: string,
+ *     factura?: SagaFactura,
+ *     validatedAt?: string
+ *   }
+ */
+
+import { type NextRequest, NextResponse } from "next/server"
+import { authenticateApiRequest, getServiceClient } from "@/lib/api-auth"
+import type { SagaValidatedPayload } from "@/lib/saga/types"
+
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+
+export async function POST(req: NextRequest) {
+  const auth = await authenticateApiRequest(req, "saga:write")
+  if (!auth.ok || !auth.credential) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+  const adminId = auth.credential.admin_id
+
+  let body: SagaValidatedPayload
+  try {
+    body = (await req.json()) as SagaValidatedPayload
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+  }
+
+  if (!body?.tmsInvoiceId || !body?.sagaNumber) {
+    return NextResponse.json({ error: "tmsInvoiceId and sagaNumber are required" }, { status: 400 })
+  }
+
+  const supabase = getServiceClient()
+
+  // Ensure the invoice belongs to this tenant and is queued for Saga.
+  const { data: invoice, error: fetchErr } = await supabase
+    .from("order_invoices")
+    .select("id, business_partner_id, accounting_system, total_with_tax, amount")
+    .eq("id", body.tmsInvoiceId)
+    .eq("admin_id", adminId)
+    .maybeSingle()
+
+  if (fetchErr) {
+    return NextResponse.json({ error: fetchErr.message }, { status: 500 })
+  }
+  if (!invoice) {
+    return NextResponse.json({ error: "Invoice not found" }, { status: 404 })
+  }
+
+  // Recompute totals from the validated factura if provided (accountant edits win).
+  const update: Record<string, any> = {
+    accounting_system: "saga",
+    accounting_sync_status: "validated",
+    accounting_sync_id: body.sagaNumber,
+    accounting_sync_at: body.validatedAt || new Date().toISOString(),
+    accounting_sync_error: null,
+    external_invoice_number: body.sagaNumber,
+    status: "issued",
+    updated_at: new Date().toISOString(),
+  }
+
+  if (body.factura?.linii?.length) {
+    const valoare = body.factura.linii.reduce((s, l) => s + (Number(l.valoare) || 0), 0)
+    const tva = body.factura.linii.reduce((s, l) => s + (Number(l.tva) || 0), 0)
+    update.amount = Math.round((valoare + Number.EPSILON) * 100) / 100
+    update.total_with_tax = Math.round((valoare + tva + Number.EPSILON) * 100) / 100
+    update.line_items = body.factura.linii
+    if (body.factura.data) update.issue_date = body.factura.data
+    if (body.factura.scadenta) update.due_date = body.factura.scadenta
+  }
+
+  const { error: updateErr } = await supabase
+    .from("order_invoices")
+    .update(update)
+    .eq("id", body.tmsInvoiceId)
+    .eq("admin_id", adminId)
+
+  if (updateErr) {
+    await supabase.from("saga_sync_log").insert({
+      admin_id: adminId,
+      order_invoice_id: body.tmsInvoiceId,
+      api_credential_id: auth.credential.id,
+      direction: "validate",
+      status: "error",
+      error: updateErr.message,
+      payload: body as any,
+    })
+    return NextResponse.json({ error: updateErr.message }, { status: 500 })
+  }
+
+  // Remember the customer's Saga client code for future invoices.
+  if (invoice.business_partner_id && (body.cod || body.contClient)) {
+    await supabase
+      .from("saga_partner_mappings")
+      .upsert(
+        {
+          admin_id: adminId,
+          business_partner_id: invoice.business_partner_id,
+          saga_cod: body.cod ?? null,
+          cont_client: body.contClient ?? null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "admin_id,business_partner_id" },
+      )
+  }
+
+  await supabase.from("saga_sync_log").insert({
+    admin_id: adminId,
+    order_invoice_id: body.tmsInvoiceId,
+    api_credential_id: auth.credential.id,
+    direction: "validate",
+    status: "ok",
+    payload: body as any,
+  })
+
+  return NextResponse.json({ ok: true, tmsInvoiceId: body.tmsInvoiceId, sagaNumber: body.sagaNumber })
+}
