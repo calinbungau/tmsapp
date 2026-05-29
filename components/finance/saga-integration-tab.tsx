@@ -80,7 +80,7 @@ export function SagaIntegrationTab({ adminId }: { adminId: string | null }) {
     saga_default_cont: "704.1",
     saga_default_tip_o: "007",
     saga_client_account_prefix: "4111",
-    saga_default_vat_rate: 19,
+    saga_default_vat_rate: 21,
   })
 
   const [credentials, setCredentials] = useState<ApiCredential[]>([])
@@ -118,7 +118,7 @@ export function SagaIntegrationTab({ adminId }: { adminId: string | null }) {
           saga_default_cont: cfg.saga_default_cont || "704.1",
           saga_default_tip_o: cfg.saga_default_tip_o || "007",
           saga_client_account_prefix: cfg.saga_client_account_prefix || "4111",
-          saga_default_vat_rate: cfg.saga_default_vat_rate ?? 19,
+          saga_default_vat_rate: cfg.saga_default_vat_rate ?? 21,
         })
       }
 
@@ -318,7 +318,7 @@ export function SagaIntegrationTab({ adminId }: { adminId: string | null }) {
                 type="number"
                 value={form.saga_default_vat_rate}
                 onChange={(e) => setForm((p) => ({ ...p, saga_default_vat_rate: Number(e.target.value) }))}
-                placeholder="19"
+                placeholder="21"
               />
             </div>
           </div>
