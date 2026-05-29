@@ -537,12 +537,16 @@ export default function DriverOrdersPage() {
         st.id === stopId ? true : ["completed", "skipped"].includes(st.status)
       );
       if (allDone) {
-        // Mark the leg as completed in v3 mode (trips.status stays at
-        // 'planned'). The leg-status trigger on the DB side propagates
-        // the completion down to trip-level / order-level wherever it
-        // is supposed to.
+        // All stops physically done but POD/CMR not yet uploaded. The
+        // correct v3 leg state here is "documents_pending" (rank 12) —
+        // delivered, awaiting paperwork — NOT "completed" (rank 16,
+        // which means fully closed past invoicing). Writing "completed"
+        // here was the bug: it lit a green "Completed" chip and skipped
+        // the entire Delivered → Docs Pending → Docs Received flow. The
+        // leg only advances to "documents_received" once the driver
+        // actually attaches a document (see the CMR/POD upload handler).
         if (activeTrip.leg_id) {
-          await s.from("trip_legs").update({ status: "completed" }).eq("id", activeTrip.leg_id);
+          await s.from("trip_legs").update({ status: "documents_pending" }).eq("id", activeTrip.leg_id);
         } else {
           await s.from("trips").update({ status: "completed" }).eq("id", activeTrip.id);
         }
@@ -574,8 +578,8 @@ export default function DriverOrdersPage() {
             });
           }
         }
-        setActiveTrip(prev => prev ? { ...prev, status: "completed" } : prev);
-        toast({ title: "Trip Completed", description: "All stops done!" });
+        setActiveTrip(prev => prev ? { ...prev, status: "documents_pending" } : prev);
+        toast({ title: "All stops delivered", description: "Upload the CMR/POD to finish." });
       }
     }
 

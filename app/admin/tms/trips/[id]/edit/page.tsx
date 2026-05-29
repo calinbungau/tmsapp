@@ -341,6 +341,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
         carrier:carrier_id(id, name),
         trip_stops(id, sequence_order, stop_type, company_name, address, city, country, postal_code,
                    order_id, lat, lng, planned_date, planned_time_from, planned_time_to, status, notes,
+                   actual_arrival, actual_departure,
                    contact_name, contact_phone, reference_number, form_id,
                    auto_checkin, auto_checkout, geofence_radius,
                    route_to_geometry, distance_to_km, duration_to_minutes,
@@ -1580,7 +1581,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
                 <Input value={selectedStop.reference_number || ""} onChange={e => updateStop(selectedStopIndex!, { reference_number: e.target.value })} className="h-7 text-[11px] bg-background/60" placeholder="Stop reference..." />
               </div>
 
-              {/* Capture Form & Geofencing — shared with FSM. The form
+              {/* Capture Form & Geofencing �� shared with FSM. The form
                   picker only lists task_forms scoped to stop/trip/order
                   so dispatchers don't accidentally attach a service-task
                   form. Auto check-in / check-out flip the boolean flags
