@@ -2756,15 +2756,37 @@ const handleSaveInvoice = async (formData: {
         toast({ title: "Invoice updated" });
       } else {
         console.log("[v0] handleSaveInvoice inserting new invoice");
+        // Auto-queue outgoing invoices for Saga validation when Saga is the
+        // active accounting provider for this tenant.
+        let insertData: Record<string, any> = invoiceData;
+        if (invoiceDirection === "outgoing") {
+          const { data: sagaIntegration } = await supabase
+            .from("billing_integrations")
+            .select("id")
+            .eq("admin_id", order.admin_id)
+            .eq("provider", "saga")
+            .eq("is_active", true)
+            .maybeSingle();
+          if (sagaIntegration) {
+            insertData = {
+              ...invoiceData,
+              accounting_system: "saga",
+              accounting_sync_status: "pending",
+            };
+          }
+        }
         const { error } = await supabase
           .from("order_invoices")
-          .insert(invoiceData);
+          .insert(insertData);
         if (error) {
           console.log("[v0] handleSaveInvoice insert FAILED", error);
           throw error;
         }
         console.log("[v0] handleSaveInvoice insert OK");
-        toast({ title: "Invoice created" });
+        toast({
+          title: "Invoice created",
+          description: insertData.accounting_system === "saga" ? "Queued for Saga validation" : undefined,
+        });
       }
 
       // Log activity
@@ -5580,6 +5602,19 @@ const handleSaveInvoice = async (formData: {
                           }`}>
                             {inv.status}
                           </span>
+                          {inv.accounting_system === 'saga' && (
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full inline-block ml-1 ${
+                              inv.accounting_sync_status === 'validated' ? 'bg-emerald-500/10 text-emerald-400' :
+                              inv.accounting_sync_status === 'pending' ? 'bg-amber-500/10 text-amber-400' :
+                              'bg-muted text-muted-foreground'
+                            }`}>
+                              {inv.accounting_sync_status === 'validated'
+                                ? 'Saga: validated'
+                                : inv.accounting_sync_status === 'pending'
+                                ? 'Needs Saga validation'
+                                : 'Saga'}
+                            </span>
+                          )}
                         </div>
                       </div>
 
