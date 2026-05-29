@@ -7,7 +7,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BUCKET = "order-documents";
 
-function getSupabase() { return createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+function getSupabase() { return createClient(SUPABASE_URL, SERVICE_ROLE_KEY); }
 
 // Cargo item schema for multiple shipments within one order
 const CargoItemSchema = z.object({
@@ -71,6 +71,7 @@ export type OrderExtraction = z.infer<typeof OrderExtractionSchema>;
 
 // Ensure the storage bucket exists
 async function ensureBucket() {
+  const supabase = getSupabase();
   const { data } = await supabase.storage.getBucket(BUCKET);
   if (!data) {
     await supabase.storage.createBucket(BUCKET, { public: true, fileSizeLimit: 52428800 });
@@ -79,6 +80,7 @@ async function ensureBucket() {
 
 // Upload file to Supabase Storage
 async function uploadFile(file: File, adminId: string): Promise<string> {
+  const supabase = getSupabase();
   await ensureBucket();
   const ext = file.name.split(".").pop() || "bin";
   const filePath = `${adminId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;

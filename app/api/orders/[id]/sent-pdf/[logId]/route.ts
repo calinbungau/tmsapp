@@ -21,11 +21,11 @@ function getSupabase() { return createClient(
 ); }
 
 export async function GET(
-  const supabase = getSupabase();
   request: NextRequest,
   { params }: { params: Promise<{ logId: string }> },
 ) {
   try {
+    const supabase = getSupabase();
     const adminId = request.headers.get("x-admin-id");
     if (!adminId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

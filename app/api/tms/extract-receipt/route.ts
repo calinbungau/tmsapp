@@ -8,7 +8,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BUCKET = "trip-receipts";
 
-function getSupabase() { return createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+function getSupabase() { return createClient(SUPABASE_URL, SERVICE_ROLE_KEY); }
 
 /**
  * Receipt extraction schema. Mirrors the order-extraction approach but tuned for
@@ -101,6 +101,7 @@ const ReceiptSchema = z.object({
 export type ReceiptExtraction = z.infer<typeof ReceiptSchema>;
 
 async function ensureBucket() {
+  const supabase = getSupabase();
   const { data } = await supabase.storage.getBucket(BUCKET);
   if (!data) {
     await supabase.storage.createBucket(BUCKET, {

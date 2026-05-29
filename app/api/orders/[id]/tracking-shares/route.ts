@@ -222,10 +222,10 @@ async function collectGpsResources(orderId: string, adminId: string) {
 // GET — list shares + GPS resources
 // ─────────────────────────────────────────────────────────────────────────
 export async function GET(
-  const supabase = getSupabase();
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getSupabase();
   const adminId = getAdminId(req);
   if (!adminId) {
     return NextResponse.json({ error: "Missing admin context" }, { status: 401 });
@@ -258,10 +258,10 @@ export async function GET(
 // POST — create a new share
 // ─────────────────────────────────────────────────────────────────────────
 export async function POST(
-  const supabase = getSupabase();
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getSupabase();
   const adminId = getAdminId(req);
   if (!adminId) {
     return NextResponse.json({ error: "Missing admin context" }, { status: 401 });
@@ -380,10 +380,10 @@ export async function POST(
 // PATCH — update / revoke / resend
 // ─────────────────────────────────────────────────────────────────────────
 export async function PATCH(
-  const supabase = getSupabase();
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getSupabase();
   const adminId = getAdminId(req);
   if (!adminId) {
     return NextResponse.json({ error: "Missing admin context" }, { status: 401 });
@@ -502,10 +502,10 @@ export async function PATCH(
 // DELETE — hard delete (used rarely; prefer revoked_at on PATCH)
 // ─────────────────────────────────────────────────────────────────────────
 export async function DELETE(
-  const supabase = getSupabase();
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getSupabase();
   const adminId = getAdminId(req);
   if (!adminId) {
     return NextResponse.json({ error: "Missing admin context" }, { status: 401 });

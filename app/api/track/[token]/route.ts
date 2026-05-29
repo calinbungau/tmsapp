@@ -30,10 +30,10 @@ function getSupabase() { return createClient(
 ); }
 
 export async function GET(
-  const supabase = getSupabase();
   _req: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
+  const supabase = getSupabase();
   const { token } = await params;
 
   const { data: share } = await supabase

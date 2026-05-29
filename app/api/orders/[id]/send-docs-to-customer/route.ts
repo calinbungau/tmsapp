@@ -102,11 +102,11 @@ async function mergeIntoSinglePdf(
 }
 
 export async function POST(
-  const supabase = getSupabase();
   request: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
   try {
+    const supabase = getSupabase();
     const adminId = request.headers.get("x-admin-id");
     const userId = request.headers.get("x-user-id");
     if (!adminId) {
