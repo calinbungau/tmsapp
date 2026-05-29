@@ -8,7 +8,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BUCKET = "trip-receipts";
 
-const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+function getSupabase() { return createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
 /**
  * Receipt extraction schema. Mirrors the order-extraction approach but tuned for
@@ -138,6 +138,7 @@ async function uploadFile(file: File, tripId: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
+  const supabase = getSupabase();
   const t0 = Date.now();
   console.log("[v0] extract-receipt: request received");
   try {

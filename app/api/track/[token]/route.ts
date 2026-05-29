@@ -24,12 +24,13 @@ import { getDevicePosition, type TraccarCredentials } from "@/lib/traccar";
  * operator can verify the customer actually opened the link.
  */
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 export async function GET(
+  const supabase = getSupabase();
   _req: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {

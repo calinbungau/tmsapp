@@ -36,10 +36,10 @@ import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
  * as send-docs-to-customer).
  */
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 function getAdminId(req: NextRequest): string | null {
   return req.headers.get("x-admin-id");
@@ -222,6 +222,7 @@ async function collectGpsResources(orderId: string, adminId: string) {
 // GET — list shares + GPS resources
 // ─────────────────────────────────────────────────────────────────────────
 export async function GET(
+  const supabase = getSupabase();
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -257,6 +258,7 @@ export async function GET(
 // POST — create a new share
 // ─────────────────────────────────────────────────────────────────────────
 export async function POST(
+  const supabase = getSupabase();
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -378,6 +380,7 @@ export async function POST(
 // PATCH — update / revoke / resend
 // ─────────────────────────────────────────────────────────────────────────
 export async function PATCH(
+  const supabase = getSupabase();
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -499,6 +502,7 @@ export async function PATCH(
 // DELETE — hard delete (used rarely; prefer revoked_at on PATCH)
 // ─────────────────────────────────────────────────────────────────────────
 export async function DELETE(
+  const supabase = getSupabase();
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {

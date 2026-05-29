@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 // GET /api/chat/driver-task-chats?driverId=xxx
 // Returns task conversations for tasks assigned to this driver
 export async function GET(request: NextRequest) {
+  const supabase = getSupabase();
   const { searchParams } = new URL(request.url);
   const driverId = searchParams.get("driverId");
 

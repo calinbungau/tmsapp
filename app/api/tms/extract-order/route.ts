@@ -7,7 +7,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BUCKET = "order-documents";
 
-const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+function getSupabase() { return createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
 // Cargo item schema for multiple shipments within one order
 const CargoItemSchema = z.object({
@@ -151,6 +151,7 @@ function calculateCost(model: string, inputTokens: number, outputTokens: number)
 }
 
 export async function POST(request: NextRequest) {
+  const supabase = getSupabase();
   const startTime = Date.now();
 
   try {

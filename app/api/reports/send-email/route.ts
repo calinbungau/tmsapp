@@ -5,16 +5,17 @@ import { sendSystemEmail } from "@/lib/system-email";
 // Force Node.js runtime for nodemailer DNS lookup support
 export const runtime = "nodejs";
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 /**
  * POST: Send a report via email
  * Body: { adminId, recipients: string[], subject, reportData, reportType, locale, format, dateFrom, dateTo, title }
  */
 export async function POST(request: NextRequest) {
+  const supabase = getSupabase();
   try {
     const body = await request.json();
     const { adminId, recipients, subject, reportData, reportType, locale = "en", format = "xlsx", dateFrom, dateTo, title } = body;

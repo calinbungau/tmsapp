@@ -15,12 +15,13 @@ import { createClient } from "@supabase/supabase-js";
  * and verify the activity-log row belongs to an order under that admin
  * before issuing a signed URL.
  */
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+); }
 
 export async function GET(
+  const supabase = getSupabase();
   request: NextRequest,
   { params }: { params: Promise<{ logId: string }> },
 ) {

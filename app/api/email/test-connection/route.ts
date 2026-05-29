@@ -4,14 +4,15 @@ import nodemailer from "nodemailer";
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "@/lib/encryption";
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 const MASKED = "••••••••";
 
 export async function POST(request: NextRequest) {
+  const supabase = getSupabase();
   try {
     const adminId = request.headers.get("x-admin-id");
     const userId = request.headers.get("x-user-id");

@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 // GET /api/chat/driver-order-chats?driverId=xxx
 // Returns trip conversations for trips assigned to this driver.
 // Each trip carries one or more orders, so we display the linked order
 // references in the conversation title (e.g. "Trip TRP-… - TMS-180, TMS-181").
 export async function GET(request: NextRequest) {
+  const supabase = getSupabase();
   const { searchParams } = new URL(request.url);
   const driverId = searchParams.get("driverId");
 

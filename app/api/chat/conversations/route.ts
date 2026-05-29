@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 // GET /api/chat/conversations - List conversations for a user
 export async function GET(request: NextRequest) {
+  const supabase = getSupabase();
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get("userId");
   const userType = searchParams.get("userType") || "admin";
@@ -125,6 +126,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/chat/conversations - Create or get a conversation
 export async function POST(request: NextRequest) {
+  const supabase = getSupabase();
   try {
     const body = await request.json();
     const {
@@ -277,6 +279,7 @@ export async function POST(request: NextRequest) {
 
 // PATCH /api/chat/conversations - Add participant to a conversation
 export async function PATCH(request: NextRequest) {
+  const supabase = getSupabase();
   try {
     const body = await request.json();
     const { conversationId, addParticipant } = body;

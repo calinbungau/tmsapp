@@ -5,13 +5,14 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 // GET: Fetch full email body from IMAP by uid
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const supabase = getSupabase();
   try {
     const { id } = await params;
     const adminId = request.headers.get("x-admin-id");

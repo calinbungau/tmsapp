@@ -2,16 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { encrypt } from "@/lib/encryption";
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 // GET: Fetch the current user's email settings (passwords returned masked).
 // Falls back to a legacy admin-scoped row (user_id IS NULL) so tenants
 // upgrading from the previous single-mailbox-per-tenant model still see
 // their existing config until the owner saves it under their own user.
 export async function GET(request: NextRequest) {
+  const supabase = getSupabase();
   try {
     const adminId = request.headers.get("x-admin-id");
     const userId = request.headers.get("x-user-id");
@@ -80,6 +81,7 @@ export async function GET(request: NextRequest) {
 // user instead of creating a duplicate — this preserves SMTP/IMAP creds
 // for the first owner who saves after the migration.
 export async function POST(request: NextRequest) {
+  const supabase = getSupabase();
   try {
     const adminId = request.headers.get("x-admin-id");
     const userId = request.headers.get("x-user-id");
