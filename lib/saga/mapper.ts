@@ -91,7 +91,7 @@ export function mapInvoiceToSaga(input: MapToSagaInput): SagaFactura {
       const tva = round(valoare * (procTVA / 100), 2)
       return {
         descriere: clamp(
-          li.description ?? li.descriere ?? lineDescription || order?.cargo_description || "Servicii transport",
+          li.description ?? li.descriere ?? (lineDescription || order?.cargo_description || "Servicii transport"),
           200,
         ),
         um: clamp(li.unit ?? li.um ?? "BUC", 5),
