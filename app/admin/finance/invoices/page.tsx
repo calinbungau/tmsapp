@@ -146,6 +146,19 @@ export default function InvoicesPage() {
     [invoices, currency],
   )
 
+  // ── Pagination (client-side) ──
+  const PAGE_SIZE = 25
+  const [page, setPage] = useState(1)
+  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
+  // Keep the current page in range whenever filters shrink the result set.
+  useEffect(() => {
+    setPage(1)
+  }, [direction, status, currency, q])
+  const paged = useMemo(
+    () => visible.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [visible, page],
+  )
+
   // Totals per currency for the filtered set (no cross-currency summing).
   const totalsByCurrency = useMemo(() => {
     const map = new Map<string, { total: number; remaining: number }>()
@@ -180,7 +193,7 @@ export default function InvoicesPage() {
           </Button>
           <Button size="sm" onClick={() => setShowImport(true)}>
             <Download className="mr-2 h-4 w-4" aria-hidden="true" />
-            Import Incasari
+            Import Payments
           </Button>
         </div>
       </header>
@@ -289,7 +302,7 @@ export default function InvoicesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map((inv) => (
+                  {paged.map((inv) => (
                     <tr key={inv.id} className="border-b border-border last:border-0 hover:bg-muted/40">
                       <td className="px-4 py-3">
                         <div className="font-medium text-foreground">{inv.invoiceNumber ?? "—"}</div>
@@ -339,6 +352,37 @@ export default function InvoicesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Pagination */}
+      {!loading && visible.length > PAGE_SIZE && (
+        <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
+          <p className="text-xs text-muted-foreground">
+            Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, visible.length)} of{" "}
+            {visible.length}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              Previous
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              Page {page} of {pageCount}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              disabled={page >= pageCount}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
 
       <ReceiptImportDialog
         open={showImport}

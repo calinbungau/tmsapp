@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from("order_invoices")
     .select(
-      "id, invoice_number, external_invoice_number, direction, business_partner_id, amount, currency, total_with_tax, paid_amount, remaining_amount, status, issue_date, due_date, paid_date, accounting_system, accounting_sync_status, order_id, orders(reference_number, customer_reference), business_partner:business_partners(id, name)",
+      "id, invoice_number, external_invoice_number, direction, business_partner_id, amount, currency, total_with_tax, paid_amount, remaining_amount, status, issue_date, due_date, paid_date, accounting_system, accounting_sync_status, order_id, orders(reference_number, customer_reference, customer_id), business_partner:business_partners(id, name)",
     )
     .eq("admin_id", adminId)
     .order("issue_date", { ascending: false, nullsFirst: false })
@@ -48,15 +48,38 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Many invoices carry no direct business_partner_id — the customer lives on
+  // the linked order (orders.customer_id → business_partners). Resolve those
+  // names in a single follow-up lookup so the list always shows a customer.
+  const orderCustomerIds = Array.from(
+    new Set(
+      (data ?? [])
+        .filter((inv: any) => !inv.business_partner?.name && inv.orders?.customer_id)
+        .map((inv: any) => inv.orders.customer_id as string),
+    ),
+  )
+  const customerNameById = new Map<string, string>()
+  if (orderCustomerIds.length > 0) {
+    const { data: partners } = await supabase
+      .from("business_partners")
+      .select("id, name")
+      .in("id", orderCustomerIds)
+    for (const p of partners ?? []) customerNameById.set(p.id, p.name)
+  }
+
   const invoices = (data ?? []).map((inv: any) => {
     const total = inv.total_with_tax ?? inv.amount ?? 0
     const remaining =
       inv.remaining_amount != null ? inv.remaining_amount : Math.max(0, total - (inv.paid_amount ?? 0))
+    const partnerName =
+      inv.business_partner?.name ??
+      (inv.orders?.customer_id ? customerNameById.get(inv.orders.customer_id) : null) ??
+      null
     return {
       id: inv.id,
       invoiceNumber: inv.invoice_number ?? inv.external_invoice_number ?? null,
       direction: inv.direction,
-      partnerName: inv.business_partner?.name ?? null,
+      partnerName,
       orderId: inv.order_id,
       orderReference: inv.orders?.reference_number ?? inv.orders?.customer_reference ?? null,
       amount: inv.amount ?? 0,
