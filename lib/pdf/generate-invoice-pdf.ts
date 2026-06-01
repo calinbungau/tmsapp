@@ -31,6 +31,7 @@ export interface InvoicePdfSupplier {
   country?: string | null
   bankName?: string | null
   iban?: string | null
+  swift?: string | null
 }
 
 export interface InvoicePdfClient {
@@ -57,6 +58,8 @@ export interface InvoicePdfInput {
   date: string | null
   dueDate: string | null
   currency: string
+  /** BNR reference rate (RON per 1 unit of currency) for VALUTA invoices. */
+  exchangeRate?: number | null
   /** TMS order reference / id shown under the client block. */
   reference?: string | null
   notes?: string | null
@@ -131,6 +134,17 @@ export function generateInvoicePdf(input: InvoicePdfInput): BuildInvoicePdfResul
   const curTag = `- ${(input.currency || "RON").toUpperCase()} -`
   doc.text(curTag, right, 98, { align: "right" })
 
+  // FX rate line for foreign-currency invoices (BNR reference rate).
+  const cur = (input.currency || "RON").toUpperCase()
+  const fxRate = Number(input.exchangeRate)
+  if (cur !== "RON" && cur !== "LEI" && Number.isFinite(fxRate) && fxRate > 0) {
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(8.5)
+    doc.setTextColor(...GREY)
+    doc.text(`Curs BNR: 1 ${cur} = ${fmtNum(fxRate, 4)} RON`, right, 112, { align: "right" })
+    doc.setTextColor(...INK)
+  }
+
   // Divider
   doc.setDrawColor(180, 180, 188)
   doc.setLineWidth(0.8)
@@ -179,6 +193,10 @@ export function generateInvoicePdf(input: InvoicePdfInput): BuildInvoicePdfResul
       maxWidth: colRightX - left - 16,
     })
     yL += 14
+    if (input.supplier.swift) {
+      doc.text(`SWIFT ${input.supplier.swift}`, left, yL, { maxWidth: colRightX - left - 16 })
+      yL += 14
+    }
   }
 
   // Client name + fiscal

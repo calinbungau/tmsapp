@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Building2, Hash, FileText, CreditCard, Loader2, Check, ArrowLeft, Globe, Upload, Trash2, ImageIcon, Stamp, PenTool } from "lucide-react";
+import { Building2, Hash, FileText, CreditCard, Loader2, Check, ArrowLeft, Globe, Upload, Trash2, ImageIcon, Stamp, PenTool, Landmark, Plus, Star } from "lucide-react";
 import { useAdminSession } from "@/hooks/use-admin-session";
 import Link from "next/link";
 
@@ -54,6 +54,25 @@ interface CompanyProfile {
   signature_url: string;
 }
 
+interface BankAccount {
+  id?: string;
+  bank_name: string;
+  iban: string;
+  swift: string;
+  currency: string;
+  account_label: string;
+  is_default: boolean;
+}
+
+const EMPTY_BANK_ACCOUNT: BankAccount = {
+  bank_name: "",
+  iban: "",
+  swift: "",
+  currency: "RON",
+  account_label: "",
+  is_default: false,
+};
+
 const DEFAULT_PROFILE: CompanyProfile = {
   company_name: "",
   logo_url: "",
@@ -89,6 +108,8 @@ export default function CompanyProfilePage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [hasProfile, setHasProfile] = useState(false);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [deletedBankIds, setDeletedBankIds] = useState<string[]>([]);
 
   const fetchProfile = useCallback(async () => {
     if (!adminSession?.id) return;
@@ -99,6 +120,27 @@ export default function CompanyProfilePage() {
       .select("*")
       .eq("admin_id", adminSession.id)
       .maybeSingle();
+
+    // Load all bank accounts for this company.
+    const { data: banks } = await supabase
+      .from("company_bank_accounts")
+      .select("id, bank_name, iban, swift, currency, account_label, is_default, sort_order")
+      .eq("admin_id", adminSession.id)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (banks) {
+      setBankAccounts(
+        banks.map((b: any) => ({
+          id: b.id,
+          bank_name: b.bank_name || "",
+          iban: b.iban || "",
+          swift: b.swift || "",
+          currency: b.currency || "RON",
+          account_label: b.account_label || "",
+          is_default: !!b.is_default,
+        })),
+      );
+    }
 
     if (data) {
       setHasProfile(true);
@@ -256,6 +298,15 @@ export default function CompanyProfilePage() {
         localStorage.setItem("admin_session", JSON.stringify(session));
       } catch {}
 
+      // Persist bank accounts alongside the profile.
+      try {
+        await saveBankAccounts(supabase);
+      } catch (bankErr: any) {
+        setMessage({ type: "error", text: "Profile saved, but bank accounts failed: " + bankErr.message });
+        setSaving(false);
+        return;
+      }
+
       setMessage({ type: "success", text: "Company profile saved successfully" });
     }
     setSaving(false);
@@ -263,6 +314,65 @@ export default function CompanyProfilePage() {
 
   const updateField = (field: keyof CompanyProfile, value: string | boolean | number) => {
     setProfile(prev => ({ ...prev, [field]: value }));
+  };
+
+  // --- Bank account management ---
+  const addBankAccount = () => {
+    setBankAccounts(prev => [
+      ...prev,
+      { ...EMPTY_BANK_ACCOUNT, currency: prev.length === 0 ? "RON" : profile.default_currency, is_default: prev.length === 0 },
+    ]);
+  };
+
+  const updateBankAccount = (index: number, field: keyof BankAccount, value: string | boolean) => {
+    setBankAccounts(prev =>
+      prev.map((acc, i) => {
+        if (i !== index) {
+          // Only one default per currency: clear other defaults of the same currency.
+          if (field === "is_default" && value === true && acc.currency === prev[index].currency) {
+            return { ...acc, is_default: false };
+          }
+          return acc;
+        }
+        return { ...acc, [field]: value };
+      }),
+    );
+  };
+
+  const removeBankAccount = (index: number) => {
+    setBankAccounts(prev => {
+      const acc = prev[index];
+      if (acc.id) setDeletedBankIds(ids => [...ids, acc.id!]);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  // Persist bank accounts (called from handleSave after the profile is saved).
+  const saveBankAccounts = async (supabase: ReturnType<typeof createClient>) => {
+    if (!adminSession?.id) return;
+    if (deletedBankIds.length > 0) {
+      await supabase.from("company_bank_accounts").delete().in("id", deletedBankIds);
+      setDeletedBankIds([]);
+    }
+    for (let i = 0; i < bankAccounts.length; i++) {
+      const acc = bankAccounts[i];
+      const row = {
+        admin_id: adminSession.id,
+        bank_name: acc.bank_name,
+        iban: acc.iban,
+        swift: acc.swift || null,
+        currency: acc.currency,
+        account_label: acc.account_label || null,
+        is_default: acc.is_default,
+        sort_order: i,
+        updated_at: new Date().toISOString(),
+      };
+      if (acc.id) {
+        await supabase.from("company_bank_accounts").update(row).eq("id", acc.id);
+      } else {
+        await supabase.from("company_bank_accounts").insert(row);
+      }
+    }
   };
 
   // Preview the order number format
@@ -572,6 +682,110 @@ export default function CompanyProfilePage() {
             <p className="text-xs text-muted-foreground mb-1">Preview</p>
             <p className="text-sm font-mono font-medium">{invoicePreview}</p>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Bank Accounts */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Landmark className="h-5 w-5 text-primary" />
+              <CardTitle>Bank Accounts</CardTitle>
+            </div>
+            <Button variant="outline" size="sm" className="gap-1.5 bg-transparent" onClick={addBankAccount}>
+              <Plus className="h-3.5 w-3.5" />
+              Add Account
+            </Button>
+          </div>
+          <CardDescription>
+            Add an IBAN per currency (e.g. RON and EUR). The account matching an invoice&apos;s currency is shown on its PDF.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {bankAccounts.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+              No bank accounts yet. Add one to display IBAN details on invoices.
+            </div>
+          ) : (
+            bankAccounts.map((acc, index) => (
+              <div key={acc.id ?? `new-${index}`} className="rounded-lg border border-border p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{acc.account_label || acc.bank_name || `Account ${index + 1}`}</span>
+                    {acc.is_default && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                        <Star className="h-3 w-3" />
+                        Default {acc.currency}
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive hover:text-destructive"
+                    onClick={() => removeBankAccount(index)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Bank Name</Label>
+                    <Input
+                      value={acc.bank_name}
+                      onChange={e => updateBankAccount(index, "bank_name", e.target.value)}
+                      placeholder="e.g. Banca Transilvania"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Account Label</Label>
+                    <Input
+                      value={acc.account_label}
+                      onChange={e => updateBankAccount(index, "account_label", e.target.value)}
+                      placeholder="optional, e.g. Main RON"
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>IBAN</Label>
+                    <Input
+                      value={acc.iban}
+                      onChange={e => updateBankAccount(index, "iban", e.target.value.toUpperCase())}
+                      placeholder="RO00 XXXX 0000 0000 0000 0000"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>SWIFT / BIC</Label>
+                    <Input
+                      value={acc.swift}
+                      onChange={e => updateBankAccount(index, "swift", e.target.value.toUpperCase())}
+                      placeholder="optional"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Currency</Label>
+                    <Select value={acc.currency} onValueChange={v => updateBankAccount(index, "currency", v)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CURRENCIES.map(c => (
+                          <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <Switch
+                    checked={acc.is_default}
+                    onCheckedChange={v => updateBankAccount(index, "is_default", v)}
+                  />
+                  <Label className="text-sm font-normal">Default account for {acc.currency} invoices</Label>
+                </div>
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
 

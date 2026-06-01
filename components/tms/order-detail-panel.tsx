@@ -3355,16 +3355,18 @@ const handleSaveInvoice = async (formData: {
   // SmartBill document of its own) entirely on the client. Pulls the
   // supplier (company profile) and client (business partner) fiscal data.
   const buildInvoicePdf = async (inv: OrderInvoice) => {
+    const invCurrency = (inv.currency || "RON").toUpperCase();
+
     // Supplier = our company profile
     let supplier = {
       name: "", cif: "", regCom: "",
       address: null as string | null, city: null as string | null, country: null as string | null,
-      bankName: null as string | null, iban: null as string | null,
+      bankName: null as string | null, iban: null as string | null, swift: null as string | null,
     };
     if (adminSession?.id) {
       const { data: cp } = await supabase
         .from("company_profiles")
-        .select("company_name, vat_number, registration_number, address_line1, address_line2, city, country, bank_name, bank_iban")
+        .select("company_name, vat_number, registration_number, address_line1, address_line2, city, country, bank_name, bank_iban, bank_swift")
         .eq("admin_id", adminSession.id)
         .single();
       if (cp) {
@@ -3377,7 +3379,24 @@ const handleSaveInvoice = async (formData: {
           country: cp.country || null,
           bankName: cp.bank_name || null,
           iban: cp.bank_iban || null,
+          swift: cp.bank_swift || null,
         };
+      }
+
+      // Prefer a dedicated bank account matching the invoice currency.
+      // Order: default-for-currency first, then any account of that currency.
+      const { data: banks } = await supabase
+        .from("company_bank_accounts")
+        .select("bank_name, iban, swift, currency, is_default")
+        .eq("admin_id", adminSession.id)
+        .eq("currency", invCurrency)
+        .order("is_default", { ascending: false })
+        .order("sort_order", { ascending: true });
+      const bank = banks?.[0];
+      if (bank) {
+        supplier.bankName = bank.bank_name || supplier.bankName;
+        supplier.iban = bank.iban || supplier.iban;
+        supplier.swift = bank.swift || supplier.swift;
       }
     }
 
@@ -3430,7 +3449,8 @@ const handleSaveInvoice = async (formData: {
       invoiceNumber: inv.invoice_number || "",
       date: inv.issue_date,
       dueDate: inv.due_date,
-      currency: inv.currency || "RON",
+      currency: invCurrency,
+      exchangeRate: (inv as any).exchange_rate ?? null,
       reference: order?.reference_number || order?.id || null,
       notes: inv.notes,
       supplier,
