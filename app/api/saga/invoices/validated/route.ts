@@ -1,9 +1,12 @@
 /**
  * POST /api/saga/invoices/validated
  *
- * Called by the Saga agent after the accountant validates an invoice in Saga.
+ * Called by the Saga agent after the accountant validates an invoice in Saga,
+ * or when payment/totals change in Saga and need to be reflected in TMS.
+ *
  * Writes the final Saga invoice number back onto the TMS invoice, applies any
- * edits the accountant made, and remembers the customer's Saga client code.
+ * edits the accountant made, maps payment state from `neachitat`, and remembers
+ * the customer's Saga client code.
  *
  * Auth: x-api-key / x-api-username / x-api-secret  (scope: saga:write)
  *
@@ -14,7 +17,14 @@
  *     cod?: string,
  *     contClient?: string,
  *     factura?: SagaFactura,
- *     validatedAt?: string
+ *     validatedAt?: string,
+ *     // Flat fields for payment/totals:
+ *     total?: number,      // total with VAT
+ *     tva?: number,        // VAT amount
+ *     bazaTva?: number,    // net amount
+ *     neachitat?: number,  // unpaid remainder (0 = fully paid)
+ *     sagaId?: number,     // Saga row id
+ *     cursRef?: number     // BNR rate
  *   }
  */
 
@@ -60,10 +70,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invoice not found" }, { status: 404 })
   }
 
-  // Recompute totals from the validated factura if provided (accountant edits win).
+  // Recompute totals from the validated factura if provided, OR from flat fields.
+  // Priority: factura.linii > flat total/bazaTva/tva > keep existing.
   const update: Record<string, any> = {
     accounting_system: "saga",
-    accounting_sync_status: "validated",
     accounting_sync_id: body.sagaNumber,
     accounting_sync_at: body.validatedAt || new Date().toISOString(),
     accounting_sync_error: null,
@@ -71,19 +81,71 @@ export async function POST(req: NextRequest) {
     // official number on the TMS invoice.
     invoice_number: body.sagaNumber,
     external_invoice_number: body.sagaNumber,
-    status: "issued",
     updated_at: new Date().toISOString(),
   }
+
+  // Default sync status to 'synced' (we'll override to 'paid' below if applicable)
+  let nextSyncStatus = "synced"
+
+  // Determine totals: prefer factura.linii, else use flat fields, else keep existing
+  let totalWithTax: number | null = null
+  let netAmount: number | null = null
 
   if (body.factura?.linii?.length) {
     const valoare = body.factura.linii.reduce((s, l) => s + (Number(l.valoare) || 0), 0)
     const tva = body.factura.linii.reduce((s, l) => s + (Number(l.tva) || 0), 0)
-    update.amount = Math.round((valoare + Number.EPSILON) * 100) / 100
-    update.total_with_tax = Math.round((valoare + tva + Number.EPSILON) * 100) / 100
+    netAmount = Math.round((valoare + Number.EPSILON) * 100) / 100
+    totalWithTax = Math.round((valoare + tva + Number.EPSILON) * 100) / 100
+    update.amount = netAmount
+    update.total_with_tax = totalWithTax
     update.line_items = body.factura.linii
     if (body.factura.data) update.issue_date = body.factura.data
     if (body.factura.scadenta) update.due_date = body.factura.scadenta
+  } else if (body.total != null || body.bazaTva != null) {
+    // Use flat fields from agent
+    if (body.bazaTva != null) {
+      netAmount = Math.round((body.bazaTva + Number.EPSILON) * 100) / 100
+      update.amount = netAmount
+    }
+    if (body.total != null) {
+      totalWithTax = Math.round((body.total + Number.EPSILON) * 100) / 100
+      update.total_with_tax = totalWithTax
+    }
   }
+
+  // Map payment state from neachitat (unpaid remainder)
+  // neachitat = 0 → fully paid
+  // 0 < neachitat < total → partially paid
+  // neachitat >= total or null → unpaid (status=issued)
+  const existingTotal = totalWithTax ?? invoice.total_with_tax ?? invoice.amount
+  if (body.neachitat != null && existingTotal != null && existingTotal > 0) {
+    const neachitat = Math.round((body.neachitat + Number.EPSILON) * 100) / 100
+    const total = Math.round((existingTotal + Number.EPSILON) * 100) / 100
+
+    if (neachitat <= 0) {
+      // Fully paid — lock the invoice
+      update.status = "paid"
+      update.paid_amount = total
+      update.remaining_amount = 0
+      update.paid_date = new Date().toISOString().split("T")[0]
+      nextSyncStatus = "paid" // locked from further re-sync
+    } else if (neachitat < total) {
+      // Partially paid
+      update.status = "partially_paid"
+      update.paid_amount = Math.round((total - neachitat + Number.EPSILON) * 100) / 100
+      update.remaining_amount = neachitat
+    } else {
+      // Unpaid (neachitat >= total)
+      update.status = "issued"
+      update.paid_amount = 0
+      update.remaining_amount = total
+    }
+  } else {
+    // No neachitat provided — just mark as issued
+    update.status = "issued"
+  }
+
+  update.accounting_sync_status = nextSyncStatus
 
   const { error: updateErr } = await supabase
     .from("order_invoices")

@@ -36,10 +36,10 @@ import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
  * as send-docs-to-customer).
  */
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 function getAdminId(req: NextRequest): string | null {
   return req.headers.get("x-admin-id");
@@ -225,6 +225,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getSupabase();
   const adminId = getAdminId(req);
   if (!adminId) {
     return NextResponse.json({ error: "Missing admin context" }, { status: 401 });
@@ -260,6 +261,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getSupabase();
   const adminId = getAdminId(req);
   if (!adminId) {
     return NextResponse.json({ error: "Missing admin context" }, { status: 401 });
@@ -381,6 +383,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getSupabase();
   const adminId = getAdminId(req);
   if (!adminId) {
     return NextResponse.json({ error: "Missing admin context" }, { status: 401 });
@@ -502,6 +505,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getSupabase();
   const adminId = getAdminId(req);
   if (!adminId) {
     return NextResponse.json({ error: "Missing admin context" }, { status: 401 });

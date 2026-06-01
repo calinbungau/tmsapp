@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 // GET: List emails from DB cache
 export async function GET(request: NextRequest) {
+  const supabase = getSupabase();
   try {
     const adminId = request.headers.get("x-admin-id");
     const userId = request.headers.get("x-user-id");
@@ -57,6 +58,7 @@ export async function GET(request: NextRequest) {
 
 // PATCH: Update flags (read/unread, star, etc.)
 export async function PATCH(request: NextRequest) {
+  const supabase = getSupabase();
   try {
     const adminId = request.headers.get("x-admin-id");
     const userId = request.headers.get("x-user-id");

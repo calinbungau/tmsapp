@@ -5,10 +5,10 @@ import nodemailer from "nodemailer";
 import { randomUUID } from "crypto";
 import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Request CMR / POD + Invoice from the carrier
@@ -43,6 +43,7 @@ const supabase = createClient(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  const supabase = getSupabase();
   try {
     const adminId = request.headers.get("x-admin-id");
     const userId = request.headers.get("x-user-id");

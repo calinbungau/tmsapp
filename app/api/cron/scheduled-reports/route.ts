@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendSystemEmail } from "@/lib/system-email";
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 /**
  * Cron job to run scheduled reports and send via email
@@ -17,6 +17,7 @@ const supabase = createClient(
  * - "monthly" = run on 1st of month for last month's data
  */
 export async function GET(request: NextRequest) {
+  const supabase = getSupabase();
   // Verify cron secret
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {

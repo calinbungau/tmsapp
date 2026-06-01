@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -15,6 +15,7 @@ export const maxDuration = 60;
  * Covers multi-day stops (e.g. vehicle parked for 5 days shows as one stop with full duration).
  */
 export async function GET(request: NextRequest) {
+  const supabase = getSupabase();
   const sp = request.nextUrl.searchParams;
   const adminId = sp.get("adminId");
   const vehicleIdsRaw = sp.get("vehicleIds");

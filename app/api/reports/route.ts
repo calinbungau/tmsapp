@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 // GET: List report runs + configurations for an admin
 export async function GET(request: NextRequest) {
+  const supabase = getSupabase();
   const sp = request.nextUrl.searchParams;
   const adminId = sp.get("adminId");
   const type = sp.get("type"); // "runs" | "configs" | "all"
@@ -51,6 +52,7 @@ export async function GET(request: NextRequest) {
 
 // POST: Save a new report run OR configuration
 export async function POST(request: NextRequest) {
+  const supabase = getSupabase();
   const body = await request.json();
   const { action } = body; // "save_run" | "save_config"
 
@@ -116,6 +118,7 @@ export async function POST(request: NextRequest) {
 
 // DELETE: Delete a report run or config
 export async function DELETE(request: NextRequest) {
+  const supabase = getSupabase();
   const sp = request.nextUrl.searchParams;
   const id = sp.get("id");
   const table = sp.get("table") === "configs" ? "report_configurations" : "report_runs";

@@ -1,10 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "./encryption";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy initialization to avoid "supabaseUrl is required" error during build-time page collection
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 export interface SystemEmailSettings {
   smtp_host: string;
@@ -21,6 +24,7 @@ export interface SystemEmailSettings {
  * Get system email settings for an admin
  */
 export async function getSystemEmailSettings(adminId: string): Promise<SystemEmailSettings | null> {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from("system_email_settings")
     .select("*")

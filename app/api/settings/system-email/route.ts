@@ -3,14 +3,15 @@ import { createClient } from "@supabase/supabase-js";
 import { encrypt, decrypt } from "@/lib/encryption";
 import nodemailer from "nodemailer";
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 const MASKED = "••••••••";
 
 export async function GET(req: NextRequest) {
+  const supabase = getSupabase();
   const adminId = req.nextUrl.searchParams.get("adminId");
   if (!adminId) {
     return NextResponse.json({ error: "Missing adminId" }, { status: 400 });
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const supabase = getSupabase();
   const body = await req.json();
   const { adminId, ...settings } = body;
 
@@ -103,6 +105,7 @@ export async function POST(req: NextRequest) {
 
 // Test SMTP connection - follows same pattern as /api/email/test-connection
 export async function PUT(req: NextRequest) {
+  const supabase = getSupabase();
   try {
     const body = await req.json();
     const { adminId, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_password } = body;

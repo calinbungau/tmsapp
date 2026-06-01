@@ -103,6 +103,61 @@ export async function POST(req: NextRequest) {
       customer?.postal_code,
     ].filter(Boolean).join(", ");
 
+    // ── Build products array from line_items or fallback to single line ──
+    const lineItems = Array.isArray(invoiceData?.lineItems) && invoiceData.lineItems.length > 0
+      ? invoiceData.lineItems
+      : Array.isArray(invoiceData?.line_items) && invoiceData.line_items.length > 0
+        ? invoiceData.line_items
+        : null;
+
+    let products: any[];
+    if (lineItems) {
+      // Multi-line invoice: build products from line_items
+      products = lineItems.map((li: any) => {
+        const lineQty = li.quantity ?? li.cantitate ?? 1;
+        const linePrice = li.unit_price ?? li.pret ?? 0;
+        const lineTaxRate = li.tax_rate ?? li.procTVA ?? taxRate;
+        const lineUnit = li.unit ?? li.um ?? "buc";
+        const lineDescription = li.description ?? li.descriere ?? articleName;
+        
+        // Resolve tax type name from percentage
+        let lineTaxType = taxType;
+        if (lineTaxRate === 21) lineTaxType = "Normala";
+        else if (lineTaxRate === 9) lineTaxType = "Redusa";
+        else if (lineTaxRate === 5) lineTaxType = "Redusa locuinte";
+        else if (lineTaxRate === 0) lineTaxType = "SDD";
+
+        return {
+          name: lineDescription,
+          code: order.reference_number || "",
+          measuringUnitName: lineUnit.toLowerCase(),
+          currency: currency,
+          quantity: lineQty,
+          price: linePrice,
+          isTaxIncluded: isTaxIncluded,
+          taxName: lineTaxType,
+          taxPercentage: lineTaxRate,
+          saveToDb: false,
+        };
+      });
+    } else {
+      // Single-line fallback for backwards compatibility
+      products = [
+        {
+          name: articleName,
+          code: order.reference_number || "",
+          measuringUnitName: "buc",
+          currency: currency,
+          quantity: 1,
+          price: amount,
+          isTaxIncluded: isTaxIncluded,
+          taxName: taxType,
+          taxPercentage: taxRate,
+          saveToDb: false,
+        },
+      ];
+    }
+
     // Build Smartbill invoice payload
     const smartbillPayload = {
       companyVatCode: integration.smartbill_cif,
@@ -125,21 +180,7 @@ export async function POST(req: NextRequest) {
       currency: currency,
       language: "RO",
       precision: 2,
-      products: [
-        {
-          name: articleName,
-          code: order.reference_number || "",
-          measuringUnitName: "buc",
-          currency: currency,
-          quantity: 1,
-          price: amount,
-          isTaxIncluded: isTaxIncluded,
-          // Use tax type name directly from Smartbill (Normala, Redusa, SDD, Taxare inversa, etc.)
-          taxName: taxType,
-          taxPercentage: taxRate,
-          saveToDb: false,
-        },
-      ],
+      products,
       mentions: order.internal_notes || "",
     };
 

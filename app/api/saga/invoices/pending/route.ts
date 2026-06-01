@@ -2,9 +2,10 @@
  * GET /api/saga/invoices/pending
  *
  * Pulled by the Saga agent running on the accountant's server.
- * Returns outgoing TMS invoices that are queued for Saga validation
- * (accounting_system = 'saga' AND accounting_sync_status = 'pending'),
- * mapped into the SagaFactura exchange format.
+ * Returns outgoing TMS invoices that need to be pushed to Saga:
+ *   - 'pending' → new invoices, agent should INSERT into Saga
+ *   - 'modified' → edited after initial sync, agent should UPDATE existing Saga doc
+ * Excludes 'paid' invoices (locked/completed).
  *
  * Auth: x-api-key / x-api-username / x-api-secret  (scope: saga:read)
  *
@@ -43,12 +44,12 @@ export async function GET(req: NextRequest) {
   const { data: invoices, error } = await supabase
     .from("order_invoices")
     .select(
-      "id, order_id, direction, business_partner_id, amount, currency, tax_rate, issue_date, due_date, line_items, notes",
+      "id, order_id, direction, business_partner_id, amount, currency, tax_rate, issue_date, due_date, line_items, notes, accounting_sync_status, accounting_sync_id",
     )
     .eq("admin_id", adminId)
     .eq("direction", "outgoing")
     .eq("accounting_system", "saga")
-    .eq("accounting_sync_status", "pending")
+    .in("accounting_sync_status", ["pending", "modified"])
     .order("created_at", { ascending: true })
     .limit(limit)
 
@@ -90,10 +91,15 @@ export async function GET(req: NextRequest) {
     const order = orderMap.get(inv.order_id) ?? null
     const partner =
       partnerMap.get(inv.business_partner_id) ?? (order ? partnerMap.get(order.customer_id) : null) ?? null
+    const isModified = inv.accounting_sync_status === "modified"
     return {
       tmsInvoiceId: inv.id,
       orderReference: order?.reference_number ?? null,
       factura: mapInvoiceToSaga({ invoice: inv as any, order, partner, config: config ?? null }),
+      // Tell the agent whether to INSERT (new) or UPDATE (modified) the Saga doc
+      syncAction: isModified ? "update" : "insert",
+      // If updating, pass the existing Saga number so agent can locate the row
+      ...(isModified && inv.accounting_sync_id ? { sagaNumber: inv.accounting_sync_id } : {}),
     }
   })
 

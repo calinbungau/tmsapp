@@ -25,10 +25,10 @@ import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
  * the company's own mailbox rather than a system address.
  */
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+); }
 
 // Hard cap on combined attachment size to keep SMTP servers happy.
 // Most providers reject anything over ~25MB; 20MB is a safe ceiling
@@ -106,6 +106,7 @@ export async function POST(
   ctx: { params: Promise<{ id: string }> }
 ) {
   try {
+    const supabase = getSupabase();
     const adminId = request.headers.get("x-admin-id");
     const userId = request.headers.get("x-user-id");
     if (!adminId) {
