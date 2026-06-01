@@ -11,6 +11,7 @@ ALTER TABLE order_invoices
   ADD CONSTRAINT order_invoices_accounting_sync_status_check
   CHECK (accounting_sync_status IS NULL OR accounting_sync_status IN (
     'pending',      -- new, awaiting first push to Saga
+    'pulled',       -- (legacy) pulled by agent, awaiting validation
     'synced',       -- in Saga, in sync
     'validated',    -- (legacy alias for synced)
     'modified',     -- edited in TMS after sync; needs re-push
