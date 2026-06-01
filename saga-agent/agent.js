@@ -1,185 +1,468 @@
 #!/usr/bin/env node
 /**
- * TMS <-> Saga reference agent.
+ * TMS <-> Saga Agent
+ * Rulează pe serverul contabilului (lângă Saga).
+ * Scrie/citește direct în Firebird — fără fișiere intermediare.
  *
- * Runs on the accountant's server (next to Saga). It:
- *   1. Polls the TMS for invoices that need sync
- *      (GET /api/saga/invoices/pending)
- *      - syncAction: "insert" → new invoice, create in Saga
- *      - syncAction: "update" → modified in TMS, update existing Saga doc
- *   2. Writes each SagaFactura to disk as JSON for the accountant to import
- *      into Saga (the "outbox").
- *   3. Watches an "inbox" folder. When the accountant exports a validated
- *      invoice back as JSON, the agent posts it to the TMS
- *      (POST /api/saga/invoices/validated).
- *
- * IMPORTANT: The validated payload now includes payment fields:
- *   - total: total with VAT
- *   - tva: VAT amount
- *   - bazaTva: net amount
- *   - neachitat: unpaid remainder (0 = fully paid)
- *   - sagaId: internal Saga row id
- *   - cursRef: BNR rate used
- *
- * The TMS uses `neachitat` to determine payment status:
- *   - neachitat = 0 → invoice marked as "paid" and locked from further re-sync
- *   - 0 < neachitat < total → "partially_paid"
- *   - neachitat >= total → "issued" (unpaid)
- *
- * This is a dependency-free reference (Node 18+ for global fetch). Adapt the
- * Saga read/write steps to however your Saga installation imports/exports JSON.
- *
- * Configure via environment variables (see .env.example) or a config.json.
+ * Flow:
+ *  1. GET /api/saga/invoices/pending
+ *       - syncAction "insert" → INSERT direct în Saga DB (dacă nu există deja)
+ *       - syncAction "update" → UPDATE documentul existent (header + linii),
+ *                                dacă NU e deja validat ('V') în Saga
+ *  2. Polling Saga DB pentru facturi validate / plătite
+ *  3. POST /api/saga/invoices/validated → trimite numărul + plata înapoi la TMS
  */
 
-const fs = require("fs")
-const path = require("path")
+const fs   = require('fs');
+const path = require('path');
+const odbc = require('odbc');
+const crypto = require('crypto');
 
+// ─── Config ───────────────────────────────────────────────────────────────────
 const CONFIG = {
-  baseUrl: process.env.TMS_BASE_URL || "https://your-tms.example.com",
-  apiKey: process.env.TMS_API_KEY || "",
-  apiUsername: process.env.TMS_API_USERNAME || "saga-agent",
-  apiSecret: process.env.TMS_API_SECRET || "",
-  pollMs: Number(process.env.POLL_INTERVAL_MS || 60000),
-  outboxDir: process.env.OUTBOX_DIR || path.join(__dirname, "outbox"),
-  inboxDir: process.env.INBOX_DIR || path.join(__dirname, "inbox"),
-  processedDir: process.env.PROCESSED_DIR || path.join(__dirname, "processed"),
-}
+    baseUrl:     process.env.TMS_BASE_URL    || 'https://your-tms.example.com',
+    apiKey:      process.env.TMS_API_KEY     || '',
+    apiUsername: process.env.TMS_API_USERNAME || 'saga-agent',
+    apiSecret:   process.env.TMS_API_SECRET  || '',
+    pollMs:      Number(process.env.POLL_INTERVAL_MS || 60000),
+    snapshotFile: path.join(__dirname, 'saga_snapshot.json'),
+};
 
-function headers() {
-  return {
-    "Content-Type": "application/json",
-    "x-api-key": CONFIG.apiKey,
-    "x-api-username": CONFIG.apiUsername,
-    "x-api-secret": CONFIG.apiSecret,
-  }
-}
+const CONN_STRING =
+    'DRIVER={Firebird/InterBase(r) driver};' +
+    `DBNAME=127.0.0.1/3060:C:\\SAGA C.3.0\\0001\\cont_baza.fdb;` +
+    'UID=SYSDBA;PWD=masterkey;CHARSET=UTF8;';
 
-function ensureDirs() {
-  for (const dir of [CONFIG.outboxDir, CONFIG.inboxDir, CONFIG.processedDir]) {
-    fs.mkdirSync(dir, { recursive: true })
-  }
-}
-
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function log(...args) {
-  console.log(new Date().toISOString(), ...args)
+    console.log(new Date().toISOString(), ...args);
 }
 
-/** Step 0: verify credentials before doing anything. */
-async function ping() {
-  const res = await fetch(`${CONFIG.baseUrl}/api/saga/ping`, { headers: headers() })
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`Ping failed (${res.status}): ${body}`)
-  }
-  const data = await res.json()
-  log("Connected to TMS. Tenant:", data.adminId, "Scopes:", data.scopes.join(", "))
+function tmsHeaders() {
+    return {
+        'Content-Type':   'application/json',
+        'x-api-key':      CONFIG.apiKey,
+        'x-api-username': CONFIG.apiUsername,
+        'x-api-secret':   CONFIG.apiSecret,
+    };
 }
 
-/** Step 1+2: pull pending invoices and drop them in the outbox. */
-async function pullPending() {
-  const res = await fetch(`${CONFIG.baseUrl}/api/saga/invoices/pending?limit=100`, { headers: headers() })
-  if (!res.ok) {
-    log("Pull failed:", res.status, await res.text())
-    return
-  }
-  const data = await res.json()
-  if (!data.count) {
-    log("No pending invoices.")
-    return
-  }
-  for (const item of data.invoices) {
-    // item now includes:
-    //   - syncAction: "insert" | "update"
-    //   - sagaNumber: existing Saga number (when updating)
-    //   - tmsInvoiceId, orderReference, factura
-    const action = item.syncAction || "insert"
-    const file = path.join(CONFIG.outboxDir, `${item.tmsInvoiceId}.json`)
-    fs.writeFileSync(file, JSON.stringify(item, null, 2))
-    
-    if (action === "update") {
-      log("Wrote UPDATE invoice to outbox:", file, "(Saga:", item.sagaNumber, ", ref:", item.orderReference, ")")
-      // TODO: When importing into Saga, UPDATE the existing document
-      // identified by INF_SUPLM containing tmsInvoiceId (or by sagaNumber).
-      // Do NOT create a new document.
-    } else {
-      log("Wrote INSERT invoice to outbox:", file, "(ref:", item.orderReference, ")")
-      // TODO: import item.factura into Saga as a new document.
+function loadSnapshot() {
+    if (fs.existsSync(CONFIG.snapshotFile)) {
+        return JSON.parse(fs.readFileSync(CONFIG.snapshotFile, 'utf8'));
     }
-  }
-  log(`Pulled ${data.count} invoice(s) into outbox.`)
+    return {};
 }
 
-/** Step 3: post validated invoices found in the inbox back to the TMS. */
-async function pushValidated() {
-  const files = fs.readdirSync(CONFIG.inboxDir).filter((f) => f.endsWith(".json"))
-  for (const f of files) {
-    const full = path.join(CONFIG.inboxDir, f)
-    let payload
+function saveSnapshot(snapshot) {
+    fs.writeFileSync(CONFIG.snapshotFile, JSON.stringify(snapshot, null, 2), 'utf8');
+}
+
+function hashFactura(f) {
+    const str = [
+        f.NR_IESIRE?.trim(),
+        f.COD?.trim(),
+        f.TOTAL,
+        f.VALIDAT?.trim(),
+        f.BAZA_TVA,
+        f.TVA,
+        f.NEACHITAT,
+    ].join('|');
+    return crypto.createHash('md5').update(str).digest('hex');
+}
+
+function r2(n) {
+    return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
+// ─── Saga DB: resolve / create client ──────────────────────────────────────────
+async function resolveClient(conn, factura) {
+    let cod        = factura.cod?.trim()        || '';
+    let clientNume = factura.clientNume?.trim() || '';
+    let contCli    = '';
+
+    // 1. Cauta dupa COD_FISCAL (CIF) daca e trimis
+    if (factura.clientCIF) {
+        const r = await conn.query(
+            `SELECT COD, DENUMIRE, ANALITIC FROM CLIENTI
+             WHERE TRIM(COD_FISCAL) = ? OR TRIM(COD_FISCAL) = ?`,
+            [factura.clientCIF.trim(), 'RO' + factura.clientCIF.trim()]
+        );
+        if (r.length > 0) {
+            cod        = r[0].COD?.trim();
+            clientNume = r[0].DENUMIRE?.trim();
+            contCli    = r[0].ANALITIC?.trim();
+            log(`   👤 Client gasit dupa CIF: ${clientNume} (cod: ${cod})`);
+        }
+    }
+
+    // 2. Cauta dupa DENUMIRE daca nu s-a gasit dupa CIF
+    if (!cod && clientNume) {
+        const r = await conn.query(
+            `SELECT COD, DENUMIRE, ANALITIC FROM CLIENTI
+             WHERE TRIM(UPPER(DENUMIRE)) LIKE TRIM(UPPER(?))`,
+            [`%${clientNume}%`]
+        );
+        if (r.length > 0) {
+            cod        = r[0].COD?.trim();
+            clientNume = r[0].DENUMIRE?.trim();
+            contCli    = r[0].ANALITIC?.trim();
+            log(`   👤 Client gasit dupa nume: ${clientNume} (cod: ${cod})`);
+        }
+    }
+
+    // 3. Creeaza client nou daca nu exista
+    if (!cod && clientNume) {
+        const maxCodRes = await conn.query(
+            `SELECT MAX(CAST(TRIM(COD) AS INTEGER)) AS MAX_COD FROM CLIENTI`
+        );
+        const newCod = String((maxCodRes[0].MAX_COD || 0) + 1).padStart(5, '0');
+        contCli      = `4111.${newCod}`;
+
+        await conn.query(`
+            INSERT INTO CLIENTI (
+                COD, DENUMIRE, COD_FISCAL, ANALITIC, TARA,
+                ZS, DISCOUNT, IS_TVA, BLOCAT, CB_CARD,
+                C_LIMIT, IS_EFACT, TIP_TERT
+            ) VALUES (
+                ?, ?, ?, ?, 'RO',
+                0, 0, 0, 0, 0,
+                0, 0, ' '
+            )
+        `, [
+            newCod,
+            clientNume.substring(0, 64),
+            (factura.clientCIF || '').substring(0, 20),
+            contCli,
+        ]);
+
+        cod = newCod;
+        log(`   ✅ Client nou creat in Saga: ${clientNume} | COD: ${newCod} | CIF: ${factura.clientCIF || '-'}`);
+    }
+
+    // 4. Fallback: construieste contClient din cod
+    if (!contCli && cod) contCli = `4111.${cod}`;
+
+    return { cod, clientNume, contCli };
+}
+
+// ─── Saga DB: insert detail lines for a given header id ────────────────────────
+async function insertLinii(conn, headerId, linii) {
+    for (const linie of linii) {
+        const idURes = await conn.query(`SELECT MAX(ID_U) + 1 AS NEW_ID_U FROM IES_DET`);
+        const newIdU = idURes[0].NEW_ID_U;
+
+        await conn.query(`
+            INSERT INTO IES_DET (
+                ID_U, ID_IESIRE,
+                DENUMIRE, DEN_TIP, UM,
+                CANTITATE, PRET_UNITAR, PU_TVA, VALOARE,
+                TVA_ART, TVA_DED, TOTAL,
+                CONT, ADAOS, DISCOUNT,
+                GESTIUNE, DEN_GEST, COD, ID_SGR
+            ) VALUES (
+                ?, ?, ?, 'Nedefinit', ?,
+                ?, ?, 0, ?,
+                ?, ?, ?,
+                ?, 0, 0,
+                '    ', '                        ', '                ', 0
+            )
+        `, [
+            newIdU, headerId,
+            linie.descriere,
+            linie.um        || 'BUC',
+            linie.cantitate,
+            linie.pret,
+            linie.valoare,
+            linie.procTVA,
+            linie.tva,
+            r2(linie.valoare + linie.tva),
+            linie.cont      || '704.1',
+        ]);
+    }
+}
+
+// ─── Saga DB: INSERT factura noua ──────────────────────────────────────────────
+async function sagaInsertFactura(factura) {
+    const conn = await odbc.connect(CONN_STRING);
     try {
-      payload = JSON.parse(fs.readFileSync(full, "utf8"))
+        // ID nou
+        const idRes = await conn.query(`SELECT MAX(ID_IESIRE) + 1 AS NEW_ID FROM IESIRI`);
+        const newId = idRes[0].NEW_ID;
+
+        // Numar urmator
+        const nrRes = await conn.query(`
+            SELECT MAX(CAST(TRIM(NR_IESIRE) AS INTEGER)) AS LAST_NR
+            FROM IESIRI
+            WHERE NR_IESIRE IS NOT NULL AND TRIM(NR_IESIRE) <> ''
+        `);
+        const nextNr = String((nrRes[0].LAST_NR || 0) + 1).padStart(4, '0');
+
+        const { cod, clientNume, contCli } = await resolveClient(conn, factura);
+
+        // Totaluri
+        const bazaTVA = factura.linii.reduce((s, l) => s + l.valoare, 0);
+        const tva     = factura.linii.reduce((s, l) => s + l.tva, 0);
+        const total   = r2(bazaTVA + tva);
+
+        // INSERT header
+        await conn.query(`
+            INSERT INTO IESIRI (
+                ID_IESIRE, NR_IESIRE,
+                COD, DENUMIRE,
+                DATA, SCADENT,
+                BAZA_TVA, TVA, TOTAL, NEACHITAT,
+                VALIDAT, TVAI, ADAOS, TIPARIT,
+                CONT_CLI, INF_SUPLM, TIP_O,
+                AGENT, DEN_AGENT, TIP,
+                ACCIZE, CURS_REF, NR_BONURI, ID_ADRLIV, IS_EF
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ' ', 0, 0, 0,
+                ?, ?, '007',
+                '    ', '                                    ', ' ',
+                0, ?, 0, 0, 0
+            )
+        `, [
+            newId,
+            nextNr,
+            cod,
+            clientNume,
+            factura.data,
+            factura.scadenta || factura.data,
+            r2(bazaTVA),
+            r2(tva),
+            total,
+            total,
+            contCli,
+            factura.refTMS || factura.orderReference || '',
+            factura.cursRef || 0,
+        ]);
+
+        // INSERT linii
+        await insertLinii(conn, newId, factura.linii);
+
+        await conn.close();
+        return { newId, nextNr };
     } catch (err) {
-      log("Skipping invalid JSON:", f, err.message)
-      continue
+        await conn.close();
+        throw err;
     }
-
-    // Expected shape (produced by the accountant / Saga export):
-    // {
-    //   tmsInvoiceId: string,      // required - echoed from pending
-    //   sagaNumber: string,        // required - final invoice number from Saga
-    //   cod?: string,              // Saga client code
-    //   contClient?: string,       // Saga client account
-    //   factura?: SagaFactura,     // optional - edited lines from Saga
-    //   // Payment/totals fields (NEW - include these for proper sync):
-    //   total?: number,            // total with VAT from Saga
-    //   tva?: number,              // VAT amount
-    //   bazaTva?: number,          // net amount
-    //   neachitat?: number,        // unpaid remainder (0 = fully paid)
-    //   sagaId?: number,           // internal Saga row id
-    //   cursRef?: number           // BNR rate
-    // }
-    if (!payload.tmsInvoiceId || !payload.sagaNumber) {
-      log("Skipping (missing tmsInvoiceId/sagaNumber):", f)
-      continue
-    }
-
-    const res = await fetch(`${CONFIG.baseUrl}/api/saga/invoices/validated`, {
-      method: "POST",
-      headers: headers(),
-      body: JSON.stringify(payload),
-    })
-
-    if (res.ok) {
-      const dest = path.join(CONFIG.processedDir, f)
-      fs.renameSync(full, dest)
-      const paymentInfo = payload.neachitat != null 
-        ? ` (neachitat: ${payload.neachitat})` 
-        : ""
-      log("Posted validated invoice:", payload.tmsInvoiceId, "->", payload.sagaNumber, paymentInfo)
-    } else {
-      log("Validate post failed:", res.status, await res.text(), "file:", f)
-    }
-  }
 }
 
+// ─── Saga DB: UPDATE factura existenta (header + linii) ─────────────────────────
+// Pastreaza suma deja platita: neachitat_nou = max(0, total_nou - platit_vechi)
+async function sagaUpdateFactura(factura, existing) {
+    const conn = await odbc.connect(CONN_STRING);
+    try {
+        const id = existing.ID_IESIRE;
+
+        // Totaluri noi
+        const bazaTVA = factura.linii.reduce((s, l) => s + l.valoare, 0);
+        const tva     = factura.linii.reduce((s, l) => s + l.tva, 0);
+        const total   = r2(bazaTVA + tva);
+
+        // Pastreaza plata existenta
+        const oldTotal     = Number(existing.TOTAL)     || 0;
+        const oldNeachitat = Number(existing.NEACHITAT) != null ? Number(existing.NEACHITAT) : oldTotal;
+        const platit       = Math.max(0, r2(oldTotal - oldNeachitat));
+        const neachitat    = Math.max(0, r2(total - platit));
+
+        // UPDATE header (NU schimbam clientul / NR_IESIRE / VALIDAT)
+        await conn.query(`
+            UPDATE IESIRI SET
+                DATA     = ?,
+                SCADENT  = ?,
+                BAZA_TVA = ?,
+                TVA      = ?,
+                TOTAL    = ?,
+                NEACHITAT = ?,
+                CURS_REF = ?
+            WHERE ID_IESIRE = ?
+        `, [
+            factura.data,
+            factura.scadenta || factura.data,
+            r2(bazaTVA),
+            r2(tva),
+            total,
+            neachitat,
+            factura.cursRef || 0,
+            id,
+        ]);
+
+        // Inlocuieste liniile
+        await conn.query(`DELETE FROM IES_DET WHERE ID_IESIRE = ?`, [id]);
+        await insertLinii(conn, id, factura.linii);
+
+        await conn.close();
+        return { id, nr: existing.NR_IESIRE?.trim(), neachitat };
+    } catch (err) {
+        await conn.close();
+        throw err;
+    }
+}
+
+async function sagaReadAll() {
+    const conn = await odbc.connect(CONN_STRING);
+    const rows = await conn.query(`
+        SELECT ID_IESIRE, NR_IESIRE, COD, DENUMIRE,
+               DATA, BAZA_TVA, TVA, TOTAL, NEACHITAT,
+               VALIDAT, INF_SUPLM, CURS_REF
+        FROM IESIRI
+        ORDER BY ID_IESIRE ASC
+    `);
+    await conn.close();
+    return rows;
+}
+
+// ─── Step 0: Ping ─────────────────────────────────────────────────────────────
+async function ping() {
+    const res  = await fetch(`${CONFIG.baseUrl}/api/saga/ping`, { headers: tmsHeaders() });
+    if (!res.ok) throw new Error(`Ping failed (${res.status}): ${await res.text()}`);
+    const data = await res.json();
+    log('✅ Conectat la TMS. Tenant:', data.adminId, '| Scopes:', data.scopes?.join(', '));
+}
+
+// ─── Step 1: Pull pending → INSERT / UPDATE in Saga ──────────────────────────
+async function pullPending() {
+    const res = await fetch(`${CONFIG.baseUrl}/api/saga/invoices/pending?limit=100`, {
+        headers: tmsHeaders(),
+    });
+    if (!res.ok) { log('⚠️  Pull failed:', res.status, await res.text()); return; }
+
+    const data = await res.json();
+    if (!data.count) { log('📭 Nicio factura pending.'); return; }
+
+    for (const item of data.invoices) {
+        const action = item.syncAction || 'insert';
+        log(`📄 Procesez factura TMS ID: ${item.tmsInvoiceId} | actiune: ${action}`);
+
+        // Salveaza tmsInvoiceId in refTMS ca sa putem deduplica
+        item.factura.refTMS = item.tmsInvoiceId;
+
+        // Cauta documentul existent dupa INF_SUPLM (contine tmsInvoiceId)
+        const conn = await odbc.connect(CONN_STRING);
+        const existsRows = await conn.query(
+            `SELECT ID_IESIRE, NR_IESIRE, TOTAL, NEACHITAT, VALIDAT
+             FROM IESIRI WHERE INF_SUPLM CONTAINING ?`,
+            [item.tmsInvoiceId]
+        );
+        await conn.close();
+        const existing = existsRows[0];
+
+        try {
+            if (action === 'update') {
+                // ── UPDATE: factura modificata in TMS ──
+                if (!existing) {
+                    // Nu exista in Saga inca → o inseram ca noua
+                    const { newId, nextNr } = await sagaInsertFactura(item.factura);
+                    log(`✅ (update→insert) Inserat in Saga | TMS ID: ${item.tmsInvoiceId} | Saga ID: ${newId} | NR: ${nextNr}`);
+                } else if (existing.VALIDAT?.trim() === 'V') {
+                    // Document deja validat in Saga → nu se poate modifica
+                    log(`⚠️  Skip UPDATE — factura deja VALIDATA in Saga (ID: ${existing.ID_IESIRE}, NR: ${existing.NR_IESIRE?.trim()}). Modificare interzisa.`);
+                } else {
+                    const { id, nr, neachitat } = await sagaUpdateFactura(item.factura, existing);
+                    log(`✅ Actualizat in Saga | TMS ID: ${item.tmsInvoiceId} | Saga ID: ${id} | NR: ${nr} | neachitat: ${neachitat}`);
+                }
+            } else {
+                // ── INSERT: factura noua ──
+                if (existing) {
+                    log(`⏭️  Skip INSERT — deja inserata in Saga (ID: ${existing.ID_IESIRE}, NR: ${existing.NR_IESIRE?.trim()})`);
+                    continue;
+                }
+                const { newId, nextNr } = await sagaInsertFactura(item.factura);
+                log(`✅ Inserat in Saga | TMS ID: ${item.tmsInvoiceId} | Saga ID: ${newId} | NR: ${nextNr}`);
+            }
+        } catch (err) {
+            log(`❌ ${action} esuat pentru ${item.tmsInvoiceId}:`, err.message);
+        }
+    }
+    log(`📥 Procesate ${data.count} facturi pending.`);
+}
+
+// ─── Step 2: Detecteaza validate / plati → POST la TMS ───────────────────────
+async function pushValidated() {
+    const snapshot = loadSnapshot();
+    const facturi  = await sagaReadAll();
+    const newSnapshot = {};
+    const deRaportat  = [];
+
+    for (const f of facturi) {
+        const hash = hashFactura(f);
+        newSnapshot[f.ID_IESIRE] = { hash, validat: f.VALIDAT?.trim() };
+
+        const prev = snapshot[f.ID_IESIRE];
+
+        // Factura validata (nou validata sau modificata/platita dupa validare)
+        if (f.VALIDAT?.trim() === 'V') {
+            const nrCurat = f.NR_IESIRE?.trim();
+            const refTMS  = f.INF_SUPLM?.trim();
+
+            // Raporteaza doar daca: e noua in snapshot SAU hash s-a schimbat
+            if (!prev || prev.hash !== hash) {
+                deRaportat.push({
+                    tmsInvoiceId: refTMS || `saga-${f.ID_IESIRE}`,
+                    sagaNumber:   nrCurat,
+                    sagaId:       f.ID_IESIRE,
+                    cod:          f.COD?.trim(),
+                    clientNume:   f.DENUMIRE?.trim(),
+                    data:         f.DATA,
+                    total:        f.TOTAL,
+                    tva:          f.TVA,
+                    bazaTva:      f.BAZA_TVA,
+                    neachitat:    f.NEACHITAT,
+                    cursRef:      f.CURS_REF,
+                });
+            }
+        }
+    }
+
+    saveSnapshot(newSnapshot);
+
+    if (deRaportat.length === 0) {
+        log('✅ Nicio factura noua validata.');
+        return;
+    }
+
+    for (const payload of deRaportat) {
+        const res = await fetch(`${CONFIG.baseUrl}/api/saga/invoices/validated`, {
+            method:  'POST',
+            headers: tmsHeaders(),
+            body:    JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+            const platInfo = payload.neachitat != null ? ` | neachitat: ${payload.neachitat}` : '';
+            log(`✅ Validata trimisa la TMS | NR: ${payload.sagaNumber} | Ref: ${payload.tmsInvoiceId}${platInfo}`);
+        } else {
+            log(`❌ Post validata esuat (${res.status}):`, await res.text());
+        }
+    }
+}
+
+// ─── Tick ─────────────────────────────────────────────────────────────────────
 async function tick() {
-  try {
-    await pullPending()
-    await pushValidated()
-  } catch (err) {
-    log("Tick error:", err.message)
-  }
+    try {
+        await pullPending();
+        await pushValidated();
+    } catch (err) {
+        log('❌ Tick error:', err.message);
+    }
 }
 
+// ─── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
-  ensureDirs()
-  await ping()
-  await tick()
-  setInterval(tick, CONFIG.pollMs)
-  log(`Agent running. Polling every ${CONFIG.pollMs}ms.`)
+    log('🚀 Saga Agent pornit');
+    log(`   TMS:      ${CONFIG.baseUrl}`);
+    log(`   Interval: ${CONFIG.pollMs / 1000}s`);
+
+    await ping();
+    await tick();
+    setInterval(tick, CONFIG.pollMs);
 }
 
-main().catch((err) => {
-  log("Fatal:", err.message)
-  process.exit(1)
-})
+main().catch(err => {
+    log('💥 Fatal:', err.message);
+    process.exit(1);
+});
