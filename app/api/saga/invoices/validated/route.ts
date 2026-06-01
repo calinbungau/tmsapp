@@ -53,6 +53,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "tmsInvoiceId and sagaNumber are required" }, { status: 400 })
   }
 
+  // Invoices created directly in Saga (not originating from TMS) have no TMS
+  // reference, so the agent sends a synthetic id like "saga-1666". These are not
+  // TMS invoices — acknowledge and ignore them instead of failing the UUID lookup.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!UUID_RE.test(body.tmsInvoiceId)) {
+    return NextResponse.json({
+      ok: true,
+      ignored: true,
+      reason: "tmsInvoiceId is not a TMS invoice (Saga-only document)",
+      tmsInvoiceId: body.tmsInvoiceId,
+      sagaNumber: body.sagaNumber,
+    })
+  }
+
   const supabase = getServiceClient()
 
   // Ensure the invoice belongs to this tenant and is queued for Saga.
