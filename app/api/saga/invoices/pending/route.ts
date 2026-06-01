@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
   const { data: invoices, error } = await supabase
     .from("order_invoices")
     .select(
-      "id, order_id, direction, business_partner_id, amount, currency, tax_rate, issue_date, due_date, line_items, notes, accounting_sync_status, accounting_sync_id",
+      "id, order_id, direction, business_partner_id, amount, currency, tax_rate, issue_date, due_date, line_items, notes, accounting_sync_status, accounting_sync_id, total_with_tax, paid_amount, remaining_amount, paid_date, status",
     )
     .eq("admin_id", adminId)
     .eq("direction", "outgoing")
@@ -92,6 +92,12 @@ export async function GET(req: NextRequest) {
     const partner =
       partnerMap.get(inv.business_partner_id) ?? (order ? partnerMap.get(order.customer_id) : null) ?? null
     const isModified = inv.accounting_sync_status === "modified"
+    // Surface any recorded payment so the agent can reflect it in Saga.
+    const paidAmount = Number(inv.paid_amount) || 0
+    const total = Number(inv.total_with_tax ?? inv.amount) || 0
+    const remainingAmount =
+      inv.remaining_amount != null ? Number(inv.remaining_amount) : Math.max(0, total - paidAmount)
+    const hasPayment = paidAmount > 0 || inv.status === "paid"
     return {
       tmsInvoiceId: inv.id,
       orderReference: order?.reference_number ?? null,
@@ -100,6 +106,17 @@ export async function GET(req: NextRequest) {
       syncAction: isModified ? "update" : "insert",
       // If updating, pass the existing Saga number so agent can locate the row
       ...(isModified && inv.accounting_sync_id ? { sagaNumber: inv.accounting_sync_id } : {}),
+      // Payment state so the agent can record the incasare / set NEACHITAT in Saga
+      ...(hasPayment
+        ? {
+            payment: {
+              paidAmount: Math.round(paidAmount * 100) / 100,
+              remainingAmount: Math.round(remainingAmount * 100) / 100,
+              paidDate: inv.paid_date ?? null,
+              fullyPaid: inv.status === "paid" || remainingAmount <= 0,
+            },
+          }
+        : {}),
     }
   })
 
