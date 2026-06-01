@@ -3191,6 +3191,17 @@ const handleSaveInvoice = async (formData: {
         updates.remaining_amount = 0;
         updates.paid_date = new Date().toISOString().split('T')[0];
       }
+      // If this invoice is already in Saga, a payment/status change must be
+      // pushed back so Saga records the payment. Re-flag as 'modified' (NOT
+      // 'paid' — that lock only happens once Saga confirms neachitat=0 via the
+      // /validated callback). Invoices not yet synced stay as-is.
+      if (
+        invoice?.accounting_system === 'saga' &&
+        ['synced', 'validated', 'paid'].includes((invoice as any).accounting_sync_status)
+      ) {
+        updates.accounting_sync_status = 'modified';
+        updates.accounting_sync_error = null;
+      }
       await supabase.from("order_invoices").update(updates).eq("id", invoiceId);
 
       // ── Auto-advance parent to `completed` when fully paid ──
@@ -3485,12 +3496,23 @@ const handleSaveInvoice = async (formData: {
       console.log("[v0] handleRecordPayment computed totals", { newPaidAmount, totalDue, remaining, newStatus });
 
       // Update invoice
-      const { error: updateError } = await supabase.from("order_invoices").update({
+      const invoiceUpdate: Record<string, any> = {
         paid_amount: newPaidAmount,
         remaining_amount: Math.round(remaining * 100) / 100,
         status: newStatus,
         paid_date: fullyPaid ? paymentData.payment_date : null,
-      }).eq("id", invoiceId);
+      };
+      // If this invoice is already in Saga, the payment must be reflected there.
+      // Re-flag as 'modified' so the agent pushes the new paid/remaining amount.
+      // The 'paid' sync lock only happens once Saga confirms via /validated.
+      if (
+        invoice.accounting_system === 'saga' &&
+        ['synced', 'validated', 'paid'].includes((invoice as any).accounting_sync_status)
+      ) {
+        invoiceUpdate.accounting_sync_status = 'modified';
+        invoiceUpdate.accounting_sync_error = null;
+      }
+      const { error: updateError } = await supabase.from("order_invoices").update(invoiceUpdate).eq("id", invoiceId);
       if (updateError) {
         console.log("[v0] handleRecordPayment invoice update FAILED", updateError);
         throw updateError;

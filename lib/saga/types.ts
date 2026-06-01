@@ -42,6 +42,21 @@ export interface SagaPendingInvoice {
   syncAction: "insert" | "update"
   /** Existing Saga number when updating (INF_SUPLM value to locate the row). */
   sagaNumber?: string
+  /**
+   * Payment state recorded in TMS, sent so the agent can reflect it in Saga
+   * (set NEACHITAT / record an incasare). Present when the invoice has a
+   * recorded payment that needs pushing to Saga.
+   */
+  payment?: {
+    /** Total amount paid so far (in invoice currency). */
+    paidAmount: number
+    /** Remaining unpaid amount. 0 = fully paid. */
+    remainingAmount: number
+    /** Date of the latest payment (YYYY-MM-DD), if any. */
+    paidDate: string | null
+    /** True when the invoice is fully paid in TMS. */
+    fullyPaid: boolean
+  }
 }
 
 /** Payload posted back by the agent once validated in Saga. */
