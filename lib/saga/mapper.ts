@@ -41,6 +41,7 @@ export interface MapToSagaInput {
     due_date: string | null
     line_items: any
     notes: string | null
+    exchange_rate?: number | null
   }
   order: {
     reference_number: string | null
@@ -134,7 +135,12 @@ export function mapInvoiceToSaga(input: MapToSagaInput): SagaFactura {
 
   if (tip === "VALUTA") {
     factura.moneda = clamp(currency, 10)
-    // cursRef intentionally omitted — the agent/accountant supplies the BNR rate.
+    // Pass the BNR reference rate when available so the agent can post the
+    // VALUTA invoice straight to Saga without manual intervention.
+    const rate = Number(invoice.exchange_rate)
+    if (Number.isFinite(rate) && rate > 0) {
+      factura.cursRef = round(rate, 4)
+    }
   }
 
   return factura
