@@ -323,6 +323,28 @@ async function sagaUpdateFactura(factura, existing, payment) {
   }
 }
 
+// ─── Saga DB: inregistreaza DOAR plata (NEACHITAT) ──────────────────────────────
+// Folosit cand factura e deja VALIDATA: continutul (linii/totaluri) e blocat,
+// dar plata se poate inregistra. Actualizeaza exclusiv NEACHITAT.
+async function sagaUpdatePayment(existing, payment) {
+  const conn = await odbc.connect(CONN_STRING);
+  try {
+    const id = existing.ID_IESIRE;
+    const total = Number(existing.TOTAL) || 0;
+    const neachitat = payment.fullyPaid
+      ? 0
+      : Math.max(0, r2(payment.remainingAmount != null ? payment.remainingAmount : total));
+
+    await conn.query(`UPDATE IESIRI SET NEACHITAT = ? WHERE ID_IESIRE = ?`, [neachitat, id]);
+
+    await conn.close();
+    return { id, nr: existing.NR_IESIRE?.trim(), neachitat };
+  } catch (err) {
+    await conn.close();
+    throw err;
+  }
+}
+
 async function sagaReadAll() {
   const conn = await odbc.connect(CONN_STRING);
   const rows = await conn.query(`
@@ -387,10 +409,18 @@ async function pullPending() {
             `✅ (update→insert) Inserat in Saga | TMS ID: ${item.tmsInvoiceId} | Saga ID: ${newId} | NR: ${nextNr}`,
           );
         } else if (existing.VALIDAT?.trim() === "V") {
-          // Document deja validat in Saga → nu se poate modifica
-          log(
-            `⚠️  Skip UPDATE — factura deja VALIDATA in Saga (ID: ${existing.ID_IESIRE}, NR: ${existing.NR_IESIRE?.trim()}). Modificare interzisa.`,
-          );
+          // Document deja validat in Saga → continutul e blocat.
+          // Dar daca exista o plata de inregistrat, actualizam DOAR NEACHITAT.
+          if (item.payment) {
+            const { id, nr, neachitat } = await sagaUpdatePayment(existing, item.payment);
+            log(
+              `💰 Plata inregistrata pe factura VALIDATA | TMS ID: ${item.tmsInvoiceId} | Saga ID: ${id} | NR: ${nr} | neachitat: ${neachitat}`,
+            );
+          } else {
+            log(
+              `⚠️  Skip UPDATE — factura deja VALIDATA in Saga (ID: ${existing.ID_IESIRE}, NR: ${existing.NR_IESIRE?.trim()}). Modificarea continutului e interzisa.`,
+            );
+          }
         } else {
           const { id, nr, neachitat } = await sagaUpdateFactura(
             item.factura,
