@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
   ]
 
   const { data: partners } = partnerIds.length
-    ? await supabase.from("business_partners").select("id, name, vat_number, tax_id").in("id", partnerIds)
+    ? await supabase.from("business_partners").select("id, name, vat_number, tax_id, country").in("id", partnerIds)
     : { data: [] as any[] }
 
   const partnerMap = new Map((partners ?? []).map((p: any) => [p.id, p]))
