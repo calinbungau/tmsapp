@@ -38,6 +38,10 @@ export interface SagaPendingInvoice {
   /** TMS order reference for human context. */
   orderReference: string | null
   factura: SagaFactura
+  /** Whether the agent should INSERT (new) or UPDATE (modified) the Saga doc. */
+  syncAction: "insert" | "update"
+  /** Existing Saga number when updating (INF_SUPLM value to locate the row). */
+  sagaNumber?: string
 }
 
 /** Payload posted back by the agent once validated in Saga. */
@@ -51,4 +55,17 @@ export interface SagaValidatedPayload {
   cod?: string
   contClient?: string
   validatedAt?: string
+  // --- Flat fields the agent sends for payment/totals reflection ---
+  /** Total with VAT from Saga. */
+  total?: number
+  /** Total VAT amount. */
+  tva?: number
+  /** Net amount (baza TVA). */
+  bazaTva?: number
+  /** Unpaid remainder. 0 = fully paid. */
+  neachitat?: number
+  /** Internal Saga row id (for reference). */
+  sagaId?: number
+  /** BNR rate used for currency conversion. */
+  cursRef?: number
 }

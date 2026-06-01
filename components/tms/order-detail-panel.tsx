@@ -3015,16 +3015,56 @@ const handleSaveInvoice = async (formData: {
 
       if (editingInvoice) {
         console.log("[v0] handleSaveInvoice updating existing invoice", editingInvoice.id);
+        
+        // Build update data — for Saga-synced invoices, preserve payment state and flag for re-sync
+        const isSagaLinked = (editingInvoice as any).accounting_system === 'saga';
+        const isPaid = (editingInvoice as any).status === 'paid' || 
+                       (editingInvoice as any).accounting_sync_status === 'paid';
+        
+        // Base update data (don't reset status/paid_amount for existing invoices)
+        const updateData: Record<string, any> = {
+          invoice_number: formData.invoice_number || null,
+          external_invoice_number: formData.external_invoice_number || null,
+          amount: Math.round(totalNet * 100) / 100,
+          currency: formData.currency,
+          tax_rate: mainTaxRate,
+          total_with_tax: Math.round(totalWithTax * 100) / 100,
+          issue_date: formData.issue_date,
+          due_date: formData.due_date,
+          skonto_percentage: formData.skonto_percentage || null,
+          skonto_days: formData.skonto_days || null,
+          skonto_deadline: skontoDeadline,
+          file_url: formData.file_url || null,
+          business_partner_id: formData.business_partner_id || null,
+          line_items: lines,
+          notes: lines[0]?.description || null,
+          updated_at: new Date().toISOString(),
+        };
+        
+        // If Saga-linked and not yet paid, flag for re-sync
+        if (isSagaLinked && !isPaid) {
+          updateData.accounting_sync_status = 'modified';
+          updateData.accounting_sync_error = null;
+        }
+        
         const { error } = await supabase
           .from("order_invoices")
-          .update(invoiceData)
+          .update(updateData)
           .eq("id", editingInvoice.id);
         if (error) {
           console.log("[v0] handleSaveInvoice update FAILED", error);
           throw error;
         }
         console.log("[v0] handleSaveInvoice update OK");
-        toast({ title: "Invoice updated" });
+        
+        // Show appropriate toast
+        if (isSagaLinked && !isPaid) {
+          toast({ title: "Invoice updated", description: "Marked for re-sync to Saga" });
+        } else if (isPaid) {
+          toast({ title: "Invoice updated", description: "Paid invoice — won't re-sync to Saga" });
+        } else {
+          toast({ title: "Invoice updated" });
+        }
       } else {
         console.log("[v0] handleSaveInvoice inserting new invoice");
         // Auto-queue outgoing invoices for Saga validation when Saga is the
@@ -5877,14 +5917,23 @@ const handleSaveInvoice = async (formData: {
                           </span>
                           {inv.accounting_system === 'saga' && (
                             <span className={`text-[9px] px-1.5 py-0.5 rounded-full inline-block ml-1 ${
-                              inv.accounting_sync_status === 'validated' ? 'bg-emerald-500/10 text-emerald-400' :
-                              inv.accounting_sync_status === 'pending' ? 'bg-amber-500/10 text-amber-400' :
+                              inv.accounting_sync_status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' :
+                              inv.accounting_sync_status === 'synced' || inv.accounting_sync_status === 'validated' ? 'bg-emerald-500/10 text-emerald-400' :
+                              inv.accounting_sync_status === 'modified' ? 'bg-amber-500/10 text-amber-400' :
+                              inv.accounting_sync_status === 'pending' ? 'bg-blue-500/10 text-blue-400' :
+                              inv.accounting_sync_status === 'error' ? 'bg-red-500/10 text-red-400' :
                               'bg-muted text-muted-foreground'
                             }`}>
-                              {inv.accounting_sync_status === 'validated'
-                                ? 'Saga: validated'
+                              {inv.accounting_sync_status === 'paid'
+                                ? 'Saga: paid'
+                                : inv.accounting_sync_status === 'synced' || inv.accounting_sync_status === 'validated'
+                                ? 'Saga: synced'
+                                : inv.accounting_sync_status === 'modified'
+                                ? 'Saga: needs update'
                                 : inv.accounting_sync_status === 'pending'
-                                ? 'Needs Saga validation'
+                                ? 'Saga: pending'
+                                : inv.accounting_sync_status === 'error'
+                                ? 'Saga: error'
                                 : 'Saga'}
                             </span>
                           )}
