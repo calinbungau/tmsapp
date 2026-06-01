@@ -342,7 +342,13 @@ function InvoiceDialog({
     external_invoice_number: invoice?.external_invoice_number || '',
     currency: invoice?.currency || order?.currency || 'EUR',
     tax_rate: invoice?.tax_rate ?? 21,
-    tax_type: 'Normala' as string, // Smartbill tax type
+    // Restore the saved tax type; fall back by rate for legacy invoices
+    // (21→Normala, 9→Redusa, 5→Redusa locuinte, 0→SDD).
+    tax_type: ((invoice as any)?.tax_type
+      || (invoice?.tax_rate === 9 ? 'Redusa'
+        : invoice?.tax_rate === 5 ? 'Redusa locuinte'
+        : invoice?.tax_rate === 0 ? 'SDD'
+        : 'Normala')) as string, // Smartbill / Saga tax type
     issue_date: invoice?.issue_date || new Date().toISOString().split('T')[0],
     due_date: invoice?.due_date || _defaultDueDate,
     skonto_percentage: invoice?.skonto_percentage || 0,
@@ -1008,11 +1014,16 @@ function InvoiceDialog({
               value={formData.tax_type} 
               onValueChange={(v) => {
                 const selectedTax = taxTypes.find(t => t.name === v);
+                const newRate = selectedTax?.percentage ?? 0;
                 setFormData({ 
                   ...formData, 
                   tax_type: v, 
-                  tax_rate: selectedTax?.percentage ?? 0 
+                  tax_rate: newRate 
                 });
+                // Propagate the chosen VAT rate to every line item so the
+                // per-line VAT %, the saved tax_rate, and what is sent to Saga
+                // all reflect the selected tax type (e.g. SDD/scutit = 0%).
+                setLineItems(prev => prev.map(li => ({ ...li, tax_rate: newRate })));
               }}
             >
               <SelectTrigger className="h-9 text-sm">
@@ -2949,6 +2960,7 @@ const handleSaveInvoice = async (formData: {
     invoice_number?: string;
     external_invoice_number?: string;
     currency?: string;
+    tax_type?: string;
     issue_date?: string;
     due_date?: string;
     skonto_percentage?: number;
@@ -2996,6 +3008,7 @@ const handleSaveInvoice = async (formData: {
         amount: Math.round(totalNet * 100) / 100,
         currency: formData.currency,
         tax_rate: mainTaxRate,
+        tax_type: formData.tax_type || null,
         total_with_tax: Math.round(totalWithTax * 100) / 100,
         issue_date: formData.issue_date,
         due_date: formData.due_date,
@@ -3029,6 +3042,7 @@ const handleSaveInvoice = async (formData: {
           amount: Math.round(totalNet * 100) / 100,
           currency: formData.currency,
           tax_rate: mainTaxRate,
+          tax_type: formData.tax_type || null,
           total_with_tax: Math.round(totalWithTax * 100) / 100,
           issue_date: formData.issue_date,
           due_date: formData.due_date,

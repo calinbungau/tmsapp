@@ -9,10 +9,15 @@ function round(value: number, decimals: number): number {
   return Math.round((value + Number.EPSILON) * f) / f
 }
 
-/** Resolve the VAT percentage, defaulting to the RO standard rate (21). */
+/**
+ * Resolve the VAT percentage. An explicit 0 is a valid rate (VAT-exempt /
+ * scutit cu drept de deducere / reverse charge) and MUST be preserved — only
+ * fall back to the RO standard rate when the value is missing/invalid.
+ */
 function resolveVat(rate: number | null | undefined): number {
+  if (rate === null || rate === undefined) return DEFAULT_VAT_RATE
   const r = Number(rate)
-  if (!Number.isFinite(r) || r <= 0) return DEFAULT_VAT_RATE
+  if (!Number.isFinite(r) || r < 0) return DEFAULT_VAT_RATE
   return Math.round(r)
 }
 
@@ -153,7 +158,7 @@ export function mapInvoiceToSaga(input: MapToSagaInput): SagaFactura {
         li.value != null || li.valoare != null ? Number(li.value ?? li.valoare) : cantitate * pret,
         2,
       )
-      const procTVA = resolveVat(li.vat_rate ?? li.procTVA ?? invoice.tax_rate ?? defaultVat)
+      const procTVA = resolveVat(li.vat_rate ?? li.procTVA ?? li.tax_rate ?? invoice.tax_rate ?? defaultVat)
       const tva = round(valoare * (procTVA / 100), 2)
       return {
         descriere: clamp(
