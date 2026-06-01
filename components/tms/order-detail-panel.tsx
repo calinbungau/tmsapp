@@ -39,6 +39,7 @@ import {
 import { recomputeParentStatus } from "@/lib/tms/status/recompute-parent";
 import { LegStatusChip } from "@/components/tms/leg-status-chip";
 import { nextStatuses as nextStatusesFor } from "@/lib/tms/status/transitions";
+import { generateInvoicePdf } from "@/lib/pdf/generate-invoice-pdf";
 import { StatusGuide } from "@/components/tms/status-guide";
 import dynamic from "next/dynamic";
 import { OrderChat } from "@/components/chat/order-chat";
@@ -3350,6 +3351,129 @@ const handleSaveInvoice = async (formData: {
     });
   };
 
+  // Build a Romanian FACTURA PDF for a TMS/Saga invoice (which has no
+  // SmartBill document of its own) entirely on the client. Pulls the
+  // supplier (company profile) and client (business partner) fiscal data.
+  const buildInvoicePdf = async (inv: OrderInvoice) => {
+    // Supplier = our company profile
+    let supplier = {
+      name: "", cif: "", regCom: "",
+      address: null as string | null, city: null as string | null, country: null as string | null,
+      bankName: null as string | null, iban: null as string | null,
+    };
+    if (adminSession?.id) {
+      const { data: cp } = await supabase
+        .from("company_profiles")
+        .select("company_name, vat_number, registration_number, address_line1, address_line2, city, country, bank_name, bank_iban")
+        .eq("admin_id", adminSession.id)
+        .single();
+      if (cp) {
+        supplier = {
+          name: cp.company_name || "",
+          cif: cp.vat_number || "",
+          regCom: cp.registration_number || "",
+          address: [cp.address_line1, cp.address_line2].filter(Boolean).join(", ") || null,
+          city: cp.city || null,
+          country: cp.country || null,
+          bankName: cp.bank_name || null,
+          iban: cp.bank_iban || null,
+        };
+      }
+    }
+
+    // Client = the invoice's business partner (fallback to the order customer)
+    let client = { name: order?.customer?.name || "", cif: "", address: null as string | null, city: null as string | null, country: null as string | null };
+    if (inv.business_partner_id) {
+      const { data: bp } = await supabase
+        .from("business_partners")
+        .select("name, vat_number, tax_id, registration_number, address_line1, address_line2, city, country")
+        .eq("id", inv.business_partner_id)
+        .single();
+      if (bp) {
+        client = {
+          name: bp.name || "",
+          cif: bp.vat_number || bp.tax_id || "",
+          address: [bp.address_line1, bp.address_line2].filter(Boolean).join(", ") || null,
+          city: bp.city || null,
+          country: bp.country || null,
+        };
+      }
+    }
+
+    // Line items: prefer explicit line_items, else synthesize one line.
+    const defaultVat = inv.tax_rate && inv.tax_rate > 0 ? Math.round(inv.tax_rate) : 21;
+    const rawLines = Array.isArray(inv.line_items) && inv.line_items.length > 0 ? inv.line_items : null;
+    const lines = rawLines
+      ? rawLines.map((li: any) => {
+          const quantity = Number(li.quantity ?? 1) || 1;
+          const unitPrice = Number(li.unit_price ?? 0) || 0;
+          const value = Math.round(quantity * unitPrice * 100) / 100;
+          const vatRate = Number(li.tax_rate ?? defaultVat) || defaultVat;
+          const vat = Math.round(value * (vatRate / 100) * 100) / 100;
+          return {
+            description: li.description || inv.notes || "Servicii transport",
+            um: li.unit || "BUC",
+            quantity, unitPrice, value, vatRate, vat,
+          };
+        })
+      : (() => {
+          const value = Number(inv.amount) || 0;
+          const vatRate = defaultVat;
+          const vat = Math.round(value * (vatRate / 100) * 100) / 100;
+          return [{
+            description: inv.notes || `Servicii transport ${order?.reference_number ?? ""}`.trim(),
+            um: "BUC", quantity: 1, unitPrice: value, value, vatRate, vat,
+          }];
+        })();
+
+    return generateInvoicePdf({
+      invoiceNumber: inv.invoice_number || "",
+      date: inv.issue_date,
+      dueDate: inv.due_date,
+      currency: inv.currency || "RON",
+      reference: order?.reference_number || order?.id || null,
+      notes: inv.notes,
+      supplier,
+      client,
+      lines,
+    });
+  };
+
+  // Preview the generated FACTURA inline (uses the existing doc preview pane).
+  const handlePreviewInvoicePdf = async (inv: OrderInvoice) => {
+    try {
+      const { objectUrl } = await buildInvoicePdf(inv);
+      setPreviewDoc({
+        id: inv.id,
+        name: `Factura_${inv.invoice_number || "draft"}.pdf`,
+        file_url: objectUrl,
+        document_type: "invoice",
+        created_at: inv.issue_date || "",
+        mime_type: "application/pdf",
+      });
+    } catch (err: any) {
+      toast({ title: "PDF generation failed", description: err.message, variant: "destructive" });
+    }
+  };
+
+  // Download the generated FACTURA as a PDF file.
+  const handleDownloadInvoicePdf = async (inv: OrderInvoice) => {
+    try {
+      const { blob, filename } = await buildInvoicePdf(inv);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: "Invoice PDF downloaded" });
+    } catch (err: any) {
+      toast({ title: "PDF generation failed", description: err.message, variant: "destructive" });
+    }
+  };
+
   const handleRecordPayment = async (invoiceId: string, paymentData: {
     amount: number;
     payment_date: string;
@@ -6031,6 +6155,16 @@ const handleSaveInvoice = async (formData: {
                             <Eye className="h-3 w-3" />
                             Preview
                           </Button>
+                        ) : inv.direction === 'outgoing' ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-[10px] px-2 gap-1"
+                            onClick={() => handlePreviewInvoicePdf(inv)}
+                          >
+                            <Eye className="h-3 w-3" />
+                            Preview
+                          </Button>
                         ) : null}
 
                         {/* Download - Smartbill or file_url */}
@@ -6055,6 +6189,16 @@ const handleSaveInvoice = async (formData: {
                             <Download className="h-3 w-3" />
                             Download
                           </a>
+                        ) : inv.direction === 'outgoing' ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-[10px] px-2 gap-1"
+                            onClick={() => handleDownloadInvoicePdf(inv)}
+                          >
+                            <Download className="h-3 w-3" />
+                            Download
+                          </Button>
                         ) : null}
 
                         {/* Send via Email */}
