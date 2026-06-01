@@ -21,7 +21,12 @@ export interface SagaLinie {
 
 export interface SagaFactura {
   tip: SagaTip
-  clientCIF: string // customer fiscal code (CUI), digits only
+  // For Romanian clients: fiscal code (CUI), digits only (Saga prepends RO).
+  // For foreign clients: the FULL VAT incl. ISO country prefix, e.g. "IT00076460286".
+  clientCIF: string
+  // ISO-2 country code of the client (e.g. "RO", "IT"). Defaults to "RO".
+  // The agent must use this for the CLIENTI.TARA column instead of hardcoding RO.
+  clientTara: string
   clientNume: string // max 64
   data: string // YYYY-MM-DD
   scadenta?: string // YYYY-MM-DD, default = data
