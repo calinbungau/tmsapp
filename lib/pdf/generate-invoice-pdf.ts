@@ -298,14 +298,6 @@ export function generateInvoicePdf(input: InvoicePdfInput): BuildInvoicePdfResul
   doc.text("Total", right - 200, totalY)
   doc.text(`${fmtNum(grandTotal, 2)}`, right, totalY, { align: "right" })
 
-  // ── Notes (optional) ──
-  if (input.notes && input.notes.trim()) {
-    doc.setFont("helvetica", "normal")
-    doc.setFontSize(8.5)
-    doc.setTextColor(...GREY)
-    doc.text(input.notes.trim(), left, totalY + 30, { maxWidth: right - left })
-  }
-
   // ── Footer ──
   doc.setFontSize(8)
   doc.setTextColor(...GREY)
