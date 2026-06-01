@@ -393,7 +393,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       fsm: "FSM", tasks: "Tasks", forms: "Forms", "live-map": "Live Map", chat: "Chat",
       geofences: "Geofences", drivers: "Drivers", vehicles: "Vehicles", trailers: "Trailers",
       documents: "Documents", maintenance: "Maintenance", hr: "HR",
-      finance: "Finance", dashboard: "Dashboard", "cost-catalog": "Cost Catalog", "cost-entries": "Cost Entries", budgets: "Budgets", kpis: "KPIs",
+      finance: "Finance", dashboard: "Dashboard", invoices: "Invoices", "cost-catalog": "Cost Catalog", "cost-entries": "Cost Entries", budgets: "Budgets", kpis: "KPIs",
       settings: "Settings", company: "Company Profile", template: "Template Builder", logs: "Logs", employees: "Employees",
       departments: "Departments", "business-partners": "Partners",
       notifications: "Notifications", new: "New", email: "Email",
@@ -435,6 +435,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           items: [
             { href: "/admin/finance/dashboard", label: "Dashboard", icon: LineChart },
             { href: "/admin/finance/review", label: "Review Queue", icon: Sparkles },
+            { href: "/admin/finance/invoices", label: "Invoices", icon: FileText },
             { href: "/admin/finance/cost-catalog", label: "Cost Catalog", icon: BookOpen },
             { href: "/admin/finance/cost-entries", label: "Cost Entries", icon: Receipt },
             { href: "/admin/finance/budgets", label: "Budgets", icon: PiggyBank },
