@@ -86,6 +86,18 @@ function fmtTime(iso?: string): string {
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
+// Spreadsheet-style labels so we never overflow past "Z" into ASCII symbols:
+// A, B, … Z, AA, AB, … This keeps the A → B → C legend readable for long routes.
+function legLabel(index: number): string {
+  let n = index;
+  let out = "";
+  do {
+    out = String.fromCharCode(65 + (n % 26)) + out;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return out;
+}
+
 function fmtDuration(ms: number): string {
   const totalMin = Math.round(ms / 60000);
   if (totalMin < 60) return `${totalMin} min`;
@@ -213,12 +225,18 @@ export default function DetermineCostMap({ stops, track }: Props) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef       = React.useRef<L.Map | null>(null);
   const layerRef     = React.useRef<L.LayerGroup | null>(null);
+  const hasFittedRef = React.useRef(false);
   const [mapZoom, setMapZoom] = React.useState(5);
 
   // Segment the GPS track into driving legs + breaks (memoized).
   const segments = React.useMemo(() => segmentTrips(track), [track]);
   const tripSegments = segments.filter(s => s.type === "trip");
   const stopSegments = segments.filter(s => s.type === "stop");
+
+  // Re-fit the viewport whenever a *new* track is loaded (e.g. "Get GPS distance").
+  React.useEffect(() => {
+    hasFittedRef.current = false;
+  }, [track]);
 
   // Initialise the map exactly once.
   React.useEffect(() => {
@@ -260,7 +278,12 @@ export default function DetermineCostMap({ stops, track }: Props) {
     if (!map || !layer) return;
     layer.clearLayers();
 
-    const pts: L.LatLngExpression[] = [];
+    // `stopPts` = planned pickup/delivery markers (may be far apart);
+    // `gpsPts`  = points from the real driven track. We fit to the GPS track
+    // when it exists so the view hugs the route exactly like Route History,
+    // and only fall back to the planned stops before any GPS is pulled.
+    const stopPts: L.LatLngExpression[] = [];
+    const gpsPts: L.LatLngExpression[] = [];
 
     // 1) Planned stops (always shown, even before GPS is pulled).
     stops.forEach((s) => {
@@ -270,7 +293,7 @@ export default function DetermineCostMap({ stops, track }: Props) {
           `<div style="font-size:11px"><strong>${s.label}</strong>${s.stop_type ? `<br/><span style="opacity:.7">${s.stop_type}</span>` : ""}</div>`,
         )
         .addTo(layer);
-      pts.push([s.lat, s.lng]);
+      stopPts.push([s.lat, s.lng]);
     });
 
     // Faint dashed connector between stops to suggest the planned route
@@ -296,7 +319,7 @@ export default function DetermineCostMap({ stops, track }: Props) {
     segments.forEach((seg, idx) => {
       if (seg.type === "trip" && seg.positions.length > 1) {
         const latlngs = seg.positions.map(p => [p.lat, p.lng] as [number, number]);
-        latlngs.forEach(ll => pts.push(ll));
+        latlngs.forEach(ll => gpsPts.push(ll));
 
         L.polyline(latlngs, {
           color: seg.color,
@@ -352,7 +375,7 @@ export default function DetermineCostMap({ stops, track }: Props) {
 
       // Break / stop pin.
       if (seg.type === "stop") {
-        pts.push([seg.startLat, seg.startLng]);
+        gpsPts.push([seg.startLat, seg.startLng]);
         L.marker([seg.startLat, seg.startLng], {
           icon: L.divIcon({
             className: "",
@@ -379,11 +402,17 @@ export default function DetermineCostMap({ stops, track }: Props) {
       }
     });
 
-    // Fit the map to whatever we have.
-    if (pts.length === 1) {
-      map.setView(pts[0] as L.LatLngExpression, 9);
-    } else if (pts.length >= 2) {
-      map.fitBounds(L.latLngBounds(pts as L.LatLngExpression[]), { padding: [28, 28], maxZoom: 15 });
+    // Fit ONCE per data load (re-armed whenever a new track arrives), hugging
+    // the real GPS track when present — exactly like the Route History map.
+    if (!hasFittedRef.current) {
+      const fitPts = gpsPts.length >= 2 ? gpsPts : stopPts;
+      if (fitPts.length === 1) {
+        map.setView(fitPts[0] as L.LatLngExpression, 9);
+        hasFittedRef.current = true;
+      } else if (fitPts.length >= 2) {
+        map.fitBounds(L.latLngBounds(fitPts as L.LatLngExpression[]), { padding: [50, 50], maxZoom: 15 });
+        hasFittedRef.current = true;
+      }
     }
 
     // Recalculate size in case the dialog only just opened.
@@ -406,7 +435,7 @@ export default function DetermineCostMap({ stops, track }: Props) {
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
             Route legend
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 max-h-[40vh] overflow-y-auto pr-1">
             {tripSegments.map((seg, i) => (
               <div key={i} className="flex items-center gap-2 text-[11px]">
                 <span
@@ -414,24 +443,24 @@ export default function DetermineCostMap({ stops, track }: Props) {
                   style={{ backgroundColor: seg.color }}
                 />
                 <span className="text-foreground/90 truncate">
-                  {String.fromCharCode(65 + i)} → {String.fromCharCode(66 + i)}
+                  {legLabel(i)} → {legLabel(i + 1)}
                 </span>
                 <span className="ml-auto font-mono text-[10px] text-muted-foreground">
                   {seg.distance} km
                 </span>
               </div>
             ))}
-            {stopSegments.length > 0 && (
-              <div className="mt-1 flex items-center gap-2 border-t border-border/40 pt-1 text-[11px]">
+          </div>
+          {stopSegments.length > 0 && (
+            <div className="mt-1 flex items-center gap-2 border-t border-border/40 pt-1 text-[11px]">
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-slate-400 bg-slate-900 text-[8px] font-bold text-white">
                   P
                 </span>
                 <span className="text-muted-foreground">
                   {stopSegments.length} break{stopSegments.length > 1 ? "s" : ""}
                 </span>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>
