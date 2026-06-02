@@ -258,7 +258,7 @@ export function ReceiptImportDialog({ open, onOpenChange, adminId, onImported }:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-5xl overflow-hidden p-0">
+      <DialogContent className="w-[95vw] max-w-6xl sm:max-w-6xl max-h-[80vh] overflow-hidden p-0">
         <DialogHeader className="border-b border-border px-6 py-4">
           <DialogTitle className="flex items-center gap-2">
             <Landmark className="h-5 w-5 text-primary" aria-hidden="true" />
@@ -343,7 +343,7 @@ export function ReceiptImportDialog({ open, onOpenChange, adminId, onImported }:
               </span>
             </div>
 
-            <div className="max-h-[55vh] overflow-y-auto">
+            <div className="max-h-[50vh] overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-background">
                   <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -368,7 +368,7 @@ export function ReceiptImportDialog({ open, onOpenChange, adminId, onImported }:
                             {row.credit.debtorIban ? ` · ${row.credit.debtorIban}` : ""}
                           </div>
                           {row.credit.remittanceInfo && (
-                            <div className="mt-0.5 max-w-xs truncate text-xs text-muted-foreground">
+                            <div className="mt-0.5 max-w-md truncate text-xs text-muted-foreground">
                               {row.credit.remittanceInfo}
                             </div>
                           )}
