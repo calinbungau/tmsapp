@@ -324,7 +324,13 @@ export function generateInvoicePdf(input: InvoicePdfInput): BuildInvoicePdfResul
   const base64 =
     typeof window !== "undefined" ? window.btoa(binary) : Buffer.from(buffer).toString("base64")
 
-  const objectUrl = typeof URL !== "undefined" ? URL.createObjectURL(blob) : ""
+  // `URL.createObjectURL` only exists in the browser. In Node (e.g. when this
+  // runs inside an API route to build a FACTURA for emailing) the global URL
+  // class exists but has no createObjectURL, so guard for the method too.
+  const objectUrl =
+    typeof URL !== "undefined" && typeof (URL as any).createObjectURL === "function"
+      ? URL.createObjectURL(blob)
+      : ""
 
   return { blob, base64, filename, objectUrl }
 }
