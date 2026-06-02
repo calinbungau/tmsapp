@@ -65,6 +65,8 @@ interface Segment {
   startLng: number;
   endLat: number;
   endLng: number;
+  startAddress?: string | null;
+  endAddress?: string | null;
   distance: number;
   duration: number;
   avgSpeed: number;
@@ -84,18 +86,6 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 function fmtTime(iso?: string): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-}
-
-// Spreadsheet-style labels so we never overflow past "Z" into ASCII symbols:
-// A, B, … Z, AA, AB, … This keeps the A → B → C legend readable for long routes.
-function legLabel(index: number): string {
-  let n = index;
-  let out = "";
-  do {
-    out = String.fromCharCode(65 + (n % 26)) + out;
-    n = Math.floor(n / 26) - 1;
-  } while (n >= 0);
-  return out;
 }
 
 function fmtDuration(ms: number): string {
@@ -141,6 +131,8 @@ function segmentTrips(positions: Position[]): Segment[] {
       startLng: pts[0].lng,
       endLat: pts[pts.length - 1].lat,
       endLng: pts[pts.length - 1].lng,
+      startAddress: pts[0].address ?? null,
+      endAddress: pts[pts.length - 1].address ?? null,
       distance: Math.round(dist * 10) / 10,
       duration: time(pts[pts.length - 1]) - time(pts[0]),
       avgSpeed,
@@ -431,21 +423,26 @@ export default function DetermineCostMap({ stops, track }: Props) {
 
       {/* Legend — A → B → break, same language as Route History */}
       {tripSegments.length > 0 && (
-        <div className="absolute bottom-3 left-3 z-[1000] rounded-lg border border-border/50 bg-card/90 backdrop-blur-md px-3 py-2 shadow-lg max-w-[220px]">
+        <div className="absolute bottom-3 left-3 z-[1000] rounded-lg border border-border/50 bg-card/90 backdrop-blur-md px-3 py-2 shadow-lg max-w-[280px]">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
             Route legend
           </div>
-          <div className="flex flex-col gap-1 max-h-[40vh] overflow-y-auto pr-1">
+          <div className="flex flex-col gap-1.5 max-h-[40vh] overflow-y-auto pr-1">
             {tripSegments.map((seg, i) => (
-              <div key={i} className="flex items-center gap-2 text-[11px]">
+              <div key={i} className="flex items-start gap-2 text-[11px]">
                 <span
-                  className="inline-block h-1 w-5 shrink-0 rounded-full"
+                  className="mt-1 inline-block h-1 w-5 shrink-0 rounded-full"
                   style={{ backgroundColor: seg.color }}
                 />
-                <span className="text-foreground/90 truncate">
-                  {legLabel(i)} → {legLabel(i + 1)}
-                </span>
-                <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                <div className="min-w-0 flex-1">
+                  <div className="text-foreground/90 truncate">
+                    {seg.startAddress || `${seg.startLat.toFixed(3)}, ${seg.startLng.toFixed(3)}`}
+                  </div>
+                  <div className="text-muted-foreground truncate">
+                    {"→ "}{seg.endAddress || `${seg.endLat.toFixed(3)}, ${seg.endLng.toFixed(3)}`}
+                  </div>
+                </div>
+                <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
                   {seg.distance} km
                 </span>
               </div>
