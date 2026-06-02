@@ -79,14 +79,13 @@ type Invoice = {
   smartbill_number: string | null;
 };
 
-// A row is selectable in the picker as long as we have SOME way to
-// produce a PDF for it: either a stored Blob URL (`file_url`) or
-// the Smartbill coordinates (`series` + `number`). Centralised in
-// one helper so the filter, the select-all derivation, and the
-// per-bundle counts all stay in lockstep — earlier this was just
-// `i.file_url`, which silently hid every Smartbill invoice.
-const invoiceHasFile = (i: Invoice) =>
-  !!i.file_url || !!(i.smartbill_series && i.smartbill_number);
+// Every outgoing invoice is selectable: the server can always produce a
+// PDF for it via one of three strategies — a stored Blob URL (`file_url`),
+// the Smartbill API (`series` + `number`), or, for TMS/Saga invoices that
+// have neither, a Romanian FACTURA generated on the fly. This used to gate
+// on file_url / Smartbill coords, which silently hid every Saga-synced
+// invoice (the most common case for accounts billing through Saga).
+const invoiceHasFile = (_i: Invoice) => true;
 
 type ChildOrder = {
   id: string;

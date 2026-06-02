@@ -4,6 +4,7 @@ import { decrypt } from "@/lib/encryption";
 import { PDFDocument } from "pdf-lib";
 import nodemailer from "nodemailer";
 import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
+import { buildInvoicePdfBufferServer } from "@/lib/pdf/build-invoice-pdf-server";
 
 /**
  * POST /api/orders/[id]/send-docs-to-customer
@@ -176,7 +177,7 @@ export async function POST(
         ? supabase
             .from("order_invoices")
             .select(
-              "id, invoice_number, file_url, order_id, direction, smartbill_series, smartbill_number, admin_id"
+              "id, invoice_number, file_url, order_id, direction, smartbill_series, smartbill_number, admin_id, issue_date, due_date, currency, exchange_rate, amount, tax_rate, notes, line_items, business_partner_id"
             )
             .in("id", invoiceIds)
         : Promise.resolve({ data: [], error: null }),
@@ -223,6 +224,9 @@ export async function POST(
         smartbill_series: (r as any).smartbill_series as string | null,
         smartbill_number: (r as any).smartbill_number as string | null,
         invoice_admin_id: (r as any).admin_id as string | null,
+        // Full invoice row, kept so TMS/Saga invoices (no file_url, no
+        // Smartbill doc) can have their FACTURA generated on the server.
+        invoiceRow: r as any,
         filename: r.invoice_number ? `Invoice-${r.invoice_number}.pdf` : `invoice-${r.id.slice(0, 8)}.pdf`,
         mime: "application/pdf",
       })),
@@ -234,16 +238,14 @@ export async function POST(
       return NextResponse.json({ error: "One or more documents do not belong to this order" }, { status: 403 });
     }
 
-    // A row is downloadable if it has EITHER a stored file_url OR
-    // (for invoices) the Smartbill coordinates needed to pull the
-    // PDF from Smartbill's API on the fly. Anything else would
-    // produce an empty attachment and confuse the customer.
+    // A row is downloadable if it has a stored file_url. Invoices are
+    // ALWAYS downloadable: we have three fallbacks in priority order —
+    // (1) stored file_url, (2) Smartbill PDF API, (3) a FACTURA we
+    // generate on the server for TMS/Saga invoices that have neither.
+    // Only non-invoice documents without a file_url are dropped.
     const downloadable = allRows.filter((r) => {
       if (r.url) return true;
-      if (r.kind === "invoice") {
-        const inv = r as typeof r & { smartbill_series?: string | null; smartbill_number?: string | null };
-        return !!(inv.smartbill_series && inv.smartbill_number);
-      }
+      if (r.kind === "invoice") return true;
       return false;
     });
     if (downloadable.length === 0) {
@@ -256,7 +258,11 @@ export async function POST(
     // skip the query entirely when no Smartbill rows are involved
     // to keep the happy path (stored Blob URLs) fast.
     const needsSmartbill = downloadable.some(
-      (r) => !r.url && r.kind === "invoice"
+      (r) =>
+        !r.url &&
+        r.kind === "invoice" &&
+        (r as any).smartbill_series &&
+        (r as any).smartbill_number
     );
     let smartbillIntegration: {
       smartbill_email: string;
@@ -285,7 +291,14 @@ export async function POST(
           const res = await fetchAsBuffer(row.url as string);
           return res ? { ...row, ...res } : null;
         }
-        if (row.kind === "invoice" && smartbillIntegration) {
+        // Smartbill invoice: pull the PDF from Smartbill's API. Only when
+        // the row actually has series + number AND the integration resolved.
+        if (
+          row.kind === "invoice" &&
+          smartbillIntegration &&
+          (row as any).smartbill_series &&
+          (row as any).smartbill_number
+        ) {
           const inv = row as typeof row & { smartbill_series: string; smartbill_number: string };
           const authHeader = Buffer.from(
             `${smartbillIntegration.smartbill_email}:${smartbillIntegration.smartbill_token}`
@@ -301,23 +314,41 @@ export async function POST(
                 Authorization: `Basic ${authHeader}`,
               },
             });
-            if (!r.ok) {
-              console.error("[send-docs] smartbill PDF fetch failed", {
-                status: r.status,
-                series: inv.smartbill_series,
-                number: inv.smartbill_number,
-              });
-              return null;
+            if (r.ok) {
+              const arrayBuf = await r.arrayBuffer();
+              return {
+                ...row,
+                buffer: Buffer.from(arrayBuf),
+                contentType: "application/pdf",
+              };
             }
-            const arrayBuf = await r.arrayBuffer();
+            console.error("[send-docs] smartbill PDF fetch failed, falling back to FACTURA", {
+              status: r.status,
+              series: inv.smartbill_series,
+              number: inv.smartbill_number,
+            });
+            // fall through to FACTURA generation below
+          } catch (err) {
+            console.error("[send-docs] smartbill PDF fetch threw, falling back to FACTURA", err);
+            // fall through to FACTURA generation below
+          }
+        }
+
+        // TMS/Saga invoice (or Smartbill fallback): generate the Romanian
+        // FACTURA PDF on the server from the invoice's own data.
+        if (row.kind === "invoice" && (row as any).invoiceRow) {
+          const built = await buildInvoicePdfBufferServer(
+            supabase,
+            adminId,
+            (row as any).invoiceRow
+          );
+          if (built) {
             return {
               ...row,
-              buffer: Buffer.from(arrayBuf),
+              filename: built.filename || row.filename,
+              buffer: built.buffer,
               contentType: "application/pdf",
             };
-          } catch (err) {
-            console.error("[send-docs] smartbill PDF fetch threw", err);
-            return null;
           }
         }
         return null;
