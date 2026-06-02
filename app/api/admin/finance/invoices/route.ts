@@ -68,7 +68,9 @@ export async function GET(req: NextRequest) {
   }
 
   const invoices = (data ?? []).map((inv: any) => {
-    const total = inv.total_with_tax ?? inv.amount ?? 0
+    // total_with_tax can legitimately be 0 (older/mis-synced rows) — fall back
+    // to the net amount so the list never shows a misleading 0 total.
+    const total = Number(inv.total_with_tax) > 0 ? inv.total_with_tax : (inv.amount ?? 0)
     const remaining =
       inv.remaining_amount != null ? inv.remaining_amount : Math.max(0, total - (inv.paid_amount ?? 0))
     const partnerName =
