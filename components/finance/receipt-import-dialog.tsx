@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SearchableSelect, type SearchableSelectOption } from "@/components/ui/searchable-select"
 import { useToast } from "@/hooks/use-toast"
 import {
   Upload,
@@ -206,6 +207,22 @@ export function ReceiptImportDialog({ open, onOpenChange, adminId, onImported }:
       out.push(inv)
     }
     return out
+  }
+
+  // Turn open-invoice candidates into searchable-select options. The label
+  // carries the invoice number, customer name and order reference so cmdk can
+  // filter on any of them; the remaining amount is shown as a sublabel.
+  function buildInvoiceOptions(opts: OpenInvoiceOption[]): SearchableSelectOption[] {
+    const labelParts = (o: OpenInvoiceOption) =>
+      [o.invoiceNumber ?? "no number", o.partnerName, o.orderReference].filter(Boolean).join(" · ")
+    return [
+      { value: SKIP, label: "Do not record (skip)" },
+      ...opts.map((o) => ({
+        value: o.id,
+        label: labelParts(o),
+        sublabel: fmtMoney(o.remainingAmount, o.currency),
+      })),
+    ]
   }
 
   const confirmableCount = useMemo(() => {
@@ -389,25 +406,15 @@ export function ReceiptImportDialog({ open, onOpenChange, adminId, onImported }:
                           {isDuplicate ? (
                             <span className="text-xs text-muted-foreground">Ignored</span>
                           ) : (
-                            <Select
+                            <SearchableSelect
+                              className="w-[280px]"
                               value={selections[row.id] ?? SKIP}
                               onValueChange={(v) => setSelections((s) => ({ ...s, [row.id]: v }))}
-                            >
-                              <SelectTrigger className="w-[260px]" aria-label="Choose invoice">
-                                <SelectValue placeholder="Choose invoice" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value={SKIP}>Do not record (skip)</SelectItem>
-                                {opts.map((o) => (
-                                  <SelectItem key={o.id} value={o.id}>
-                                    {(o.invoiceNumber ?? "no number") +
-                                      " · " +
-                                      fmtMoney(o.remainingAmount, o.currency) +
-                                      (o.partnerName ? ` · ${o.partnerName}` : "")}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              placeholder="Choose invoice"
+                              searchPlaceholder="Search invoice or customer..."
+                              emptyText="No matching invoice."
+                              options={buildInvoiceOptions(opts)}
+                            />
                           )}
                         </td>
                       </tr>
