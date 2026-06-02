@@ -103,6 +103,16 @@ export interface CostMapPosition {
   lat: number;
   lng: number;
   time?: string;
+  /** km/h — used to segment driving vs stopped (break) periods. */
+  speed?: number;
+  /** Heading in degrees — used to rotate the direction arrows. */
+  course?: number;
+  /** Engine state — helps split a trip when the truck shuts down. */
+  ignition?: boolean | null;
+  /** Reverse-geocoded label shown in arrow/stop popups. */
+  address?: string | null;
+  /** Traccar running odometer (km). */
+  totalDistance?: number | null;
 }
 
 interface Props {
@@ -431,7 +441,11 @@ export function DetermineCostDialog({
         throw new Error(msg);
       }
       const json = await res.json();
-      const rawPositions: Array<{ lat: number; lng: number; time?: string; totalDistance?: number | null }> = json?.positions || [];
+      const rawPositions: Array<{
+        lat: number; lng: number; time?: string;
+        speed?: number; course?: number; ignition?: boolean | null;
+        address?: string | null; totalDistance?: number | null;
+      }> = json?.positions || [];
 
       if (rawPositions.length === 0) {
         toast({
@@ -445,7 +459,16 @@ export function DetermineCostDialog({
 
       const positions: CostMapPosition[] = rawPositions
         .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng))
-        .map(p => ({ lat: p.lat, lng: p.lng, time: p.time }));
+        .map(p => ({
+          lat: p.lat,
+          lng: p.lng,
+          time: p.time,
+          speed: p.speed,
+          course: p.course,
+          ignition: p.ignition,
+          address: p.address,
+          totalDistance: p.totalDistance,
+        }));
 
       // Prefer Traccar's running totalDistance if available — it accounts
       // for engine-on/off gaps better than naïve haversine summation.
@@ -555,7 +578,7 @@ export function DetermineCostDialog({
     computed, extras, currency, gpsSource, gpsTrack, notes,
   ]);
 
-  // ── Save (without applying) ──────────────────────────
+  // ── Save (without applying) ──────���───────────────────
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -639,7 +662,7 @@ export function DetermineCostDialog({
           Previously the body used `max-h: calc(92vh - 120px)` which was
           larger than the actual remaining space and pushed the footer
           (Cancel / Save breakdown / Apply) below the viewport. */}
-      <DialogContent className="!max-w-[min(1500px,95vw)] w-[95vw] h-[92vh] p-0 overflow-hidden flex flex-col">
+      <DialogContent className="!max-w-[min(1500px,95vw)] w-[95vw] h-[88vh] max-h-[760px] p-0 overflow-hidden flex flex-col">
         <DialogHeader className="px-5 pt-5 pb-3 border-b border-border/40 shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Calculator className="h-5 w-5 text-primary" />
@@ -911,7 +934,7 @@ export function DetermineCostDialog({
           {/* ── RIGHT: map + live total ── */}
           <div className="flex flex-col min-h-[320px] lg:min-h-0">
             <div className="flex-1 min-h-[260px] lg:min-h-0 bg-muted/20">
-              <CostRouteMap stops={stops} track={gpsTrack} />
+              <CostRouteMap stops={stops} track={gpsTrack} unitLabel={selectedUnit?.label} />
             </div>
             {/* Live total pinned under the map */}
             <div className="border-t border-border/40 bg-card/40 p-4">
