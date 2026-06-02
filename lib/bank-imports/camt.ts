@@ -52,6 +52,11 @@ function parseAmount(node: any): { amount: number; currency: string } {
   return { amount, currency: String(ccy) }
 }
 
+/** Normalize an IBAN for comparison: strip spaces and uppercase. */
+function normIban(v: string | null | undefined): string {
+  return (v ?? "").replace(/\s+/g, "").toUpperCase()
+}
+
 export interface ParsedStatement {
   account: BankStatementAccount
   credits: BankCreditEntry[]
@@ -77,11 +82,9 @@ export function parseCamt053(xml: string): ParsedStatement {
 
   const entries = toArray(stmtNode?.Ntry)
   const credits: BankCreditEntry[] = []
+  const ownIban = normIban(account.iban)
 
   for (const ntry of entries) {
-    const cdtDbt = text(ntry?.CdtDbtInd)
-    if (cdtDbt !== "CRDT") continue // only incoming receipts
-
     const status = text(ntry?.Sts?.Cd) ?? text(ntry?.Sts)
     if (status && status !== "BOOK") continue // skip pending/info entries
 
@@ -99,6 +102,30 @@ export function parseCamt053(xml: string): ParsedStatement {
     const debtorName = text(dbtrPty?.Nm) ?? null
     const debtorIban =
       text(tx?.RltdPties?.DbtrAcct?.Id?.IBAN) ?? text(tx?.RltdPties?.DbtrAcct?.Id?.Othr?.Id) ?? null
+    const creditorIban =
+      text(tx?.RltdPties?.CdtrAcct?.Id?.IBAN) ?? text(tx?.RltdPties?.CdtrAcct?.Id?.Othr?.Id) ?? null
+
+    // ── Determine whether this entry is an incoming receipt ──
+    // Some BT statements (notably RON accounts) leave <CdtDbtInd/> EMPTY on
+    // both the entry and tx level. When the explicit indicator is missing we
+    // infer direction from the IBANs: money is INCOMING when OUR account is
+    // the creditor (it received the funds), and OUTGOING when our account is
+    // the debtor. POS/card payments and fees have no related-party accounts,
+    // so they fall through and are skipped.
+    const cdtDbt = (text(ntry?.CdtDbtInd) ?? text(tx?.CdtDbtInd) ?? "").toUpperCase()
+    let isIncoming: boolean
+    if (cdtDbt === "CRDT") {
+      isIncoming = true
+    } else if (cdtDbt === "DBIT") {
+      isIncoming = false
+    } else {
+      const creditorIsUs = !!ownIban && normIban(creditorIban) === ownIban
+      const debtorIsUs = !!ownIban && normIban(debtorIban) === ownIban
+      // Incoming only when we are the creditor and NOT the debtor (a self
+      // transfer between our own accounts is treated as outgoing here).
+      isIncoming = creditorIsUs && !debtorIsUs
+    }
+    if (!isIncoming) continue // only incoming receipts ("incasari")
 
     // Remittance / reference text from multiple possible locations.
     const remitParts: string[] = []
