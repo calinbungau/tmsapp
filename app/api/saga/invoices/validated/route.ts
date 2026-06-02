@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
   // Ensure the invoice belongs to this tenant and is queued for Saga.
   const { data: invoice, error: fetchErr } = await supabase
     .from("order_invoices")
-    .select("id, business_partner_id, accounting_system, total_with_tax, amount")
+    .select("id, business_partner_id, accounting_system, total_with_tax, amount, currency, exchange_rate")
     .eq("id", body.tmsInvoiceId)
     .eq("admin_id", adminId)
     .maybeSingle()
@@ -101,6 +101,25 @@ export async function POST(req: NextRequest) {
   // Default sync status to 'synced' (we'll override to 'paid' below if applicable)
   let nextSyncStatus = "synced"
 
+  // ── Currency handling ──────────────────────────────────────────────
+  // Saga keeps the Romanian books in RON, so for a VALUTA (foreign-currency)
+  // invoice the agent reports valoare/tva/total/neachitat in RON together with
+  // the BNR reference rate (cursRef). Storing those RON figures straight onto a
+  // EUR invoice is wrong (e.g. 1000 EUR was being saved as 1000 × 5.2489 =
+  // 5248.90). For non-RON invoices we convert every monetary figure back into
+  // the invoice's own currency using cursRef (falling back to the rate already
+  // stored on the invoice).
+  const invoiceCurrency = String(invoice.currency || "RON").toUpperCase()
+  const isForeignCurrency = invoiceCurrency !== "RON"
+  const fxRate = Number(body.cursRef ?? invoice.exchange_rate)
+  const fx = isForeignCurrency && Number.isFinite(fxRate) && fxRate > 0 ? fxRate : 1
+  const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+  // RON → invoice currency (no-op for RON invoices, where fx === 1).
+  const toInvoiceCcy = (ronAmount: number) => round2(ronAmount / fx)
+
+  // Keep the reference rate on the invoice for future syncs / display.
+  if (Number.isFinite(fxRate) && fxRate > 0) update.exchange_rate = round2(fxRate)
+
   // Determine totals: prefer factura.linii, else use flat fields, else keep existing
   let totalWithTax: number | null = null
   let netAmount: number | null = null
@@ -108,33 +127,67 @@ export async function POST(req: NextRequest) {
   if (body.factura?.linii?.length) {
     const valoare = body.factura.linii.reduce((s, l) => s + (Number(l.valoare) || 0), 0)
     const tva = body.factura.linii.reduce((s, l) => s + (Number(l.tva) || 0), 0)
-    netAmount = Math.round((valoare + Number.EPSILON) * 100) / 100
-    totalWithTax = Math.round((valoare + tva + Number.EPSILON) * 100) / 100
+    netAmount = toInvoiceCcy(valoare)
+    totalWithTax = toInvoiceCcy(valoare + tva)
     update.amount = netAmount
     update.total_with_tax = totalWithTax
-    update.line_items = body.factura.linii
+    // Only overwrite line_items for RON invoices — for VALUTA invoices the
+    // linii are in RON and would clobber the correct foreign-currency lines.
+    if (!isForeignCurrency) update.line_items = body.factura.linii
     if (body.factura.data) update.issue_date = body.factura.data
     if (body.factura.scadenta) update.due_date = body.factura.scadenta
   } else if (body.total != null || body.bazaTva != null) {
-    // Use flat fields from agent
+    // Use flat fields from agent.
     if (body.bazaTva != null) {
-      netAmount = Math.round((body.bazaTva + Number.EPSILON) * 100) / 100
+      netAmount = toInvoiceCcy(body.bazaTva)
       update.amount = netAmount
     }
-    if (body.total != null) {
-      totalWithTax = Math.round((body.total + Number.EPSILON) * 100) / 100
+    // The agent sometimes sends total = 0 even when there is a net amount; in
+    // that case derive the gross from bazaTva + tva so total_with_tax is never
+    // wrongly zeroed.
+    const grossRon =
+      body.total != null && body.total > 0
+        ? body.total
+        : body.bazaTva != null
+          ? body.bazaTva + (Number(body.tva) || 0)
+          : null
+    if (grossRon != null) {
+      totalWithTax = toInvoiceCcy(grossRon)
       update.total_with_tax = totalWithTax
     }
   }
 
-  // Map payment state from neachitat (unpaid remainder)
-  // neachitat = 0 → fully paid
-  // 0 < neachitat < total → partially paid
-  // neachitat >= total or null → unpaid (status=issued)
+  // ── Map payment state ───────────────────────────────────────────────
+  // The gross total, expressed in the invoice's own currency.
   const existingTotal = totalWithTax ?? invoice.total_with_tax ?? invoice.amount
-  if (body.neachitat != null && existingTotal != null && existingTotal > 0) {
-    const neachitat = Math.round((body.neachitat + Number.EPSILON) * 100) / 100
-    const total = Math.round((existingTotal + Number.EPSILON) * 100) / 100
+  const total = existingTotal != null ? round2(existingTotal) : null
+
+  if (isForeignCurrency && total != null && total > 0) {
+    // For VALUTA invoices we cannot trust Saga's `neachitat`: it is reported in
+    // RON and does not correctly reflect payments recorded in the foreign
+    // currency. The TMS payment rows ARE in the invoice currency, so recompute
+    // paid / remaining from them and let those drive the status.
+    const { data: payRows } = await supabase
+      .from("order_invoice_payments")
+      .select("amount")
+      .eq("invoice_id", body.tmsInvoiceId)
+    const paid = round2((payRows ?? []).reduce((s, p) => s + (Number(p.amount) || 0), 0))
+    const remaining = round2(Math.max(0, total - paid))
+    update.paid_amount = paid
+    update.remaining_amount = remaining
+    if (remaining <= 0.01) {
+      update.status = "paid"
+      update.paid_date = new Date().toISOString().split("T")[0]
+      nextSyncStatus = "paid" // locked from further re-sync
+    } else if (paid > 0) {
+      update.status = "partially_paid"
+    } else {
+      update.status = "issued"
+    }
+  } else if (body.neachitat != null && total != null && total > 0) {
+    // RON invoice — neachitat is already in the invoice currency.
+    // neachitat = 0 → fully paid; 0 < neachitat < total → partial; else unpaid.
+    const neachitat = round2(body.neachitat)
 
     if (neachitat <= 0) {
       // Fully paid — lock the invoice
@@ -146,7 +199,7 @@ export async function POST(req: NextRequest) {
     } else if (neachitat < total) {
       // Partially paid
       update.status = "partially_paid"
-      update.paid_amount = Math.round((total - neachitat + Number.EPSILON) * 100) / 100
+      update.paid_amount = round2(total - neachitat)
       update.remaining_amount = neachitat
     } else {
       // Unpaid (neachitat >= total)

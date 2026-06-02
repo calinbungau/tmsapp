@@ -276,13 +276,36 @@ function InvoiceDialog({
     tax_rate: number;
   };
 
+  // ── Default tax type / rate from the order's VAT regime ──
+  // A NEW invoice should inherit the fiscal regime already set on the
+  // order (e.g. an "exempt / scutit de TVA" order must default to a 0%
+  // scutit tax type, not the generic 21% Normala). We map the order's
+  // customer/carrier VAT type onto the Saga/Smartbill tax-type vocabulary.
+  const orderVatType = (direction === 'outgoing'
+    ? (order?.customer_vat_type)
+    : (order?.carrier_vat_type)) || 'excluding';
+  const orderVatRate = Number(
+    (direction === 'outgoing' ? order?.customer_vat_rate : order?.carrier_vat_rate) ?? 21,
+  );
+  const deriveTaxDefault = (vatType: string, vatRate: number): { tax_type: string; tax_rate: number } => {
+    switch (vatType) {
+      case 'exempt':         return { tax_type: 'SDD', tax_rate: 0 };            // scutit cu drept de deducere
+      case 'reverse_charge': return { tax_type: 'Taxare inversa', tax_rate: 0 };
+      case 'non_taxable':    return { tax_type: 'SFDD', tax_rate: 0 };           // scutit fara drept de deducere
+      case 'including':      return { tax_type: 'TVA Inclus', tax_rate: 0 };
+      case 'excluding':
+      default:               return { tax_type: 'Normala', tax_rate: vatRate || 21 };
+    }
+  };
+  const defaultTax = deriveTaxDefault(orderVatType, orderVatRate);
+
   // Helper to build a default first line with auto-template
   const buildDefaultLineItem = (currency: string): InvoiceLineItem => ({
     description: buildLineDescription({ invoiceCurrency: currency }),
     quantity: 1,
     unit: 'BUC',
     unit_price: direction === 'outgoing' ? (order?.customer_price || 0) : (order?.carrier_cost || 0),
-    tax_rate: 21,
+    tax_rate: defaultTax.tax_rate,
   });
 
   // Initialize line items from existing invoice or create a default first line
@@ -341,14 +364,18 @@ function InvoiceDialog({
     invoice_number: invoice?.invoice_number || '',
     external_invoice_number: invoice?.external_invoice_number || '',
     currency: invoice?.currency || order?.currency || 'EUR',
-    tax_rate: invoice?.tax_rate ?? 21,
-    // Restore the saved tax type; fall back by rate for legacy invoices
-    // (21→Normala, 9→Redusa, 5→Redusa locuinte, 0→SDD).
+    tax_rate: invoice?.tax_rate ?? defaultTax.tax_rate,
+    // Restore the saved tax type; for an existing invoice fall back by rate
+    // for legacy rows (21→Normala, 9→Redusa, 5→Redusa locuinte, 0→SDD). For a
+    // brand-new invoice default to the regime derived from the order's VAT
+    // type (e.g. exempt/scutit → SDD at 0%), not the generic 21% Normala.
     tax_type: ((invoice as any)?.tax_type
-      || (invoice?.tax_rate === 9 ? 'Redusa'
-        : invoice?.tax_rate === 5 ? 'Redusa locuinte'
-        : invoice?.tax_rate === 0 ? 'SDD'
-        : 'Normala')) as string, // Smartbill / Saga tax type
+      || (invoice
+        ? (invoice?.tax_rate === 9 ? 'Redusa'
+          : invoice?.tax_rate === 5 ? 'Redusa locuinte'
+          : invoice?.tax_rate === 0 ? 'SDD'
+          : 'Normala')
+        : defaultTax.tax_type)) as string, // Smartbill / Saga tax type
     issue_date: invoice?.issue_date || new Date().toISOString().split('T')[0],
     due_date: invoice?.due_date || _defaultDueDate,
     skonto_percentage: invoice?.skonto_percentage || 0,
@@ -3985,7 +4012,7 @@ const handleSaveInvoice = async (formData: {
                 orderReference={order.reference_number || null}
                 onSent={() => { fetchOrder(); refreshLastDocsSent(); }}
               />
-              {/* ── Share Live Tracking ──────────────────────────────────
+              {/* ── Share Live Tracking ──���───────────────────────────────
                   Same parent-order-only gating as Send-Docs (customers
                   don't track subcontracts; they track the shipment as a
                   whole). Button + tiny "N active" caption mirror the
