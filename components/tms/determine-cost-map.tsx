@@ -21,6 +21,7 @@
 import * as React from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { Route, Clock, MapPin, Navigation, Gauge, Eye, EyeOff } from "lucide-react";
 
 interface Stop {
   id: string;
@@ -44,6 +45,8 @@ interface Position {
 interface Props {
   stops: Stop[];
   track: Position[];
+  /** Plate / unit label shown in the Route-History-style panel header. */
+  unitLabel?: string;
 }
 
 // Rotating palette — identical to the dispatcher Route History panel so the
@@ -213,22 +216,72 @@ function buildIcon(color: string): L.DivIcon {
   });
 }
 
-export default function DetermineCostMap({ stops, track }: Props) {
+export default function DetermineCostMap({ stops, track, unitLabel }: Props) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef       = React.useRef<L.Map | null>(null);
   const layerRef     = React.useRef<L.LayerGroup | null>(null);
   const hasFittedRef = React.useRef(false);
   const [mapZoom, setMapZoom] = React.useState(5);
 
+  // Timeline interactivity — mirrors the dispatcher Route History panel.
+  const [hiddenSegments, setHiddenSegments]   = React.useState<Set<number>>(new Set());
+  const [selectedSegment, setSelectedSegment] = React.useState<number | null>(null);
+  const [hoveredSegment, setHoveredSegment]   = React.useState<number | null>(null);
+
   // Segment the GPS track into driving legs + breaks (memoized).
   const segments = React.useMemo(() => segmentTrips(track), [track]);
-  const tripSegments = segments.filter(s => s.type === "trip");
-  const stopSegments = segments.filter(s => s.type === "stop");
+
+  // Aggregate stats shown in the summary bar.
+  const summary = React.useMemo(() => {
+    if (segments.length === 0) return null;
+    let totalDistance = 0, totalDriving = 0, totalStopped = 0, tripCount = 0;
+    for (const s of segments) {
+      if (s.type === "trip") { totalDistance += s.distance; totalDriving += s.duration; tripCount++; }
+      else { totalStopped += s.duration; }
+    }
+    return { totalDistance: Math.round(totalDistance * 10) / 10, totalDriving, totalStopped, tripCount };
+  }, [segments]);
+
+  const allTripsHidden = segments.length > 0 && segments.every((_, i) => hiddenSegments.has(i));
+
+  const toggleSegmentVisibility = (idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setHiddenSegments(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  };
+
+  const toggleAllVisibility = () => {
+    setHiddenSegments(prev =>
+      prev.size >= segments.length ? new Set() : new Set(segments.map((_, i) => i)),
+    );
+  };
+
+  const handleSegmentClick = (idx: number) =>
+    setSelectedSegment(prev => (prev === idx ? null : idx));
 
   // Re-fit the viewport whenever a *new* track is loaded (e.g. "Get GPS distance").
   React.useEffect(() => {
     hasFittedRef.current = false;
+    setHiddenSegments(new Set());
+    setSelectedSegment(null);
   }, [track]);
+
+  // Fly to a segment when it is selected from the timeline.
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || selectedSegment == null) return;
+    const seg = segments[selectedSegment];
+    if (!seg) return;
+    const pts: L.LatLngExpression[] =
+      seg.type === "trip"
+        ? seg.positions.map(p => [p.lat, p.lng] as [number, number])
+        : [[seg.startLat, seg.startLng]];
+    if (pts.length === 1) map.setView(pts[0], 14);
+    else map.fitBounds(L.latLngBounds(pts as L.LatLngExpression[]), { padding: [60, 60], maxZoom: 15 });
+  }, [selectedSegment, segments]);
 
   // Initialise the map exactly once.
   React.useEffect(() => {
@@ -309,14 +362,18 @@ export default function DetermineCostMap({ stops, track }: Props) {
     };
 
     segments.forEach((seg, idx) => {
+      const hidden = hiddenSegments.has(idx);
+      const highlight = selectedSegment === idx || hoveredSegment === idx;
+
       if (seg.type === "trip" && seg.positions.length > 1) {
         const latlngs = seg.positions.map(p => [p.lat, p.lng] as [number, number]);
         latlngs.forEach(ll => gpsPts.push(ll));
+        if (hidden) return;
 
         L.polyline(latlngs, {
           color: seg.color,
-          weight: 3,
-          opacity: 0.9,
+          weight: highlight ? 6 : 3,
+          opacity: highlight ? 1 : 0.9,
           lineCap: "round",
           lineJoin: "round",
           smoothFactor: 1,
@@ -368,6 +425,7 @@ export default function DetermineCostMap({ stops, track }: Props) {
       // Break / stop pin.
       if (seg.type === "stop") {
         gpsPts.push([seg.startLat, seg.startLng]);
+        if (hidden) return;
         L.marker([seg.startLat, seg.startLng], {
           icon: L.divIcon({
             className: "",
@@ -409,7 +467,7 @@ export default function DetermineCostMap({ stops, track }: Props) {
 
     // Recalculate size in case the dialog only just opened.
     setTimeout(() => map.invalidateSize(), 0);
-  }, [stops, segments, mapZoom]);
+  }, [stops, segments, mapZoom, hiddenSegments, selectedSegment, hoveredSegment]);
 
   return (
     <div className="h-full w-full relative">
@@ -421,43 +479,156 @@ export default function DetermineCostMap({ stops, track }: Props) {
         </div>
       )}
 
-      {/* Legend — A → B → break, same language as Route History */}
-      {tripSegments.length > 0 && (
-        <div className="absolute bottom-3 left-3 z-[1000] rounded-lg border border-border/50 bg-card/90 backdrop-blur-md px-3 py-2 shadow-lg max-w-[280px]">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-            Route legend
-          </div>
-          <div className="flex flex-col gap-1.5 max-h-[40vh] overflow-y-auto pr-1">
-            {tripSegments.map((seg, i) => (
-              <div key={i} className="flex items-start gap-2 text-[11px]">
-                <span
-                  className="mt-1 inline-block h-1 w-5 shrink-0 rounded-full"
-                  style={{ backgroundColor: seg.color }}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="text-foreground/90 truncate">
-                    {seg.startAddress || `${seg.startLat.toFixed(3)}, ${seg.startLng.toFixed(3)}`}
-                  </div>
-                  <div className="text-muted-foreground truncate">
-                    {"→ "}{seg.endAddress || `${seg.endLat.toFixed(3)}, ${seg.endLng.toFixed(3)}`}
-                  </div>
-                </div>
-                <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
-                  {seg.distance} km
-                </span>
+      {/* Route History panel — 1-1 with the dispatcher view (minus range select) */}
+      {segments.length > 0 && (
+        <div className="absolute top-3 left-3 z-[1000] flex w-[300px] max-w-[calc(100%-1.5rem)] max-h-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-xl border border-border/50 bg-card/95 backdrop-blur-md shadow-xl">
+          {/* Header */}
+          <div className="shrink-0 border-b border-border/20 px-4 pb-2 pt-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                <Route className="h-4 w-4 text-amber-400" />
               </div>
-            ))}
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold">Route History</h3>
+                {unitLabel && <p className="text-[10px] text-muted-foreground truncate">{unitLabel}</p>}
+              </div>
+            </div>
           </div>
-          {stopSegments.length > 0 && (
-            <div className="mt-1 flex items-center gap-2 border-t border-border/40 pt-1 text-[11px]">
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-slate-400 bg-slate-900 text-[8px] font-bold text-white">
-                  P
-                </span>
-                <span className="text-muted-foreground">
-                  {stopSegments.length} break{stopSegments.length > 1 ? "s" : ""}
-                </span>
+
+          {/* Summary bar */}
+          {summary && (
+            <div className="px-4 py-2 border-b border-border/20 bg-muted/5 shrink-0">
+              <div className="flex items-center gap-3 text-[10px]">
+                <div className="flex items-center gap-1">
+                  <Route className="h-3 w-3 text-amber-400" />
+                  <span className="font-semibold text-foreground">{summary.totalDistance} km</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Clock className="h-3 w-3 text-emerald-400" />
+                  <span className="text-muted-foreground">{fmtDuration(summary.totalDriving)}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <MapPin className="h-3 w-3 text-blue-400" />
+                  <span className="text-muted-foreground">{fmtDuration(summary.totalStopped)}</span>
+                </div>
+                <div className="ml-auto text-muted-foreground">
+                  {summary.tripCount} trip{summary.tripCount !== 1 ? "s" : ""}
+                </div>
+              </div>
+              <button
+                className="mt-1.5 flex items-center gap-1 text-[9px] text-muted-foreground hover:text-foreground transition-colors"
+                onClick={toggleAllVisibility}>
+                {allTripsHidden ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                {allTripsHidden ? "Show all trips" : "Hide all trips"}
+              </button>
             </div>
           )}
+
+          {/* Timeline */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {segments.map((seg, idx) => {
+              const isSelected = selectedSegment === idx;
+              const isHovered = hoveredSegment === idx;
+              const isHidden = hiddenSegments.has(idx);
+
+              if (seg.type === "stop") {
+                return (
+                  <div
+                    key={idx}
+                    className={`relative group flex items-start gap-3 px-4 py-2.5 transition-all ${isHidden ? "opacity-30" : ""} ${isSelected ? "bg-muted/15" : "hover:bg-muted/10"}`}>
+                    <button
+                      className="absolute top-2 right-2 p-0.5 rounded opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-zinc-300 transition-all"
+                      onClick={(e) => toggleSegmentVisibility(idx, e)}
+                      title={isHidden ? "Show on map" : "Hide from map"}>
+                      {isHidden ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                    </button>
+                    <button
+                      className="flex items-start gap-3 w-full text-left"
+                      onClick={() => handleSegmentClick(idx)}
+                      onMouseEnter={() => setHoveredSegment(idx)}
+                      onMouseLeave={() => setHoveredSegment(null)}>
+                      <div className="flex flex-col items-center shrink-0 pt-0.5">
+                        <div className="w-6 h-6 rounded-full bg-zinc-800 border-2 border-zinc-600 flex items-center justify-center">
+                          <span className="text-white font-extrabold text-[9px]">P</span>
+                        </div>
+                        {idx < segments.length - 1 && <div className="w-0.5 flex-1 min-h-[20px] bg-border/30 mt-1" />}
+                      </div>
+                      <div className="min-w-0 flex-1 pb-1">
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-[12px] font-bold font-mono text-foreground">{fmtTime(seg.startTime)}</span>
+                          <span className="text-[10px] text-muted-foreground">-</span>
+                          <span className="text-[12px] font-bold font-mono text-foreground">{fmtTime(seg.endTime)}</span>
+                        </div>
+                        {seg.startAddress && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug line-clamp-2">{seg.startAddress}</p>
+                        )}
+                        <div className="flex items-center gap-3 mt-1 text-[9px] text-zinc-500">
+                          <span className="flex items-center gap-0.5">
+                            <Clock className="h-2.5 w-2.5" />
+                            {fmtDuration(seg.duration)}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={idx}
+                  className={`relative group flex items-start gap-3 px-4 py-2.5 transition-all ${isHidden ? "opacity-30" : ""} ${isSelected ? "bg-muted/15" : "hover:bg-muted/10"}`}>
+                  <button
+                    className="absolute top-2 right-2 p-0.5 rounded opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-zinc-300 transition-all"
+                    onClick={(e) => toggleSegmentVisibility(idx, e)}
+                    title={isHidden ? "Show on map" : "Hide from map"}>
+                    {isHidden ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                  </button>
+                  <button
+                    className="flex items-start gap-3 w-full text-left"
+                    onClick={() => handleSegmentClick(idx)}
+                    onMouseEnter={() => setHoveredSegment(idx)}
+                    onMouseLeave={() => setHoveredSegment(null)}>
+                    <div className="flex flex-col items-center shrink-0 pt-0.5">
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: seg.color + "20", border: `2px solid ${seg.color}` }}>
+                        <Navigation className="h-3 w-3" style={{ color: seg.color }} />
+                      </div>
+                      {idx < segments.length - 1 && (
+                        <div className="w-0.5 flex-1 min-h-[20px] mt-1" style={{ backgroundColor: seg.color + "40" }} />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1 pb-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-[12px] font-bold font-mono text-foreground">{fmtTime(seg.startTime)}</span>
+                        {seg.startAddress && <span className="text-[10px] text-muted-foreground truncate">{seg.startAddress}</span>}
+                      </div>
+                      <div className="flex items-baseline gap-2 mt-0.5">
+                        <span className="text-[12px] font-bold font-mono text-foreground">{fmtTime(seg.endTime)}</span>
+                        {seg.endAddress && <span className="text-[10px] text-muted-foreground truncate">{seg.endAddress}</span>}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1.5 text-[9px]">
+                        <span className="flex items-center gap-0.5 text-zinc-400">
+                          <Clock className="h-2.5 w-2.5" /> {fmtDuration(seg.duration)}
+                        </span>
+                        <span className="flex items-center gap-0.5 text-zinc-400">
+                          <Route className="h-2.5 w-2.5" /> {seg.distance} km
+                        </span>
+                        <span className="flex items-center gap-0.5 text-zinc-400">
+                          <Gauge className="h-2.5 w-2.5" /> {seg.avgSpeed} km/h
+                        </span>
+                        {seg.maxSpeed > 0 && (
+                          <span className="flex items-center gap-0.5 text-zinc-500">max {seg.maxSpeed}</span>
+                        )}
+                      </div>
+                      <div className="mt-1.5 h-0.5 rounded-full w-full" style={{ backgroundColor: seg.color + "40" }}>
+                        <div className="h-full rounded-full" style={{ backgroundColor: seg.color, width: isSelected || isHovered ? "100%" : "0%", transition: "width 0.3s ease" }} />
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

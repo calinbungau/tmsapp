@@ -934,7 +934,7 @@ export function DetermineCostDialog({
           {/* ── RIGHT: map + live total ── */}
           <div className="flex flex-col min-h-[320px] lg:min-h-0">
             <div className="flex-1 min-h-[260px] lg:min-h-0 bg-muted/20">
-              <CostRouteMap stops={stops} track={gpsTrack} />
+              <CostRouteMap stops={stops} track={gpsTrack} unitLabel={selectedUnit?.label} />
             </div>
             {/* Live total pinned under the map */}
             <div className="border-t border-border/40 bg-card/40 p-4">
