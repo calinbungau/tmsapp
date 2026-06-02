@@ -109,6 +109,7 @@ async function uploadFile(file: File, adminId: string): Promise<string> {
 
 // Check monthly AI usage limit
 async function checkMonthlyLimit(adminId: string): Promise<{ allowed: boolean; used: number; limit: number | null; warningPct: number }> {
+  const supabase = getSupabase();
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
