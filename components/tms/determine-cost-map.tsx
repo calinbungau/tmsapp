@@ -481,7 +481,7 @@ export default function DetermineCostMap({ stops, track, unitLabel }: Props) {
 
       {/* Route History panel — 1-1 with the dispatcher view (minus range select) */}
       {segments.length > 0 && (
-        <div className="absolute top-3 left-3 z-[1000] flex w-[300px] max-w-[calc(100%-1.5rem)] max-h-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-xl border border-border/50 bg-card/95 backdrop-blur-md shadow-xl">
+        <div className="absolute bottom-3 left-3 z-[1000] flex w-[300px] max-w-[calc(100%-1.5rem)] max-h-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-xl border border-border/50 bg-card/95 backdrop-blur-md shadow-xl">
           {/* Header */}
           <div className="shrink-0 border-b border-border/20 px-4 pb-2 pt-3">
             <div className="flex items-center gap-2.5">
