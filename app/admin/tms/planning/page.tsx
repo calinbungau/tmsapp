@@ -329,12 +329,6 @@ export default function DispatchBoardPage() {
     const allOrderIds = mapped.map((o: any) => o.id);
     if (allOrderIds.length > 0) {
       const { data: allTripLinks } = await s.from("trip_orders").select("trip_id, order_id").in("order_id", allOrderIds);
-      // Track every order that has ANY trip (own-fleet, mixed, or fully
-      // subcontracted) — used by the Unassigned filter regardless of
-      // whether the trip ends up populating `vehicleTrips` (which only
-      // includes trips/legs with an own-fleet vehicle).
-      const orderIdsWithAnyTrip = new Set<string>((allTripLinks || []).map((l: any) => l.order_id));
-      setOrderIdsWithTrip(orderIdsWithAnyTrip);
       if (allTripLinks?.length) {
         const tripIds = [...new Set(allTripLinks.map((tl: any) => tl.trip_id))];
         const { data: allTrips } = await s.from("trips").select(`
@@ -355,8 +349,23 @@ export default function DispatchBoardPage() {
           mapped.forEach((o: any) => orderRefMap.set(o.id, o.reference_number));
 
           const vtMap = new Map<string, GanttTrip[]>();
+          // Track orders whose trip carries a REAL resource (own-fleet
+          // vehicle/driver on the trip or any leg, or a subcontract carrier).
+          // A hollow auto-created trip with no resources anywhere must NOT
+          // exclude its order from the "Unassigned" bucket — otherwise the
+          // order disappears from the board entirely (no vehicle row + not
+          // unassigned).
+          const orderIdsWithResolvedTrip = new Set<string>();
           allTrips.forEach((trip: any) => {
             const orderIds = tripToOrders.get(trip.id) || [];
+            const legsRaw = trip.trip_legs || [];
+            const tripHasResource =
+              !!trip.vehicle_id ||
+              !!trip.driver_id ||
+              legsRaw.some((l: any) => l.vehicle_id || l.driver_id || l.carrier_id);
+            if (tripHasResource) {
+              orderIds.forEach((oid: string) => orderIdsWithResolvedTrip.add(oid));
+            }
             const orders = orderIds.map(oid => mapped.find((o: any) => o.id === oid)).filter(Boolean) as OrderRow[];
             const primaryOrder = orders[0] || null;
             const allStops = (trip.trip_stops || []).sort((a: any, b: any) => a.sequence_order - b.sequence_order);
@@ -435,6 +444,7 @@ export default function DispatchBoardPage() {
             }
           });
           setVehicleTrips(vtMap);
+          setOrderIdsWithTrip(orderIdsWithResolvedTrip);
         } else {
           // No trips at all — clear stale entries so reloads don't keep
           // marking orders as "has trip" after their trips were deleted.
