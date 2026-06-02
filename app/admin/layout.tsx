@@ -389,7 +389,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const segments = pathname.replace("/admin", "").split("/").filter(Boolean);
     const crumbs: { label: string; href: string }[] = [];
     const labelMap: Record<string, string> = {
-      tms: "TMS", orders: "Orders", planning: "Planning", forwarding: "Forwarder Board", reports: "Reports", "ai-usage": "AI Usage", exchange: "Freight Exchange",
+      tms: "TMS", orders: "Orders", planning: "Planning", forwarding: "Forwarder Board", reports: "Reports", "ai-usage": "AI Usage", exchange: "Freight Exchange", "carrier-groups": "Carrier Groups",
       fsm: "FSM", tasks: "Tasks", forms: "Forms", "live-map": "Live Map", chat: "Chat",
       geofences: "Geofences", drivers: "Drivers", vehicles: "Vehicles", trailers: "Trailers",
       documents: "Documents", maintenance: "Maintenance", hr: "HR",
@@ -427,6 +427,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { href: "/admin/tms/planning", label: "Dispatch Board", icon: Radio },
         { href: "/admin/tms/forwarding", label: "Forwarder Board", icon: ArrowLeftRight },
         { href: "/admin/tms/exchange", label: "Freight Exchange", icon: Globe },
+        { href: "/admin/tms/exchange/carrier-groups", label: "Carrier Groups", icon: Users },
         { href: "/admin/action-center", label: "Action Center", icon: AlertCircle, badge: actionCenterAlerts },
         ...(isModuleEnabled("finance") && (canAccess("finance") || hasFullAccess()) ? [{
           group: true as const,
