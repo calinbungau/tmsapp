@@ -70,7 +70,11 @@ function mintToken(): string {
 // operator can also pick an asset that was never formally assigned
 // (e.g. a last-minute swap that hasn't been entered yet).
 // ─────────────────────────────────────────────────────────────────────────
-async function collectGpsResources(orderId: string, adminId: string) {
+async function collectGpsResources(
+  supabase: ReturnType<typeof getSupabase>,
+  orderId: string,
+  adminId: string
+) {
   // 1. Find the parent + all subcontract children so we know which
   //    assets are "on" the order.
   const { data: childOrders } = await supabase
@@ -239,7 +243,7 @@ export async function GET(
       .eq("order_id", orderId)
       .eq("admin_id", adminId)
       .order("created_at", { ascending: false }),
-    collectGpsResources(orderId, adminId),
+    collectGpsResources(supabase, orderId, adminId),
     supabase
       .from("orders")
       .select("reference_number, customer_reference, customer:business_partners!customer_id(name, email)")
@@ -347,6 +351,7 @@ export async function POST(
   // Optionally email the link.
   if (recipient_email) {
     const sent = await sendTrackingEmail({
+      supabase,
       adminId,
       userId: getUserId(req),
       orderId,
@@ -471,6 +476,7 @@ export async function PATCH(
     }
     const publicUrl = `${(base_url || "").replace(/\/$/, "")}/track/${existing.token}`;
     const sent = await sendTrackingEmail({
+      supabase,
       adminId,
       userId: getUserId(req),
       orderId,
@@ -531,6 +537,7 @@ export async function DELETE(
 // Email helper — separated so POST + PATCH (resend) share one path
 // ─────────────────────────────────────────────────────────────────────────
 async function sendTrackingEmail(args: {
+  supabase: ReturnType<typeof getSupabase>;
   adminId: string;
   userId: string | null;
   orderId: string;
@@ -538,7 +545,7 @@ async function sendTrackingEmail(args: {
   customMessage?: string;
   publicUrl: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { adminId, userId, orderId, recipientEmail, customMessage, publicUrl } = args;
+  const { supabase, adminId, userId, orderId, recipientEmail, customMessage, publicUrl } = args;
 
   const settings = await getUserEmailSettingsRow(supabase, adminId, userId);
   if (!settings) {
