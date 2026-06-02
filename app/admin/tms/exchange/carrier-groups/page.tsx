@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { createClient } from "@/lib/supabase/client"
 import { useAdminSession } from "@/hooks/use-admin-session"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -120,8 +120,9 @@ const OPERATORS: Record<string, { value: string; label: string }[]> = {
 }
 
 export default function CarrierGroupsPage() {
-  const { adminId, isLoading: sessionLoading } = useAdminSession()
-  const supabase = createClientComponentClient()
+  const { session, loading: sessionLoading } = useAdminSession()
+  const adminId = session?.id
+  const supabase = createClient()
 
   const [groups, setGroups] = useState<CarrierGroup[]>([])
   const [carriers, setCarriers] = useState<BusinessPartner[]>([])
