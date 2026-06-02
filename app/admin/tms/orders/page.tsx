@@ -779,8 +779,10 @@ export default function TMSOrdersPage() {
   const trips = order.trips || [];
   // Get all legs across all trips
   const allLegs = trips.flatMap(t => t.legs || []);
-  const hasOwnFleet = allLegs.some(l => l.assignment_type === "own_fleet");
-  const hasSubcontract = allLegs.some(l => l.assignment_type === "forwarding");
+  // A mode is only "decided" once a real resource is attached (driver/vehicle
+  // for own fleet, carrier for subcontract). Otherwise it reads as Undecided.
+  const hasOwnFleet = allLegs.some(l => l.assignment_type === "own_fleet" && (l.driver_id || l.vehicle_id));
+  const hasSubcontract = allLegs.some(l => l.assignment_type === "forwarding" && l.carrier_id);
   const hasMixed = hasOwnFleet && hasSubcontract;
   const ownFleetLegs = allLegs.filter(l => l.assignment_type === "own_fleet");
   const subcontractLegs = allLegs.filter(l => l.assignment_type === "forwarding");
@@ -904,8 +906,11 @@ export default function TMSOrdersPage() {
                 // Get all legs across all trips
                 const allLegs = trips.flatMap(t => t.legs || []);
                 // Determine execution type badges from legs
-                const hasOwnFleet = allLegs.some(l => l.assignment_type === "own_fleet");
-                const hasSubcontract = allLegs.some(l => l.assignment_type === "forwarding");
+                // A mode is only "decided" once a real resource is attached. A leg sitting
+                // at the default own_fleet type with no driver/vehicle (or a forwarding leg
+                // with no carrier) is NOT a real assignment — those read as Undecided.
+                const hasOwnFleet = allLegs.some(l => l.assignment_type === "own_fleet" && (l.driver_id || l.vehicle_id));
+                const hasSubcontract = allLegs.some(l => l.assignment_type === "forwarding" && l.carrier_id);
                 const hasMixed = hasOwnFleet && hasSubcontract;
                 // Check if all legs are assigned
                 const ownFleetLegs = allLegs.filter(l => l.assignment_type === "own_fleet");
