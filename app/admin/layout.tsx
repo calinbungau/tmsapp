@@ -426,8 +426,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { href: "/admin/tms/orders/new", label: "New Order", icon: Plus },
         { href: "/admin/tms/planning", label: "Dispatch Board", icon: Radio },
         { href: "/admin/tms/forwarding", label: "Forwarder Board", icon: ArrowLeftRight },
-        { href: "/admin/tms/exchange", label: "Freight Exchange", icon: Globe },
-        { href: "/admin/tms/exchange/carrier-groups", label: "Carrier Groups", icon: Users },
+        {
+          group: true as const,
+          key: "exchange",
+          label: "Freight Exchange",
+          icon: Globe,
+          items: [
+            { href: "/admin/tms/exchange", label: "Offers", icon: Globe },
+            { href: "/admin/tms/exchange/carrier-groups", label: "Carrier Groups", icon: Users },
+          ],
+        },
         { href: "/admin/action-center", label: "Action Center", icon: AlertCircle, badge: actionCenterAlerts },
         ...(isModuleEnabled("finance") && (canAccess("finance") || hasFullAccess()) ? [{
           group: true as const,
@@ -502,6 +510,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (href === "/admin/drivers") return pathname === href || pathname.startsWith("/admin/drivers/");
     if (href === "/admin/fsm/tasks") return pathname === href;
     if (href === "/admin/tms/orders") return pathname === href || pathname === "/admin/tms/orders";
+    if (href === "/admin/tms/exchange") return pathname === href || pathname === "/admin/tms/exchange/new";
     return pathname.startsWith(href);
   };
 

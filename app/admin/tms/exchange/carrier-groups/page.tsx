@@ -170,7 +170,7 @@ export default function CarrierGroupsPage() {
         .select("group_id")
 
       const memberCounts: Record<string, number> = {}
-      membersData?.forEach((m: { group_id: string }) => {
+      membersData?.forEach((m) => {
         memberCounts[m.group_id] = (memberCounts[m.group_id] || 0) + 1
       })
 
@@ -180,12 +180,12 @@ export default function CarrierGroupsPage() {
         .select("*")
 
       const rulesByGroup: Record<string, GroupRule[]> = {}
-      rulesData?.forEach((r: GroupRule & { group_id: string }) => {
+      rulesData?.forEach((r) => {
         if (!rulesByGroup[r.group_id]) rulesByGroup[r.group_id] = []
         rulesByGroup[r.group_id].push(r)
       })
 
-      const enrichedGroups = (groupsData || []).map((g: CarrierGroup) => ({
+      const enrichedGroups = (groupsData || []).map((g) => ({
         ...g,
         member_count: memberCounts[g.id] || 0,
         rules: rulesByGroup[g.id] || [],
@@ -396,7 +396,7 @@ export default function CarrierGroupsPage() {
       .select("business_partner_id")
       .eq("group_id", group.id)
 
-    setGroupMembers((data || []).map((m: { business_partner_id: string }) => m.business_partner_id))
+    setGroupMembers((data || []).map((m) => m.business_partner_id))
     setShowMembersDialog(true)
   }
 
