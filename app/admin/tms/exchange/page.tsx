@@ -43,6 +43,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { PublishToExchangeDialog } from "@/components/tms/publish-to-exchange-dialog";
 
 // ─── Country flag ──────────────────────────────────────────
 const COUNTRY_CODES: Record<string, string> = {
@@ -158,6 +159,7 @@ export default function FreightExchangePage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [visibilityFilter, setVisibilityFilter] = useState<string>("all");
+  const [publishOffer, setPublishOffer] = useState<FreightOffer | null>(null);
 
   // Fetch offers
   const fetchOffers = useCallback(async () => {
@@ -416,10 +418,12 @@ export default function FreightExchangePage() {
                             Edit
                           </Link>
                         </DropdownMenuItem>
-                        {offer.status === "draft" && (
-                          <DropdownMenuItem>
+                        {(offer.status === "draft" ||
+                          offer.status === "published" ||
+                          offer.status === "bidding") && (
+                          <DropdownMenuItem onClick={() => setPublishOffer(offer)}>
                             <Send className="h-4 w-4 mr-2" />
-                            Publish
+                            {offer.status === "draft" ? "Publish" : "Manage distribution"}
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem
@@ -438,6 +442,21 @@ export default function FreightExchangePage() {
           </div>
         )}
       </div>
+
+      {/* Publish dialog */}
+      {adminSession?.id && publishOffer && (
+        <PublishToExchangeDialog
+          open={!!publishOffer}
+          onOpenChange={(open) => !open && setPublishOffer(null)}
+          offerId={publishOffer.id}
+          offerReference={publishOffer.reference}
+          adminId={adminSession.id}
+          onPublished={() => {
+            setPublishOffer(null);
+            fetchOffers();
+          }}
+        />
+      )}
     </div>
   );
 }
