@@ -228,7 +228,9 @@ export default function OfferDetailPage() {
         .order("tier", { ascending: true });
 
       if (dist && dist.length > 0) {
-        const groupIds = dist.filter((d) => d.group_id).map((d) => d.group_id);
+        const groupIds = dist
+          .filter((d: { group_id: string | null }) => d.group_id)
+          .map((d: { group_id: string | null }) => d.group_id);
         let groupMap: Record<string, { name: string; color: string; group_type: string }> = {};
         if (groupIds.length > 0) {
           const { data: groups } = await supabase
@@ -240,7 +242,7 @@ export default function OfferDetailPage() {
           });
         }
         setDistributions(
-          dist.map((d) => ({
+          dist.map((d: Distribution) => ({
             ...d,
             group_name: d.group_id ? groupMap[d.group_id]?.name : undefined,
             group_color: d.group_id ? groupMap[d.group_id]?.color : undefined,
