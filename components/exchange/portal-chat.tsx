@@ -28,10 +28,12 @@ function fmtTime(d: string) {
 export function PortalChat({
   token,
   pin,
+  carrierAccountId,
   initialMessages,
 }: {
   token: string;
   pin: string;
+  carrierAccountId: string | null;
   initialMessages: ChatMessage[];
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
@@ -57,7 +59,9 @@ export function PortalChat({
     let active = true;
     const tick = async () => {
       try {
-        const params = new URLSearchParams({ pin });
+        const params = new URLSearchParams();
+        if (pin) params.set("pin", pin);
+        if (carrierAccountId) params.set("carrierAccountId", carrierAccountId);
         if (lastAtRef.current) params.set("after", lastAtRef.current);
         const res = await fetch(`/api/exchange/portal/${token}/messages?${params.toString()}`);
         if (!res.ok) return;
@@ -82,7 +86,7 @@ export function PortalChat({
       active = false;
       clearInterval(interval);
     };
-  }, [token, pin, scrollToBottom]);
+  }, [token, pin, carrierAccountId, scrollToBottom]);
 
   const send = async () => {
     const content = input.trim();
@@ -93,7 +97,7 @@ export function PortalChat({
       const res = await fetch(`/api/exchange/portal/${token}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin, content }),
+        body: JSON.stringify({ pin, carrierAccountId, content }),
       });
       const data = await res.json();
       if (res.ok && data.message) {

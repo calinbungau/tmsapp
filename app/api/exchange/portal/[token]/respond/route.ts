@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient, validateRecipient } from "@/lib/exchange/portal-auth";
+import { getServiceClient, authorizeRecipient } from "@/lib/exchange/portal-auth";
 import { createAdminNotification } from "@/lib/admin-notifications";
 
 const VALID = new Set(["interested", "quoted", "declined"]);
@@ -15,6 +15,7 @@ export async function POST(
 
   let body: {
     pin?: string;
+    carrierAccountId?: string;
     response?: string;
     quoteAmount?: number | string | null;
     currency?: string;
@@ -26,7 +27,10 @@ export async function POST(
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
 
-  const { ok, error, recipient } = await validateRecipient(supabase, token, body.pin ?? "");
+  const { ok, error, recipient } = await authorizeRecipient(supabase, token, {
+    pin: body.pin,
+    carrierAccountId: body.carrierAccountId,
+  });
   if (!recipient || error === "not_found")
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   if (error === "expired") return NextResponse.json({ error: "expired" }, { status: 410 });
