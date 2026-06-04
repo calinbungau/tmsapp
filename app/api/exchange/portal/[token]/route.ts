@@ -58,7 +58,7 @@ export async function POST(
   const { token } = await params;
   const supabase = getServiceClient();
 
-  let body: { pin?: string; carrierAccountId?: string } = {};
+  let body: { pin?: string; carrierAccountId?: string; track?: boolean } = {};
   try {
     body = await request.json();
   } catch {
@@ -124,7 +124,13 @@ export async function POST(
     .eq("id", recipient.admin_id)
     .maybeSingle();
 
-  await recordRecipientView(supabase, recipient);
+  // Only count a view on a genuine open (initial unlock / PIN verify).
+  // Realtime-triggered background refetches pass track:false to avoid an
+  // infinite view-inflation loop (recording a view updates the recipient row,
+  // which would re-trigger the realtime subscription and refetch again).
+  if (body.track === true) {
+    await recordRecipientView(supabase, recipient);
+  }
 
   // Ensure the chat thread exists and load recent messages.
   let conversationId: string | null = null;
