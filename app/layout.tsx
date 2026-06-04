@@ -32,12 +32,12 @@ export default function RootLayout({
           closeButton
           toastOptions={{
             style: {
-              background: "hsl(var(--card))",
-              border: "1px solid hsl(var(--border))",
-              color: "hsl(var(--card-foreground))",
+              background: "var(--card)",
+              border: "1px solid var(--border)",
+              color: "var(--card-foreground)",
             },
             classNames: {
-              toast: "!shadow-lg",
+              toast: "!shadow-lg !rounded-lg",
             },
           }}
         />
