@@ -406,10 +406,31 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {offer.status === "draft" && (
+            <Button
+              size="sm"
+              onClick={() => updateStatus("published", "Offer published to the exchange")}
+              disabled={updatingStatus}
+            >
+              <Globe className="h-3.5 w-3.5 mr-1.5" />
+              Publish
+            </Button>
+          )}
+          {(offer.status === "published" || offer.status === "bidding") && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => updateStatus("draft", "Offer unpublished — back to draft")}
+              disabled={updatingStatus}
+            >
+              <Lock className="h-3.5 w-3.5 mr-1.5" />
+              Unpublish
+            </Button>
+          )}
           {(offer.status === "draft" || offer.status === "published" || offer.status === "bidding") && (
             <Button size="sm" variant="outline" onClick={() => setPublishOpen(true)} disabled={updatingStatus}>
               <Send className="h-3.5 w-3.5 mr-1.5" />
-              {offer.status === "draft" ? "Publish" : "Manage"}
+              {offer.status === "draft" ? "Send" : "Manage"}
             </Button>
           )}
           <DropdownMenu>
