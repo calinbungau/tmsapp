@@ -147,7 +147,7 @@ export function PortalChat({
         )}
       </div>
 
-      <div className="flex items-center gap-2 border-t border-border p-3">
+      <div className="flex items-end gap-2 border-t border-border p-3">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -158,12 +158,14 @@ export function PortalChat({
             }
           }}
           placeholder="Type a message…"
-          className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
+          enterKeyHint="send"
+          autoComplete="off"
+          className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-base sm:text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
         />
         <button
           onClick={send}
           disabled={sending || !input.trim()}
-          className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="flex h-11 w-11 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           aria-label="Send message"
         >
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
