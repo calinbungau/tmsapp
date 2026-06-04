@@ -11,7 +11,7 @@ const OFFER_FIELDS =
   "dest_city, dest_country, dest_postal_code, load_date_from, load_date_to, " +
   "unload_date_from, unload_date_to, vehicle_type, body_type, weight_kg, ldm, " +
   "pallet_count, adr_class, goods_description, pricing_mode, price_amount, currency, " +
-  "payment_terms_days, expires_at";
+  "payment_terms_days, expires_at, awarded_recipient_id, awarded_at";
 
 // GET /api/exchange/portal/[token] — lightweight meta (no PIN required).
 // Reveals only enough to render the PIN gate (carrier name + masked status).
@@ -76,15 +76,22 @@ export async function POST(
   }
 
   // Load offer + posting company.
-  const { data: offer } = await supabase
+  const { data: offerData } = await supabase
     .from("freight_offers")
     .select(OFFER_FIELDS)
     .eq("id", recipient.offer_id)
     .maybeSingle();
 
-  if (!offer) {
+  if (!offerData) {
     return NextResponse.json({ error: "offer_not_found" }, { status: 404 });
   }
+
+  const offer = offerData as unknown as {
+    reference: string;
+    status: string;
+    awarded_recipient_id: string | null;
+    [key: string]: unknown;
+  };
 
   const { data: admin } = await supabase
     .from("admins")
@@ -127,6 +134,15 @@ export async function POST(
       quoteAmount: recipient.quote_amount,
       quoteCurrency: recipient.quote_currency,
       quoteMessage: recipient.quote_message,
+      dispatcherDecision: recipient.dispatcher_decision,
+      decidedAt: recipient.decided_at,
+      // True only when THIS recipient is the one the offer was awarded to.
+      isAwarded:
+        offer.status === "awarded" &&
+        !!offer.awarded_recipient_id &&
+        offer.awarded_recipient_id === recipient.id,
+      // True when the offer has been awarded to someone (possibly another carrier).
+      offerAwarded: offer.status === "awarded" && !!offer.awarded_recipient_id,
       hasAccount: !!recipient.carrier_account_id,
     },
     conversationId,
