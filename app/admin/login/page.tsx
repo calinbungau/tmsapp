@@ -11,6 +11,7 @@ import { Loader2, Eye, EyeOff, ArrowRight, MapPin, Truck, Shield, BarChart3, Pac
 import Image from "next/image";
 import { Suspense } from "react";
 import Loading from "./loading";
+import { getStoredCarrierSession } from "@/hooks/use-carrier-session";
 
 /* ------------------------------------------------------------------ */
 /*  Animated Canvas Background – route paths + data rain + vehicle    */
@@ -280,15 +281,36 @@ function AdminLoginForm() {
   const [loading, setLoading] = useState(false);
   const [ssoLoading, setSsoLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [redirectingCarrier, setRedirectingCarrier] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // When the native BNG Tracking / Traccar shell opens the app from a carrier
+  // push notification, it always loads its configured home URL (which resolves
+  // to this admin login page) rather than the push's actionUrl — the shell does
+  // not deep-link. So a logged-in carrier would otherwise get stranded on the
+  // admin sign-in screen and have to tap "Carrier" to re-enter. Detect that
+  // case here and bounce them straight into their carrier portal. We only do
+  // this when there is NO admin session (an admin sitting on the login screen
+  // is intentionally here), so genuine admin sign-in is never hijacked.
   useEffect(() => {
+    try {
+      const hasAdminSession = !!localStorage.getItem("admin_session");
+      const hasCarrierSession = !!getStoredCarrierSession();
+      if (!hasAdminSession && hasCarrierSession) {
+        setRedirectingCarrier(true);
+        router.replace("/carrier-dashboard");
+        return;
+      }
+    } catch {
+      /* ignore storage access errors */
+    }
+
     const token = searchParams.get("token");
     if (token) {
       handleSSOLogin(token);
     }
-  }, [searchParams]);
+  }, [searchParams, router]);
 
   const handleSSOLogin = async (token: string) => {
     setSsoLoading(true);
@@ -371,7 +393,7 @@ function AdminLoginForm() {
     }
   };
 
-  if (ssoLoading) {
+  if (ssoLoading || redirectingCarrier) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="flex flex-col items-center gap-4">
@@ -381,8 +403,12 @@ function AdminLoginForm() {
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           </div>
-          <p className="text-lg font-medium text-foreground">Authenticating...</p>
-          <p className="text-sm text-muted-foreground">Verifying your session</p>
+          <p className="text-lg font-medium text-foreground">
+            {redirectingCarrier ? "Opening carrier portal..." : "Authenticating..."}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {redirectingCarrier ? "Taking you to your offers" : "Verifying your session"}
+          </p>
         </div>
       </div>
     );
