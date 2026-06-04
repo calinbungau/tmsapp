@@ -159,6 +159,9 @@ interface Order {
   executionInternal?: { status: string } | null;
   executionForwarder?: { status: string } | null;
   isMixedExecution?: boolean;
+  // True when this order has at least one linked freight-exchange offer.
+  // Drives the "On Exchange" chip in the status column.
+  onExchange?: boolean;
 }
 
 const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
@@ -330,6 +333,20 @@ export default function TMSOrdersPage() {
     if (!error && data) {
       // Fetch trips for each order
       const orderIds = data.map((o: any) => o.id);
+
+      // Which of these orders have been posted on the freight exchange?
+      // One light query keyed by order_id powers the "On Exchange" chip.
+      const exchangeOrderIds = new Set<string>();
+      if (orderIds.length > 0) {
+        const { data: exchangeRows } = await supabase
+          .from("freight_offers")
+          .select("order_id")
+          .in("order_id", orderIds);
+        (exchangeRows || []).forEach((r: any) => {
+          if (r.order_id) exchangeOrderIds.add(r.order_id);
+        });
+      }
+
       const { data: tripOrdersData } = await supabase
         .from("trip_orders")
         .select(`
@@ -480,7 +497,7 @@ export default function TMSOrdersPage() {
       const sortedWithExec: Order[] = sorted.map((o: any) => {
         // Skip parents that aren't actually in the execution band.
         const showExec = o.status === "in_execution" || o.status === "documents_received";
-        if (!showExec) return { ...o, executionStatus: null, executionInternal: null, executionForwarder: null, isMixedExecution: false };
+        if (!showExec) return { ...o, executionStatus: null, executionInternal: null, executionForwarder: null, isMixedExecution: false, onExchange: exchangeOrderIds.has(o.id) };
 
         // Lowest internal leg status across all this parent's trips.
         // We deliberately EXCLUDE subcontract legs here — they are
@@ -537,6 +554,7 @@ export default function TMSOrdersPage() {
           executionInternal: bestInternal ? { status: bestInternal.status } : null,
           executionForwarder: bestFwd ? { status: bestFwd.status } : null,
           isMixedExecution: isMixed,
+          onExchange: exchangeOrderIds.has(o.id),
         };
       });
 
@@ -815,7 +833,14 @@ export default function TMSOrdersPage() {
   </span>
   )}
   </div>
+  <div className="flex flex-col items-end gap-1 shrink-0">
   <OrderStatusBadge status={order.status} scope="parent" size="sm" />
+  {order.onExchange && (
+  <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-orange-400 border-orange-500/30 bg-orange-500/10">
+  On Exchange
+  </Badge>
+  )}
+  </div>
   </div>
   
   {route && (
@@ -956,8 +981,13 @@ export default function TMSOrdersPage() {
                       <span className="text-xs text-foreground truncate max-w-[100px] block">{customer?.name || "-"}</span>
                     </td>
                     <td className="px-3 py-3">
-                      <div className="flex flex-col gap-1">
+                      <div className="flex flex-col gap-1 items-start">
                         <OrderStatusBadge status={order.status} scope="parent" size="sm" />
+                        {order.onExchange && (
+                          <Badge variant="outline" className="text-[8px] px-1.5 py-0 text-orange-400 border-orange-500/30 bg-orange-500/10">
+                            On Exchange
+                          </Badge>
+                        )}
                         {/* For Mixed orders show BOTH internal and forwarder
                          * sub-pills with tiny scope tags so operators can
                          * see at a glance which side is blocking. For non-

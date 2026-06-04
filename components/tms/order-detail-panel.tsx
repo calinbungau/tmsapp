@@ -48,7 +48,6 @@ import { SendDocsToCustomerDialog } from "@/components/tms/send-docs-to-customer
 import { ShareTrackingLinkDialog } from "@/components/tms/share-tracking-link-dialog";
 import { TripLegAssignmentDialog } from "@/components/tms/trip-leg-assignment-dialog";
 import { CarrierDocumentRequestCard } from "@/components/tms/carrier-document-request-card";
-import { CreateExchangeOfferDialog } from "@/components/tms/create-exchange-offer-dialog";
 
 const RouteMap = dynamic(() => import("@/components/tms/route-map").then(m => ({ default: m.RouteMap })), { ssr: false });
 
@@ -1686,9 +1685,10 @@ export default function OrderDetailPanel({ orderId, editTripId, onClose, onStatu
   // the dialog. Refreshed from /api/orders/[id]/tracking-shares.
   const [showShareTrackingDialog, setShowShareTrackingDialog] = useState(false);
   const [activeTrackingShares, setActiveTrackingShares] = useState<number>(0);
-  // Controls the "Publish on Freight Exchange" dialog — lets operators
-  // create a freight offer linked to this order (or a specific leg).
-  const [showExchangeOfferDialog, setShowExchangeOfferDialog] = useState(false);
+  // Existing freight-exchange offer linked to this order (if any). When
+  // present, the header shows "Posted on Exchange" instead of the publish
+  // action so operators jump straight to managing the offer.
+  const [linkedOffer, setLinkedOffer] = useState<{ id: string; status: string | null } | null>(null);
   // Timestamp of the most recent "Send Doc to Customer" email,
   // pulled from order_activity_log. Drives the small caption under
   // the header button so operators can see at a glance whether docs
@@ -2128,6 +2128,22 @@ setEditData({
     setActiveTrackingShares(count || 0);
   }, [orderId, supabase]);
   useEffect(() => { refreshTrackingShares(); }, [refreshTrackingShares]);
+
+  // Look up whether this order has already been posted on the freight
+  // exchange. If so the header swaps the "Publish on Exchange" action for
+  // a "Posted on Exchange" chip that opens the existing offer.
+  const refreshLinkedOffer = useCallback(async () => {
+    if (!orderId) return;
+    const { data } = await supabase
+      .from("freight_offers")
+      .select("id, status")
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setLinkedOffer(data ? { id: data.id, status: data.status ?? null } : null);
+  }, [orderId, supabase]);
+  useEffect(() => { refreshLinkedOffer(); }, [refreshLinkedOffer]);
 
   // Realtime: auto-refresh when order or its stops change
   useEffect(() => {
@@ -4057,79 +4073,38 @@ const handleSaveInvoice = async (formData: {
               />
             </>
           )}
-          {/* Publish to Freight Exchange — available on orders that are not
+          {/* Freight Exchange — available on orders that are not
               subcontracted children (those already have a carrier assignment
-              from the parent). Also hide while editing. */}
+              from the parent). Also hide while editing.
+              • No offer yet → "Publish on Exchange" opens the full New
+                Freight Exchange page, prefilled from this order.
+              • Offer exists → "Posted on Exchange" jumps to the offer to
+                manage distribution. */}
           {!editing && !order.parent_order_id && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-9 md:h-7 text-xs gap-1 text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 px-2 md:px-3"
-              onClick={() => setShowExchangeOfferDialog(true)}
-              title="Create a freight offer on the exchange linked to this order"
-            >
-              <Send className="h-4 w-4 md:h-3 md:w-3" />
-              <span className="hidden sm:inline">Publish on Exchange</span>
-            </Button>
+            linkedOffer ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 md:h-7 text-xs gap-1 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 px-2 md:px-3"
+                onClick={() => router.push(`/admin/tms/exchange/${linkedOffer.id}`)}
+                title="View and manage the freight offer linked to this order"
+              >
+                <CheckCircle2 className="h-4 w-4 md:h-3 md:w-3" />
+                <span className="hidden sm:inline">Posted on Exchange</span>
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 md:h-7 text-xs gap-1 text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 px-2 md:px-3"
+                onClick={() => router.push(`/admin/tms/exchange/new?orderId=${order.id}`)}
+                title="Create a freight offer on the exchange linked to this order"
+              >
+                <Send className="h-4 w-4 md:h-3 md:w-3" />
+                <span className="hidden sm:inline">Publish on Exchange</span>
+              </Button>
+            )
           )}
-          {/* Exchange Offer Dialog */}
-          <CreateExchangeOfferDialog
-            open={showExchangeOfferDialog}
-            onOpenChange={setShowExchangeOfferDialog}
-            order={{
-              id: order.id,
-              reference_number: order.reference_number,
-              customer_price: order.customer_price,
-              customer_currency: order.customer_currency,
-              carrier_cost: order.carrier_cost,
-              carrier_currency: order.carrier_currency,
-              margin: order.margin,
-              estimated_distance_km: order.estimated_distance_km,
-              weight_kg: order.weight_kg,
-              volume_m3: order.volume_m3,
-              pallet_count: order.pallet_count,
-              loading_meters: order.loading_meters,
-              cargo_description: order.cargo_description,
-              adr_class: order.adr_class,
-              temperature_min: order.temperature_min,
-              temperature_max: order.temperature_max,
-            }}
-            stops={stops.map(s => ({
-              id: s.id,
-              sequence_order: s.sequence_order,
-              stop_type: s.stop_type,
-              company_name: s.company_name,
-              address: s.address,
-              city: s.city,
-              postal_code: s.postal_code,
-              country: s.country,
-              lat: s.lat,
-              lng: s.lng,
-              contact_name: s.contact_name,
-              contact_phone: s.contact_phone,
-              planned_date: s.planned_date,
-              planned_time_from: s.planned_time_from,
-              planned_time_to: s.planned_time_to,
-              reference_number: s.reference_number,
-              notes: s.notes,
-            }))}
-            tripLegs={editingTripLegs.map(l => ({
-              id: l.id,
-              leg_number: l.leg_number,
-              from_stop_index: l.from_stop_index ?? null,
-              to_stop_index: l.to_stop_index ?? null,
-              carrier_id: l.carrier_id ?? null,
-              carrier_cost: l.carrier_cost ?? null,
-              carrier_currency: l.carrier_currency ?? null,
-              status: l.status ?? null,
-            }))}
-            adminId={order.admin_id}
-            onCreated={(offerId) => {
-              toast({ title: "Offer created", description: `Offer linked to ${order.reference_number}` });
-              // Optionally navigate to the offer detail page
-              router.push(`/admin/tms/exchange/${offerId}`);
-            }}
-          />
           {!editing ? (
             <Button variant="ghost" size="sm" className="h-9 md:h-7 text-xs gap-1 px-2 md:px-3" onClick={() => setEditing(true)}>
               <Edit2 className="h-4 w-4 md:h-3 md:w-3" />

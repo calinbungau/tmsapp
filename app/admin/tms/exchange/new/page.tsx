@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminSession } from "@/hooks/use-admin-session";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ import {
   ArrowDown,
   ArrowUp,
   Send,
+  ClipboardList,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AddressAutocomplete, ParsedAddress } from "@/components/ui/address-autocomplete";
@@ -213,12 +214,31 @@ function generateReference() {
   return `FX-${yy}${mm}${dd}-${rand}`;
 }
 
+// ─── Linked order info (when arriving from an order via ?orderId=) ──
+interface LinkedOrder {
+  id: string;
+  reference_number: string | null;
+  customer_price: number | null;
+  customer_currency: string | null;
+  carrier_cost: number | null;
+  carrier_currency: string | null;
+  margin: number | null;
+  estimated_distance_km: number | null;
+}
+
 // ─── Page ─────────────────────────────────────────────────
-export default function NewFreightOfferPage() {
+function NewFreightOfferForm() {
   const { session: adminSession } = useAdminSession();
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
+
+  // When launched from an order ("Publish on Exchange"), we receive the
+  // order id (and optionally a specific trip leg) and prefill the whole
+  // form from it so the offer stays linked to the order.
+  const orderIdParam = searchParams.get("orderId");
+  const legIdParam = searchParams.get("legId");
 
   const [form, setForm] = useState<FormData>(initialFormData);
   const [stops, setStops] = useState<Stop[]>([
@@ -227,6 +247,150 @@ export default function NewFreightOfferPage() {
   ]);
   const [saving, setSaving] = useState(false);
   const [saveMode, setSaveMode] = useState<"draft" | "publish" | null>(null);
+
+  // Order linkage — persisted onto the created offer so it shows as
+  // "Posted on Exchange" back on the order.
+  const [linkedOrder, setLinkedOrder] = useState<LinkedOrder | null>(null);
+  const [tripLegId, setTripLegId] = useState<string | null>(legIdParam);
+  const [prefilling, setPrefilling] = useState<boolean>(!!orderIdParam);
+
+  // ─── Prefill from an order ────────────────────────────────
+  useEffect(() => {
+    if (!orderIdParam || !adminSession?.id) return;
+    let cancelled = false;
+
+    (async () => {
+      setPrefilling(true);
+      try {
+        const { data: order, error: orderErr } = await supabase
+          .from("orders")
+          .select(
+            `id, reference_number, customer_price, customer_currency, carrier_cost, carrier_currency,
+             margin, estimated_distance_km, weight_kg, volume_m3, pallet_count, loading_meters,
+             cargo_description, adr_class, temperature_min, temperature_max`
+          )
+          .eq("id", orderIdParam)
+          .eq("admin_id", adminSession.id)
+          .single();
+        if (orderErr) throw orderErr;
+        if (!order || cancelled) return;
+
+        // Optionally constrain to a single trip leg's stop range
+        let fromIdx = 0;
+        let toIdx = Number.MAX_SAFE_INTEGER;
+        if (legIdParam) {
+          const { data: leg } = await supabase
+            .from("trip_legs")
+            .select("from_stop_index, to_stop_index")
+            .eq("id", legIdParam)
+            .maybeSingle();
+          if (leg) {
+            fromIdx = leg.from_stop_index ?? 0;
+            toIdx = leg.to_stop_index ?? Number.MAX_SAFE_INTEGER;
+          }
+        }
+
+        const { data: orderStops } = await supabase
+          .from("order_stops")
+          .select(
+            `id, sequence_order, stop_type, company_name, address, city, postal_code, country,
+             lat, lng, contact_name, contact_phone, planned_date, planned_time_from, planned_time_to,
+             reference_number, notes`
+          )
+          .eq("order_id", orderIdParam)
+          .order("sequence_order", { ascending: true });
+
+        if (cancelled) return;
+
+        // Map order stops → exchange stops, scoped to the chosen leg range.
+        const scoped = (orderStops || []).filter(
+          (s: any) => s.sequence_order >= fromIdx && s.sequence_order <= toIdx
+        );
+        const mappedStops: Stop[] = scoped.map((s: any) => ({
+          id: crypto.randomUUID(),
+          stop_type:
+            s.stop_type === "load" ? "load" : s.stop_type === "unload" ? "unload" : "intermediate",
+          company_name: s.company_name || "",
+          address: s.address || "",
+          city: s.city || "",
+          postal_code: s.postal_code || "",
+          country: s.country || "",
+          lat: s.lat ?? null,
+          lng: s.lng ?? null,
+          contact_name: s.contact_name || "",
+          contact_phone: s.contact_phone || "",
+          date_from: s.planned_date || "",
+          date_to: s.planned_date || "",
+          time_from: s.planned_time_from || "",
+          time_to: s.planned_time_to || "",
+          reference_number: s.reference_number || "",
+          notes: s.notes || "",
+        }));
+
+        if (mappedStops.length >= 2) {
+          setStops(mappedStops);
+        } else if (mappedStops.length === 1) {
+          setStops([mappedStops[0], createEmptyStop("unload")]);
+        }
+
+        const firstCity = scoped[0]?.city || scoped[0]?.country || "";
+        const lastCity =
+          scoped[scoped.length - 1]?.city || scoped[scoped.length - 1]?.country || "";
+
+        // Suggested carrier price: use the order's carrier cost as a target.
+        const carrierCost = (order as any).carrier_cost;
+        const carrierCurrency =
+          (order as any).carrier_currency || (order as any).customer_currency || "EUR";
+
+        setForm((prev) => ({
+          ...prev,
+          title:
+            order.reference_number && firstCity && lastCity
+              ? `${order.reference_number} — ${firstCity} → ${lastCity}`
+              : prev.title,
+          weight_kg: (order as any).weight_kg != null ? String((order as any).weight_kg) : prev.weight_kg,
+          volume_m3: (order as any).volume_m3 != null ? String((order as any).volume_m3) : prev.volume_m3,
+          pallet_count:
+            (order as any).pallet_count != null ? String((order as any).pallet_count) : prev.pallet_count,
+          ldm: (order as any).loading_meters != null ? String((order as any).loading_meters) : prev.ldm,
+          goods_description: (order as any).cargo_description || prev.goods_description,
+          adr_class: (order as any).adr_class || prev.adr_class,
+          temp_min:
+            (order as any).temperature_min != null ? String((order as any).temperature_min) : prev.temp_min,
+          temp_max:
+            (order as any).temperature_max != null ? String((order as any).temperature_max) : prev.temp_max,
+          pricing_mode: carrierCost != null ? "target" : prev.pricing_mode,
+          price_amount: carrierCost != null ? String(carrierCost) : prev.price_amount,
+          currency: carrierCurrency,
+        }));
+
+        setLinkedOrder({
+          id: order.id,
+          reference_number: order.reference_number,
+          customer_price: (order as any).customer_price ?? null,
+          customer_currency: (order as any).customer_currency ?? null,
+          carrier_cost: carrierCost ?? null,
+          carrier_currency: (order as any).carrier_currency ?? null,
+          margin: (order as any).margin ?? null,
+          estimated_distance_km: (order as any).estimated_distance_km ?? null,
+        });
+      } catch (err: any) {
+        console.error("Prefill from order error:", err);
+        toast({
+          title: "Could not load order",
+          description: err?.message || "Starting with a blank offer instead.",
+          variant: "destructive",
+        });
+      } finally {
+        if (!cancelled) setPrefilling(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderIdParam, legIdParam, adminSession?.id]);
 
   // Update form field
   const updateField = (field: keyof FormData, value: string) => {
@@ -310,6 +474,9 @@ export default function NewFreightOfferPage() {
       const payload = {
         admin_id: adminSession.id,
         reference,
+        // Link back to the originating order/leg when launched from one.
+        order_id: linkedOrder?.id || null,
+        trip_leg_id: tripLegId || null,
         title: form.title || null,
         status: publish ? "published" : "draft",
         published_at: publish ? new Date().toISOString() : null,
@@ -400,7 +567,9 @@ export default function NewFreightOfferPage() {
           ? `Offer ${reference} is now live on the exchange`
           : `Offer ${reference} saved as draft`,
       });
-      router.push("/admin/tms/exchange");
+      // When linked to an order, land on the offer detail so the operator
+      // can immediately manage distribution; otherwise back to the list.
+      router.push(offer?.id ? `/admin/tms/exchange/${offer.id}` : "/admin/tms/exchange");
     } catch (err: any) {
       console.error("Save error:", err);
       toast({ title: "Error", description: err?.message || "Failed to save offer", variant: "destructive" });
@@ -423,9 +592,13 @@ export default function NewFreightOfferPage() {
               <ChevronLeft className="h-5 w-5" />
             </button>
             <div>
-              <h1 className="text-lg font-semibold text-foreground">New Freight Offer</h1>
+              <h1 className="text-lg font-semibold text-foreground">
+                {linkedOrder ? "Publish on Exchange" : "New Freight Offer"}
+              </h1>
               <p className="text-sm text-muted-foreground">
-                Create a standalone offer for the freight exchange
+                {linkedOrder
+                  ? `Prefilled from order ${linkedOrder.reference_number || ""}`.trim()
+                  : "Create a standalone offer for the freight exchange"}
               </p>
             </div>
           </div>
@@ -453,6 +626,53 @@ export default function NewFreightOfferPage() {
       {/* Form */}
       <div className="flex-1 overflow-auto p-4 sm:p-6">
         <div className="max-w-4xl mx-auto space-y-6">
+          {/* Linked order banner — shown when prefilled from an order */}
+          {prefilling && (
+            <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading order details…
+            </div>
+          )}
+          {linkedOrder && !prefilling && (
+            <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <ClipboardList className="h-4 w-4 text-orange-400 shrink-0" />
+                  <span className="text-sm font-medium text-foreground">
+                    Linked to order{" "}
+                    <span className="font-mono">{linkedOrder.reference_number || "—"}</span>
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  {linkedOrder.customer_price != null && (
+                    <span>
+                      Customer price{" "}
+                      <span className="font-semibold text-foreground">
+                        {new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency: linkedOrder.customer_currency || "EUR",
+                          maximumFractionDigits: 0,
+                        }).format(linkedOrder.customer_price)}
+                      </span>
+                    </span>
+                  )}
+                  {linkedOrder.margin != null && (
+                    <span>
+                      Margin <span className="font-semibold text-foreground">{Math.round(linkedOrder.margin)}%</span>
+                    </span>
+                  )}
+                  {linkedOrder.estimated_distance_km != null && linkedOrder.estimated_distance_km > 0 && (
+                    <span>
+                      Est.{" "}
+                      <span className="font-semibold text-foreground">
+                        {Math.round(linkedOrder.estimated_distance_km).toLocaleString()} km
+                      </span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           {/* Title */}
           <div className="bg-card border border-border/50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-4">
@@ -968,5 +1188,20 @@ export default function NewFreightOfferPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// useSearchParams() must be wrapped in a Suspense boundary in the App Router.
+export default function NewFreightOfferPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-full items-center justify-center bg-background">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <NewFreightOfferForm />
+    </Suspense>
   );
 }
