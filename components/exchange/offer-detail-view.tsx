@@ -188,7 +188,7 @@ export function OfferDetailView({
           const unlock = await fetch(`/api/exchange/portal/${token}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ carrierAccountId: session.id }),
+            body: JSON.stringify({ carrierAccountId: session.id, track: true }),
           });
           if (unlock.ok) {
             applyOfferData(await unlock.json());
@@ -275,7 +275,7 @@ export function OfferDetailView({
       const res = await fetch(`/api/exchange/portal/${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin }),
+        body: JSON.stringify({ pin, track: true }),
       });
       if (res.status === 401) {
         setPinError("That PIN doesn't match. Please check your email and try again.");
