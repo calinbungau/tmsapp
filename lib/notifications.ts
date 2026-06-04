@@ -108,6 +108,31 @@ export async function sendPushNotification(
                 click_action: "FLUTTER_NOTIFICATION_CLICK",
               },
             },
+            // iOS: high-priority alert with the default notification sound.
+            apns: {
+              headers: { "apns-priority": "10" },
+              payload: {
+                aps: {
+                  sound: "default",
+                  badge: 1,
+                },
+              },
+            },
+            // Web: urgent delivery + branded icon so background notifications
+            // render consistently in the OS tray. The `tag` matches the one the
+            // service worker uses so the auto-displayed notification and any
+            // SW-shown notification dedupe into a single entry.
+            webpush: {
+              headers: { Urgency: "high" },
+              notification: {
+                icon: "/images/logo-full-bng.png",
+                badge: "/images/logo-full-bng.png",
+                tag: notification.data?.offer_id || undefined,
+              },
+              fcmOptions: notification.data?.token
+                ? { link: `/carrier-dashboard/offers/${notification.data.token}` }
+                : undefined,
+            },
           },
         }),
       }

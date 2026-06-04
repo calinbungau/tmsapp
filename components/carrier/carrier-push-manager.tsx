@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Bell, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,16 @@ import {
   requestCarrierWebPushToken,
   onCarrierForegroundMessage,
 } from "@/lib/firebase/messaging-client";
+import { playNotificationChime, primeNotificationSound } from "@/lib/notification-sound";
+
+// Map a push payload to the in-app destination (mirrors the service worker).
+function targetForPayload(data?: Record<string, string>): string {
+  if (!data) return "/carrier-dashboard";
+  if (data.token) return `/carrier-dashboard/offers/${data.token}`;
+  if (data.type === "chat_message") return "/carrier-dashboard/chat";
+  if (data.type?.startsWith("freight_offer")) return "/carrier-dashboard/responses";
+  return "/carrier-dashboard";
+}
 
 /**
  * Manages browser push notifications for a logged-in carrier.
@@ -22,6 +33,7 @@ import {
  * token; otherwise we show a dismissible banner that requests permission on tap.
  */
 export function CarrierPushManager({ carrierAccountId }: { carrierAccountId: string }) {
+  const router = useRouter();
   const [showBanner, setShowBanner] = useState(false);
 
   const registerToken = useCallback(
@@ -61,26 +73,60 @@ export function CarrierPushManager({ carrierAccountId }: { carrierAccountId: str
     }
   }, [registerToken]);
 
-  // Foreground messages: show a toast while the carrier has the tab focused.
+  // Foreground messages: ring a chime + show a rich, tappable toast. When the
+  // tab is hidden, also raise an OS notification via the service worker.
   useEffect(() => {
     let unsub = () => {};
     void onCarrierForegroundMessage((payload) => {
-      if (payload.title) {
-        toast(payload.title, { description: payload.body });
+      if (!payload.title) return;
+
+      // Acoustic cue.
+      playNotificationChime();
+
+      const href = targetForPayload(payload.data);
+
+      // Modern in-app toast with a bell icon and a quick "View" action.
+      toast(payload.title, {
+        description: payload.body,
+        icon: <Bell className="h-4 w-4 text-primary" />,
+        duration: 8000,
+        action: {
+          label: "View",
+          onClick: () => router.push(href),
+        },
+      });
+
+      // If the carrier isn't looking at the tab, also show a system notification.
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        void navigator.serviceWorker?.ready
+          .then((reg) =>
+            reg.showNotification(payload.title!, {
+              body: payload.body,
+              icon: "/images/logo-full-bng.png",
+              badge: "/images/logo-full-bng.png",
+              tag: payload.data?.offer_id,
+              data: payload.data,
+            })
+          )
+          .catch(() => {});
       }
     }).then((fn) => {
       unsub = fn;
     });
     return () => unsub();
-  }, []);
+  }, [router]);
 
   const enable = async () => {
+    // Unlock audio within this user gesture, then confirm with the chime.
+    primeNotificationSound();
     setShowBanner(false);
     const token = await requestCarrierWebPushToken();
     if (token) {
       await registerToken(token);
+      playNotificationChime();
       toast.success("Notifications enabled", {
         description: "You'll be notified about new offers, decisions, and messages.",
+        icon: <Bell className="h-4 w-4 text-primary" />,
       });
     } else {
       toast.error("Notifications blocked", {
