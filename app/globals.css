@@ -17,6 +17,24 @@
   }
 }
 
+/* Freight Exchange — unseen event blink (red pulse until opened) */
+@keyframes event-blink {
+  0%, 100% {
+    background-color: color-mix(in oklab, var(--destructive) 4%, transparent);
+    border-left-color: color-mix(in oklab, var(--destructive) 40%, transparent);
+  }
+  50% {
+    background-color: color-mix(in oklab, var(--destructive) 16%, transparent);
+    border-left-color: var(--destructive);
+  }
+}
+
+@utility event-blink {
+  animation: event-blink 1.4s ease-in-out infinite;
+  border-left-width: 3px;
+  border-left-style: solid;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
