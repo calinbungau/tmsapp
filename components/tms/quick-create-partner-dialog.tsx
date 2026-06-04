@@ -75,6 +75,49 @@ export function QuickCreatePartnerDialog({
     setTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]);
   };
 
+  // Calls the VIES endpoint and applies the returned company data to the
+  // form. `allowRomania` lets us use VIES for an RO number as a fallback
+  // when ANAF is unavailable. Returns true on success, false otherwise so
+  // callers can decide whether to surface their own error.
+  const lookupViaVies = async (vatNumber: string, allowRomania = false): Promise<boolean> => {
+    const response = await fetch("/api/vies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vatNumber, allowRomania }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      // The non-fallback EU path may get told to use ANAF instead.
+      if (result.useAnaf && !allowRomania) {
+        await lookupVAT();
+        return true;
+      }
+      return false;
+    }
+
+    const data = result.data;
+    setName(data.name || name);
+    setAddress(data.street || address);
+    setCity(data.city || city);
+    setCountry(data.country || country);
+    setTaxId(data.vatNumber || taxId);
+
+    if (data.limitedData) {
+      toast({
+        title: "VAT Number Valid",
+        description: `${data.vatNumber} is valid. ${data.limitedDataReason || "Enter details manually."}`,
+      });
+    } else {
+      toast({
+        title: allowRomania ? "Company data loaded from VIES (ANAF fallback)" : "Company data loaded from VIES",
+        description: `VAT: ${data.vatNumber} | Status: Valid & Active`,
+      });
+    }
+    return true;
+  };
+
   // Unified VAT lookup - ANAF for Romania, VIES for other EU countries
   const lookupVAT = async () => {
     const vatNumber = taxId.trim().toUpperCase();
@@ -107,10 +150,22 @@ export function QuickCreatePartnerDialog({
           body: JSON.stringify({ cui: vatNumber }),
         });
 
-        const result = await response.json();
+        const result = await response.json().catch(() => ({ success: false }));
 
         if (!response.ok || !result.success) {
-          toast({ title: "ANAF Error", description: result.error || "Failed to lookup company", variant: "destructive" });
+          // ANAF is down or returned nothing — fall back to VIES so the
+          // user can still validate and auto-fill an RO company.
+          const roVat = /^RO/i.test(vatNumber) ? vatNumber : `RO${vatNumber.replace(/^RO/i, "")}`;
+          const viesOk = await lookupViaVies(roVat, true);
+          if (!viesOk) {
+            toast({
+              title: "Lookup failed",
+              description: result.error
+                ? `ANAF: ${result.error}. VIES fallback also failed.`
+                : "ANAF unavailable and VIES fallback also failed. Enter details manually.",
+              variant: "destructive",
+            });
+          }
           return;
         }
 
@@ -137,41 +192,9 @@ export function QuickCreatePartnerDialog({
           description: `Status: ${statusMsg}`,
         });
       } else {
-        const response = await fetch("/api/vies", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ vatNumber }),
-        });
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-          if (result.useAnaf) {
-            setVatLoading(false);
-            return lookupVAT();
-          }
-          toast({ title: "VIES Error", description: result.error || "Failed to validate VAT", variant: "destructive" });
-          return;
-        }
-
-        const data = result.data;
-        
-        setName(data.name || name);
-        setAddress(data.street || address);
-        setCity(data.city || city);
-        setCountry(data.country || country);
-        setTaxId(data.vatNumber || taxId);
-
-        if (data.limitedData) {
-          toast({ 
-            title: "VAT Number Valid", 
-            description: `${data.vatNumber} is valid. ${data.limitedDataReason || "Enter details manually."}`,
-          });
-        } else {
-          toast({ 
-            title: "Company data loaded from VIES", 
-            description: `VAT: ${data.vatNumber} | Status: Valid & Active`,
-          });
+        const viesOk = await lookupViaVies(vatNumber, false);
+        if (!viesOk) {
+          toast({ title: "VIES Error", description: "Failed to validate VAT number", variant: "destructive" });
         }
       }
     } catch (error) {
