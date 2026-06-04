@@ -1,0 +1,81 @@
+"use client";
+
+import type React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Truck, Package, MessageSquare, User, LogOut, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useCarrierSession } from "@/hooks/use-carrier-session";
+
+const navItems = [
+  { href: "/carrier-dashboard", label: "Offers", icon: Package, exact: true },
+  { href: "/carrier-dashboard/responses", label: "Responses", icon: Truck },
+  { href: "/carrier-dashboard/chat", label: "Chat", icon: MessageSquare },
+  { href: "/carrier-dashboard/account", label: "Account", icon: User },
+];
+
+export default function CarrierDashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname();
+  const { session, loading, logout } = useCarrierSession();
+
+  if (loading || !session) {
+    return (
+      <div className="min-h-screen bg-muted/30 flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-muted/30 flex flex-col">
+      <header className="sticky top-0 z-40 bg-card border-b">
+        <div className="flex items-center justify-between px-4 h-14">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+              <Truck className="h-4.5 w-4.5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold leading-tight truncate">
+                {session.company_name || "Carrier"}
+              </p>
+              <p className="text-xs text-muted-foreground leading-tight truncate">
+                {session.email}
+              </p>
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" onClick={logout} aria-label="Sign out">
+            <LogOut className="h-5 w-5" />
+          </Button>
+        </div>
+      </header>
+
+      <main className="flex-1 overflow-auto pb-20">{children}</main>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-card border-t z-50">
+        <div className="flex items-center justify-around py-2 max-w-md mx-auto">
+          {navItems.map((item) => {
+            const active = item.exact
+              ? pathname === item.href
+              : pathname === item.href || pathname.startsWith(item.href + "/") || pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors ${
+                  active ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <item.icon className="h-5 w-5" />
+                <span className="text-xs font-medium">{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+    </div>
+  );
+}

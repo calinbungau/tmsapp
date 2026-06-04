@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { PublishToExchangeDialog } from "@/components/tms/publish-to-exchange-dialog";
+import { OfferRecipientsPanel } from "@/components/exchange/offer-recipients-panel";
 
 // ─── Country flag ──────────────────────────────────────────
 const COUNTRY_CODES: Record<string, string> = {
@@ -450,6 +451,11 @@ export default function OfferDetailPage() {
                 )}
               </div>
             </div>
+          )}
+
+          {/* Carrier responses + per-carrier chat */}
+          {adminSession?.id && (
+            <OfferRecipientsPanel offerId={offer.id} adminId={adminSession.id} />
           )}
 
           {/* Route */}

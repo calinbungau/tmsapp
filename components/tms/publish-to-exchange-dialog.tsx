@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAdminSession } from "@/hooks/use-admin-session";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,7 @@ import {
   Send,
   Folder,
   Sparkles,
+  Mail,
 } from "lucide-react";
 
 interface CarrierGroup {
@@ -65,6 +67,7 @@ export function PublishToExchangeDialog({
 }: PublishToExchangeDialogProps) {
   const supabase = createClient();
   const { toast } = useToast();
+  const { session } = useAdminSession();
 
   const [groups, setGroups] = useState<CarrierGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,6 +76,7 @@ export function PublishToExchangeDialog({
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [publishPublic, setPublishPublic] = useState(false);
   const [expiresAt, setExpiresAt] = useState("");
+  const [notifyCarriers, setNotifyCarriers] = useState(true);
 
   const fetchGroups = useCallback(async () => {
     if (!adminId) return;
@@ -137,6 +141,7 @@ export function PublishToExchangeDialog({
       setSelectedGroupIds([]);
       setPublishPublic(false);
       setExpiresAt("");
+      setNotifyCarriers(true);
     }
   }, [open, fetchGroups, fetchExisting]);
 
@@ -220,6 +225,46 @@ export function PublishToExchangeDialog({
         title: "Offer published",
         description: `${offerReference} published to ${totalTargets} destination${totalTargets > 1 ? "s" : ""}.`,
       });
+
+      // Optionally email carriers in the selected groups. This is best-effort:
+      // a failed/partial send must never roll back the successful publish, so
+      // we surface it as a secondary toast rather than throwing.
+      if (notifyCarriers && selectedGroupIds.length > 0) {
+        try {
+          const res = await fetch("/api/exchange/notify", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-admin-id": adminId,
+              ...(session?.user_id ? { "x-user-id": session.user_id } : {}),
+            },
+            body: JSON.stringify({ offerId, groupIds: selectedGroupIds }),
+          });
+          const result = await res.json();
+          if (res.ok && result.success) {
+            toast({
+              title: "Carriers notified",
+              description:
+                result.notified > 0
+                  ? `Emailed ${result.notified} carrier${result.notified === 1 ? "" : "s"}${result.withoutEmail ? ` (${result.withoutEmail} had no email)` : ""}.`
+                  : "No carriers with email addresses were found in the selected groups.",
+            });
+          } else {
+            toast({
+              title: "Published, but notifications failed",
+              description: result.error || "Could not email carriers. Check your email settings.",
+              variant: "destructive",
+            });
+          }
+        } catch {
+          toast({
+            title: "Published, but notifications failed",
+            description: "Could not reach the notification service.",
+            variant: "destructive",
+          });
+        }
+      }
+
       onOpenChange(false);
       onPublished?.();
     } catch (err) {
@@ -361,6 +406,34 @@ export function PublishToExchangeDialog({
               className="h-9"
             />
           </div>
+
+          {/* Notify carriers by email */}
+          <button
+            type="button"
+            onClick={() => setNotifyCarriers((v) => !v)}
+            disabled={selectedGroupIds.length === 0}
+            className={`w-full flex items-center gap-3 rounded-lg border p-3 text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              notifyCarriers && selectedGroupIds.length > 0
+                ? "border-blue-500/40 bg-blue-500/5"
+                : "border-border/60 hover:border-border"
+            }`}
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400">
+              <Mail className="h-4.5 w-4.5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground">Email carriers now</p>
+              <p className="text-xs text-muted-foreground">
+                {selectedGroupIds.length === 0
+                  ? "Select at least one carrier group to enable"
+                  : "Send the offer details to carriers in the selected groups"}
+              </p>
+            </div>
+            <Checkbox
+              checked={notifyCarriers && selectedGroupIds.length > 0}
+              className="pointer-events-none"
+            />
+          </button>
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
