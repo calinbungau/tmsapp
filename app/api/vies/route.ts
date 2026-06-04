@@ -38,7 +38,7 @@ interface VIESResponse {
 
 export async function POST(request: NextRequest) {
   try {
-    const { vatNumber } = await request.json();
+    const { vatNumber, allowRomania } = await request.json();
 
     if (!vatNumber) {
       return NextResponse.json({ success: false, error: "VAT number is required" }, { status: 400 });
@@ -59,8 +59,10 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // For Romania, suggest using ANAF instead (more detailed data)
-    if (countryCode === "RO") {
+    // For Romania, suggest using ANAF instead (more detailed data).
+    // Skip this redirect when allowRomania is set — that means the caller
+    // already tried ANAF and is explicitly falling back to VIES.
+    if (countryCode === "RO" && !allowRomania) {
       return NextResponse.json({ 
         success: false, 
         error: "For Romanian companies, use ANAF lookup instead (more detailed data available).",
