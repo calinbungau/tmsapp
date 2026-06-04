@@ -21,6 +21,7 @@ import {
 import { AppPromo } from "@/components/exchange/app-promo";
 import { PortalChat } from "@/components/exchange/portal-chat";
 import { getStoredCarrierSession } from "@/hooks/use-carrier-session";
+import { createClient } from "@/lib/supabase/client";
 
 // ─── Country flag ──────────────────────────────────────────
 const COUNTRY_CODES: Record<string, string> = {
@@ -202,6 +203,66 @@ export function OfferDetailView({
       }
     })();
   }, [token, applyOfferData]);
+
+  // Realtime subscription for live updates (when in ready phase)
+  useEffect(() => {
+    if (phase !== "ready" || !offer?.id) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`carrier-offer-${token}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "freight_offers", filter: `id=eq.${offer.id}` }, async () => {
+        // Re-fetch offer data
+        const session = getStoredCarrierSession();
+        if (session?.id) {
+          const unlock = await fetch(`/api/exchange/portal/${token}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ carrierAccountId: session.id }),
+          });
+          if (unlock.ok) {
+            applyOfferData(await unlock.json());
+          }
+        } else if (pin) {
+          const res = await fetch(`/api/exchange/portal/${token}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pin }),
+          });
+          if (res.ok) {
+            applyOfferData(await res.json());
+          }
+        }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "freight_offer_recipients", filter: `offer_id=eq.${offer.id}` }, async () => {
+        // Re-fetch on recipient changes (awards, decisions)
+        const session = getStoredCarrierSession();
+        if (session?.id) {
+          const unlock = await fetch(`/api/exchange/portal/${token}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ carrierAccountId: session.id }),
+          });
+          if (unlock.ok) {
+            applyOfferData(await unlock.json());
+          }
+        } else if (pin) {
+          const res = await fetch(`/api/exchange/portal/${token}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pin }),
+          });
+          if (res.ok) {
+            applyOfferData(await res.json());
+          }
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [phase, offer?.id, token, pin, applyOfferData]);
 
   const verify = useCallback(async () => {
     if (pin.length < 4) {
