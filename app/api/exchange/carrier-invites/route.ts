@@ -38,7 +38,13 @@ export async function GET(request: NextRequest) {
     .maybeSingle();
 
   if (link) {
-    const acct = (link as { carrier_accounts: { email: string; contact_name: string | null; last_login_at: string | null } | null }).carrier_accounts;
+    const rawAcct = (link as unknown as {
+      carrier_accounts:
+        | { email: string; contact_name: string | null; last_login_at: string | null }
+        | { email: string; contact_name: string | null; last_login_at: string | null }[]
+        | null;
+    }).carrier_accounts;
+    const acct = Array.isArray(rawAcct) ? rawAcct[0] ?? null : rawAcct;
     return NextResponse.json({
       status: "connected",
       account: acct ? { email: acct.email, contactName: acct.contact_name, lastLoginAt: acct.last_login_at } : null,

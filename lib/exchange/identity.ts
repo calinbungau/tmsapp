@@ -132,10 +132,10 @@ export async function resolveAndLinkAccount(
   if (extraPartnerId && !partners.some((p) => p.id === extraPartnerId)) {
     const { data } = await supabase
       .from("business_partners")
-      .select("id, admin_id")
+      .select("id, admin_id, name, tax_id, email")
       .eq("id", extraPartnerId)
       .maybeSingle();
-    if (data) partners.push(data as { id: string; admin_id: string });
+    if (data) partners.push(data as PartnerMatch);
   }
 
   return linkAccountToPartners(supabase, account.id, partners);

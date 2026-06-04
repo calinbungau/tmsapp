@@ -19,6 +19,7 @@ type Status = "loading" | "not_invited" | "invited" | "connected";
 
 interface Props {
   partnerId: string;
+  partnerName?: string | null;
   partnerEmail: string | null;
   adminId: string;
   userId?: string | null;
@@ -31,7 +32,7 @@ interface Props {
  * invite. The link onboards the carrier and links their global account to this
  * tenant's partner record.
  */
-export function CarrierPortalInvite({ partnerId, partnerEmail, adminId, userId }: Props) {
+export function CarrierPortalInvite({ partnerId, partnerName, partnerEmail, adminId, userId }: Props) {
   const [status, setStatus] = useState<Status>("loading");
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [account, setAccount] = useState<{ email: string; contactName: string | null; lastLoginAt: string | null } | null>(null);
@@ -149,8 +150,9 @@ export function CarrierPortalInvite({ partnerId, partnerEmail, adminId, userId }
             )}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Invite this carrier to create a free account so they can view offers, send quotes,
-            and chat with you. One account works across every company that engages them.
+            Invite {partnerName ? <span className="font-medium text-foreground">{partnerName}</span> : "this carrier"}{" "}
+            to create a free account so they can view offers, send quotes, and chat with you. One
+            account works across every company that engages them.
           </p>
         </div>
       </div>

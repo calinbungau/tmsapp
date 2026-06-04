@@ -18,7 +18,9 @@ function CarrierAuth() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-  const initialMode = searchParams.get("mode") === "signup" ? "signup" : "login";
+  const invite = searchParams.get("invite");
+  const initialMode =
+    searchParams.get("mode") === "signup" || invite ? "signup" : "login";
 
   const [mode, setMode] = useState<"login" | "signup">(initialMode);
   const [checking, setChecking] = useState(true);
@@ -48,7 +50,7 @@ function CarrierAuth() {
       const payload =
         mode === "login"
           ? { email, password }
-          : { email, password, companyName, contactName, phone, token };
+          : { email, password, companyName, contactName, phone, token, invite };
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

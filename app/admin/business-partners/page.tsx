@@ -34,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CarrierPortalInvite } from "@/components/exchange/carrier-portal-invite";
 import {
   Select,
   SelectContent,
@@ -1148,7 +1149,13 @@ useEffect(() => {
           </DialogHeader>
           
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList
+              className={`grid w-full ${
+                editingPartner && formData.types.includes("carrier")
+                  ? "grid-cols-6"
+                  : "grid-cols-5"
+              }`}
+            >
               <TabsTrigger value="general">General</TabsTrigger>
               <TabsTrigger value="contacts" disabled={!editingPartner}>
                 Contacts {contacts.length > 0 && `(${contacts.length})`}
@@ -1156,6 +1163,9 @@ useEffect(() => {
               <TabsTrigger value="address">Address</TabsTrigger>
               <TabsTrigger value="financial">Financial</TabsTrigger>
               <TabsTrigger value="contract">Contract</TabsTrigger>
+              {editingPartner && formData.types.includes("carrier") && (
+                <TabsTrigger value="portal">Portal</TabsTrigger>
+              )}
             </TabsList>
             
             <TabsContent value="general" className="space-y-4 mt-4">
@@ -1815,6 +1825,17 @@ useEffect(() => {
                 />
               </div>
             </TabsContent>
+
+            {editingPartner && formData.types.includes("carrier") && adminSession?.id && (
+              <TabsContent value="portal" className="space-y-4 mt-4">
+                <CarrierPortalInvite
+                  partnerId={editingPartner.id}
+                  partnerName={editingPartner.name}
+                  partnerEmail={editingPartner.email}
+                  adminId={adminSession.id}
+                />
+              </TabsContent>
+            )}
           </Tabs>
           
           <div className="flex justify-end gap-2 pt-4 border-t">
