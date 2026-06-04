@@ -139,7 +139,13 @@ export async function POST(
     const preview = content.length > 80 ? content.slice(0, 80) + "…" : content;
     await sendNotificationToCarrier(
       { carrierAccountId: recipient.carrier_account_id, partnerId: recipient.partner_id },
-      NotificationTemplates.carrierChatMessage(senderName, preview, recipient.offer_id, recipient.id)
+      NotificationTemplates.carrierChatMessage(
+        senderName,
+        preview,
+        recipient.offer_id,
+        recipient.id,
+        recipient.token
+      )
     );
   } catch (e) {
     console.error("[exchange/recipients/messages] carrier push failed", e);

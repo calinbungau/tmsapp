@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { Truck, Package, MessageSquare, User, LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCarrierSession } from "@/hooks/use-carrier-session";
+import { CarrierPushManager } from "@/components/carrier/carrier-push-manager";
 
 declare global {
   interface Window {
@@ -30,22 +31,43 @@ export default function CarrierDashboardLayout({
   const { session, loading, logout } = useCarrierSession();
 
   // Bridge for the native BNG Tracking carrier app: it calls
-  // window.updateNotificationToken(token) with the device FCM token, which we
-  // persist + register against the logged-in carrier account so the carrier
-  // receives push for new offers, decisions, and chat messages. If a token was
-  // already captured before login, register it as soon as the session loads.
+  // window.updateNotificationToken(token) with the device FCM token. The native
+  // shell may fire this *before* the carrier session has loaded, so we install
+  // the handler immediately and always stash the latest token in localStorage.
+  // A second effect (below) registers the stored token against the logged-in
+  // carrier account as soon as the session is available — this avoids a startup
+  // race where an early token would otherwise be dropped.
+  useEffect(() => {
+    window.updateNotificationToken = (token: string) => {
+      if (!token) return;
+      try {
+        localStorage.setItem("carrier_fcm_token", token);
+      } catch {
+        /* ignore storage errors */
+      }
+      // Fire a custom event so the registration effect can react in real time
+      // even if the session was already loaded when the token arrives.
+      window.dispatchEvent(new CustomEvent("carrierTokenUpdated", { detail: token }));
+    };
+    return () => {
+      delete window.updateNotificationToken;
+    };
+  }, []);
+
+  // Register the captured FCM token against the carrier account. Runs when the
+  // session becomes available and whenever the native app delivers a new token.
   useEffect(() => {
     if (!session?.id) return;
+    const accountId = session.id;
 
     const register = async (token: string) => {
       if (!token) return;
       try {
-        localStorage.setItem("carrier_fcm_token", token);
         await fetch("/api/carrier/register-device", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            carrier_account_id: session.id,
+            carrier_account_id: accountId,
             fcm_token: token,
             platform: navigator.userAgent,
           }),
@@ -55,15 +77,19 @@ export default function CarrierDashboardLayout({
       }
     };
 
-    window.updateNotificationToken = (token: string) => {
-      void register(token);
-    };
-
+    // Register any token captured before the session was ready.
     const existing = localStorage.getItem("carrier_fcm_token");
     if (existing) void register(existing);
 
+    // Register fresh tokens delivered while the dashboard is open.
+    const onToken = (e: Event) => {
+      const token = (e as CustomEvent<string>).detail;
+      if (token) void register(token);
+    };
+    window.addEventListener("carrierTokenUpdated", onToken);
+
     return () => {
-      delete window.updateNotificationToken;
+      window.removeEventListener("carrierTokenUpdated", onToken);
     };
   }, [session?.id]);
 
@@ -98,7 +124,12 @@ export default function CarrierDashboardLayout({
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto pb-20">{children}</main>
+      <main className="flex-1 overflow-auto pb-20">
+        <div className="px-4 pt-4">
+          <CarrierPushManager carrierAccountId={session.id} />
+        </div>
+        {children}
+      </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-card border-t z-50">
         <div className="flex items-center justify-around py-2 max-w-md mx-auto">
