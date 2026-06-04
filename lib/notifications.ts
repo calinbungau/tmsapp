@@ -336,33 +336,50 @@ export const NotificationTemplates = {
   }),
 
   // ─── Carrier (freight exchange) events ───────────────────────────────────
-  newFreightOffer: (route: string, reference: string, offerId: string) => ({
+  // `token` is the recipient's portal token, used by the carrier service worker
+  // to deep-link straight to /carrier-dashboard/offers/[token].
+  newFreightOffer: (route: string, reference: string, offerId: string, token?: string | null) => ({
     title: "New freight offer",
     body: `${route} · ref ${reference}`,
-    data: { type: "freight_offer_new", offer_id: offerId },
+    data: cleanData({ type: "freight_offer_new", offer_id: offerId, token }),
   }),
 
-  quoteAccepted: (reference: string, offerId: string) => ({
+  quoteAccepted: (reference: string, offerId: string, token?: string | null) => ({
     title: "Offer awarded to you",
     body: `You have been awarded offer ${reference}. The dispatcher will follow up with the transport order.`,
-    data: { type: "freight_offer_awarded", offer_id: offerId },
+    data: cleanData({ type: "freight_offer_awarded", offer_id: offerId, token }),
   }),
 
-  quoteDeclined: (reference: string, offerId: string) => ({
+  quoteDeclined: (reference: string, offerId: string, token?: string | null) => ({
     title: "Response declined",
     body: `The dispatcher has declined your response to offer ${reference}.`,
-    data: { type: "freight_offer_declined", offer_id: offerId },
+    data: cleanData({ type: "freight_offer_declined", offer_id: offerId, token }),
   }),
 
-  offerReopened: (reference: string, offerId: string) => ({
+  offerReopened: (reference: string, offerId: string, token?: string | null) => ({
     title: "Offer re-opened",
     body: `The dispatcher has re-opened offer ${reference}.`,
-    data: { type: "freight_offer_reopened", offer_id: offerId },
+    data: cleanData({ type: "freight_offer_reopened", offer_id: offerId, token }),
   }),
 
-  carrierChatMessage: (senderName: string, preview: string, offerId: string, recipientId: string) => ({
+  carrierChatMessage: (
+    senderName: string,
+    preview: string,
+    offerId: string,
+    recipientId: string,
+    token?: string | null
+  ) => ({
     title: `Message from ${senderName}`,
     body: preview,
-    data: { type: "chat_message", offer_id: offerId, recipient_id: recipientId },
+    data: cleanData({ type: "chat_message", offer_id: offerId, recipient_id: recipientId, token }),
   }),
 };
+
+// FCM data values must all be strings; drop null/undefined entries.
+function cleanData(obj: Record<string, string | null | undefined>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v != null) out[k] = String(v);
+  }
+  return out;
+}

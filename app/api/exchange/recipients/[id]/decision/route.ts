@@ -142,10 +142,10 @@ export async function POST(
   try {
     const template =
       decision === "accept"
-        ? NotificationTemplates.quoteAccepted(reference, rec.offer_id)
+        ? NotificationTemplates.quoteAccepted(reference, rec.offer_id, rec.token)
         : decision === "decline"
-        ? NotificationTemplates.quoteDeclined(reference, rec.offer_id)
-        : NotificationTemplates.offerReopened(reference, rec.offer_id);
+        ? NotificationTemplates.quoteDeclined(reference, rec.offer_id, rec.token)
+        : NotificationTemplates.offerReopened(reference, rec.offer_id, rec.token);
     await sendNotificationToCarrier(
       { carrierAccountId: rec.carrier_account_id, partnerId: rec.partner_id },
       template

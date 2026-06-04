@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { Truck, Package, MessageSquare, User, LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCarrierSession } from "@/hooks/use-carrier-session";
+import { CarrierPushManager } from "@/components/carrier/carrier-push-manager";
 
 declare global {
   interface Window {
@@ -123,7 +124,12 @@ export default function CarrierDashboardLayout({
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto pb-20">{children}</main>
+      <main className="flex-1 overflow-auto pb-20">
+        <div className="px-4 pt-4">
+          <CarrierPushManager carrierAccountId={session.id} />
+        </div>
+        {children}
+      </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-card border-t z-50">
         <div className="flex items-center justify-around py-2 max-w-md mx-auto">

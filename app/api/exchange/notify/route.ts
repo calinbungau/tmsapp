@@ -192,23 +192,27 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    // Push the offer to carriers who have the app installed (registered a
-    // device). Carriers are matched to accounts via their business-partner id;
-    // those without an account simply receive the email above. Best-effort.
+    // Push the offer to carriers who have the app installed or have enabled
+    // browser notifications (registered a device). Carriers are matched to
+    // accounts via their business-partner id; those without an account simply
+    // receive the email above. Each push carries that carrier's own portal
+    // token so tapping it deep-links to their offer. Best-effort.
     try {
+      const route = formatRoute(offer);
       const partnerIds = Array.from(
-        new Set(carriers.map((c) => c.id).filter(Boolean) as string[])
+        new Set(recipients.map((c) => c.id).filter(Boolean) as string[])
       );
-      const accountIdSets = await Promise.all(
-        partnerIds.map((pid) => resolveCarrierAccountIds({ partnerId: pid }))
+      await Promise.all(
+        partnerIds.map(async (pid) => {
+          const accountIds = await resolveCarrierAccountIds({ partnerId: pid });
+          if (!accountIds.length) return;
+          const token = recipientByPartner.get(pid)?.token || null;
+          await sendNotificationToCarrierAccounts(
+            accountIds,
+            NotificationTemplates.newFreightOffer(route, offer.reference, offerId, token)
+          );
+        })
       );
-      const accountIds = Array.from(new Set(accountIdSets.flat()));
-      if (accountIds.length) {
-        await sendNotificationToCarrierAccounts(
-          accountIds,
-          NotificationTemplates.newFreightOffer(formatRoute(offer), offer.reference, offerId)
-        );
-      }
     } catch (e) {
       console.error("[exchange/notify] carrier push failed", e);
     }
