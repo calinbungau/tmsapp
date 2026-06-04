@@ -33,6 +33,7 @@ import {
   Building2,
   ArrowDown,
   ArrowUp,
+  Send,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AddressAutocomplete, ParsedAddress } from "@/components/ui/address-autocomplete";
@@ -225,6 +226,7 @@ export default function NewFreightOfferPage() {
     createEmptyStop("unload"),
   ]);
   const [saving, setSaving] = useState(false);
+  const [saveMode, setSaveMode] = useState<"draft" | "publish" | null>(null);
 
   // Update form field
   const updateField = (field: keyof FormData, value: string) => {
@@ -281,7 +283,7 @@ export default function NewFreightOfferPage() {
   };
 
   // Save offer
-  const handleSave = async () => {
+  const handleSave = async (publish = false) => {
     if (!adminSession?.id) {
       toast({ title: "Error", description: "Not authenticated", variant: "destructive" });
       return;
@@ -300,6 +302,7 @@ export default function NewFreightOfferPage() {
     }
 
     setSaving(true);
+    setSaveMode(publish ? "publish" : "draft");
     try {
       const reference = generateReference();
 
@@ -308,7 +311,8 @@ export default function NewFreightOfferPage() {
         admin_id: adminSession.id,
         reference,
         title: form.title || null,
-        status: "draft",
+        status: publish ? "published" : "draft",
+        published_at: publish ? new Date().toISOString() : null,
         visibility: "private",
         // Origin (first stop) - for backwards compatibility
         origin_company: firstStop.company_name || null,
@@ -390,13 +394,19 @@ export default function NewFreightOfferPage() {
 
       if (stopsError) throw stopsError;
 
-      toast({ title: "Created", description: `Offer ${reference} saved as draft` });
+      toast({
+        title: publish ? "Published" : "Created",
+        description: publish
+          ? `Offer ${reference} is now live on the exchange`
+          : `Offer ${reference} saved as draft`,
+      });
       router.push("/admin/tms/exchange");
     } catch (err: any) {
       console.error("Save error:", err);
       toast({ title: "Error", description: err?.message || "Failed to save offer", variant: "destructive" });
     } finally {
       setSaving(false);
+      setSaveMode(null);
     }
   };
 
@@ -419,10 +429,24 @@ export default function NewFreightOfferPage() {
               </p>
             </div>
           </div>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-            Save as Draft
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => handleSave(false)} disabled={saving}>
+              {saving && saveMode === "draft" ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              Save as Draft
+            </Button>
+            <Button onClick={() => handleSave(true)} disabled={saving}>
+              {saving && saveMode === "publish" ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 mr-2" />
+              )}
+              Publish Offer
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -919,14 +943,26 @@ export default function NewFreightOfferPage() {
             />
           </div>
 
-          {/* Bottom Save Button */}
+          {/* Bottom Save Buttons */}
           <div className="flex justify-end gap-3 pb-6">
-            <Button variant="outline" onClick={() => router.push("/admin/tms/exchange")}>
+            <Button variant="ghost" onClick={() => router.push("/admin/tms/exchange")}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+            <Button variant="outline" onClick={() => handleSave(false)} disabled={saving}>
+              {saving && saveMode === "draft" ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
               Save as Draft
+            </Button>
+            <Button onClick={() => handleSave(true)} disabled={saving}>
+              {saving && saveMode === "publish" ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 mr-2" />
+              )}
+              Publish Offer
             </Button>
           </div>
         </div>

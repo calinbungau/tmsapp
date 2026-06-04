@@ -21,7 +21,6 @@ import {
   ArrowRight,
   DollarSign,
   History,
-  Edit2,
   ChevronDown,
   Send,
   Loader2,
@@ -36,6 +35,9 @@ import {
   RotateCcw,
   Globe,
   Lock,
+  MoreVertical,
+  Ban,
+  Pencil,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { OfferRecipientsPanel } from "@/components/exchange/offer-recipients-panel";
@@ -266,6 +268,28 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
     fetchOffer();
   }, [fetchOffer]);
 
+  // ─── Quick status actions (publish / unpublish / cancel) ──
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const updateStatus = useCallback(
+    async (status: string, successMsg: string) => {
+      setUpdatingStatus(true);
+      try {
+        const patch: Record<string, any> = { status, updated_at: new Date().toISOString() };
+        if (status === "published") patch.published_at = new Date().toISOString();
+        const { error } = await supabase.from("freight_offers").update(patch).eq("id", offerId);
+        if (error) throw error;
+        toast({ title: "Updated", description: successMsg });
+        await fetchOffer();
+        onStatusChange?.();
+      } catch (err: any) {
+        toast({ title: "Error", description: err?.message || "Failed to update status", variant: "destructive" });
+      } finally {
+        setUpdatingStatus(false);
+      }
+    },
+    [supabase, offerId, toast, fetchOffer, onStatusChange]
+  );
+
   // ─── Realtime subscription ───────────────────────────────
   useEffect(() => {
     const channel = supabase
@@ -383,16 +407,56 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
 
         <div className="flex items-center gap-2 shrink-0">
           {(offer.status === "draft" || offer.status === "published" || offer.status === "bidding") && (
-            <Button size="sm" variant="outline" onClick={() => setPublishOpen(true)}>
+            <Button size="sm" variant="outline" onClick={() => setPublishOpen(true)} disabled={updatingStatus}>
               <Send className="h-3.5 w-3.5 mr-1.5" />
               {offer.status === "draft" ? "Publish" : "Manage"}
             </Button>
           )}
-          <Button size="sm" variant="ghost" asChild>
-            <Link href={`/admin/tms/exchange/${offer.id}/edit`}>
-              <Edit2 className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-8 w-8" disabled={updatingStatus}>
+                {updatingStatus ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem asChild>
+                <Link href={`/admin/tms/exchange/${offer.id}/edit`}>
+                  <Pencil className="h-3.5 w-3.5 mr-2" />
+                  Edit offer
+                </Link>
+              </DropdownMenuItem>
+              {(offer.status === "published" || offer.status === "bidding") && (
+                <DropdownMenuItem onClick={() => setPublishOpen(true)}>
+                  <Users className="h-3.5 w-3.5 mr-2" />
+                  Manage carriers
+                </DropdownMenuItem>
+              )}
+              {offer.status === "draft" && (
+                <DropdownMenuItem onClick={() => updateStatus("published", "Offer published to the exchange")}>
+                  <Globe className="h-3.5 w-3.5 mr-2" />
+                  Publish now
+                </DropdownMenuItem>
+              )}
+              {(offer.status === "published" || offer.status === "bidding") && (
+                <DropdownMenuItem onClick={() => updateStatus("draft", "Offer unpublished — back to draft")}>
+                  <Lock className="h-3.5 w-3.5 mr-2" />
+                  Unpublish
+                </DropdownMenuItem>
+              )}
+              {offer.status !== "cancelled" && offer.status !== "booked" && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-red-600 focus:text-red-600"
+                    onClick={() => updateStatus("cancelled", "Offer cancelled")}
+                  >
+                    <Ban className="h-3.5 w-3.5 mr-2" />
+                    Cancel offer
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button size="icon" variant="ghost" onClick={onClose} className="h-8 w-8">
             <X className="h-4 w-4" />
           </Button>
@@ -573,59 +637,8 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
               )}
             </div>
 
-            {/* Carrier Responses */}
-            {recipients.length > 0 && (
-              <div className="bg-muted/20 rounded-lg p-4">
-                <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
-                  <Users className="h-4 w-4 text-primary" />
-                  Carrier Responses
-                </h3>
-                <div className="space-y-2">
-                  {recipients.slice(0, 5).map((r) => {
-                    const respCfg = r.response ? RESPONSE_CONFIG[r.response] : null;
-                    const isAwarded = r.dispatcher_decision === "accepted";
-                    return (
-                      <div
-                        key={r.id}
-                        className={`flex items-center justify-between p-2 rounded-md ${
-                          isAwarded ? "bg-green-500/10 border border-green-500/20" : "bg-background/50"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {isAwarded && <Trophy className="h-4 w-4 text-green-600 shrink-0" />}
-                          <span className="text-sm truncate">
-                            {r.carrier_name || r.email || "Unknown"}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {r.response === "quoted" && r.quote_amount && (
-                            <span className="text-sm font-medium">
-                              {fmtCurrency(r.quote_amount, r.quote_currency || offer.currency)}
-                            </span>
-                          )}
-                          {respCfg && (
-                            <Badge className={respCfg.className}>
-                              <respCfg.Icon className="h-3 w-3 mr-1" />
-                              {respCfg.label}
-                            </Badge>
-                          )}
-                          {!r.response && r.view_count > 0 && (
-                            <span className="text-xs text-muted-foreground flex items-center gap-1">
-                              <Eye className="h-3 w-3" /> {r.view_count}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {recipients.length > 5 && (
-                    <p className="text-xs text-muted-foreground text-center pt-1">
-                      +{recipients.length - 5} more carriers
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* Carrier Responses — seen/open times, decisions & per-carrier chat */}
+            <OfferRecipientsPanel offerId={offer.id} adminId={adminId} />
 
             {/* Notes */}
             {offer.notes && (
