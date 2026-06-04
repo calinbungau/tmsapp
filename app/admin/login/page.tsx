@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Eye, EyeOff, ArrowRight, MapPin, Truck, Shield, BarChart3 } from "lucide-react";
+import { Loader2, Eye, EyeOff, ArrowRight, MapPin, Truck, Shield, BarChart3, Package } from "lucide-react";
 import Image from "next/image";
 import { Suspense } from "react";
 import Loading from "./loading";
@@ -450,29 +450,50 @@ function AdminLoginForm() {
       </div>
 
       {/* Right panel - Login form */}
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-8 bg-background relative">
-        {/* Subtle background texture */}
-        <div className="absolute inset-0 opacity-[0.015]"
+      <div className="flex-1 flex items-center justify-center p-5 sm:p-8 bg-background relative overflow-hidden">
+        {/* Mobile-only immersive backdrop: deep gradient + animated routes */}
+        <div className="lg:hidden absolute inset-0 bg-gradient-to-b from-[#080A14] via-[#0A0C18] to-[#06080F]" />
+        <div className="lg:hidden absolute inset-0">
+          <AnimatedBackground />
+        </div>
+        {/* Mobile-only golden aurora glow behind the logo */}
+        <div
+          className="lg:hidden absolute -top-32 left-1/2 -translate-x-1/2 w-[150%] h-80 rounded-[50%] blur-3xl"
+          style={{
+            background:
+              "radial-gradient(ellipse at center, rgba(252,191,1,0.18) 0%, rgba(252,191,1,0.05) 40%, transparent 70%)",
+          }}
+        />
+        {/* Mobile-only bottom fade for grounding */}
+        <div className="lg:hidden absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#06080F] to-transparent" />
+
+        {/* Desktop subtle background texture */}
+        <div className="hidden lg:block absolute inset-0 opacity-[0.015]"
           style={{
             backgroundImage: `radial-gradient(circle at 1px 1px, rgba(252,191,1,0.4) 1px, transparent 0)`,
             backgroundSize: "32px 32px",
           }}
         />
 
-        <div className="relative z-10 w-full max-w-sm">
-          {/* Mobile logo */}
-          <div className="lg:hidden flex justify-center mb-8">
-            <Image
-              src="/images/logo-full-bng.png"
-              alt="BNG Tracking"
-              width={180}
-              height={69}
-              priority
-            />
+        {/* Glassmorphic card on mobile, transparent on desktop */}
+        <div className="relative z-10 w-full max-w-sm rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-2xl p-6 shadow-[0_24px_70px_-20px_rgba(0,0,0,0.8)] lg:rounded-none lg:border-0 lg:bg-transparent lg:backdrop-blur-none lg:p-0 lg:shadow-none">
+          {/* Mobile logo with glow */}
+          <div className="lg:hidden flex flex-col items-center mb-8">
+            <div className="relative">
+              <div className="absolute -inset-5 rounded-full bg-primary/20 blur-2xl" />
+              <Image
+                src="/images/logo-full-bng.png"
+                alt="BNG Tracking"
+                width={190}
+                height={73}
+                className="relative"
+                priority
+              />
+            </div>
           </div>
 
           {/* Form header */}
-          <div className="mb-8">
+          <div className="mb-8 text-center lg:text-left">
             <h2 className="text-2xl font-bold text-foreground tracking-tight">Welcome back</h2>
             <p className="text-muted-foreground text-sm mt-1.5">Sign in to your admin dashboard</p>
           </div>
@@ -552,14 +573,23 @@ function AdminLoginForm() {
             <div className="flex-1 h-px bg-border/40" />
           </div>
 
-          {/* Driver login link */}
-          <a
-            href="/driver"
-            className="flex items-center justify-center gap-2 w-full h-10 rounded-lg border border-border/40 text-sm text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-card/50 transition-all"
-          >
-            <Truck className="h-4 w-4" />
-            Driver Login
-          </a>
+          {/* Secondary portals */}
+          <div className="grid grid-cols-2 gap-3">
+            <a
+              href="/driver"
+              className="group flex items-center justify-center gap-2 h-11 rounded-xl border border-border/40 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-card/50 transition-all"
+            >
+              <Truck className="h-4 w-4 group-hover:text-primary transition-colors" />
+              Driver
+            </a>
+            <a
+              href="/carrier"
+              className="group flex items-center justify-center gap-2 h-11 rounded-xl border border-border/40 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-card/50 transition-all"
+            >
+              <Package className="h-4 w-4 group-hover:text-primary transition-colors" />
+              Carrier
+            </a>
+          </div>
 
           {/* Footer */}
           <p className="text-center text-[11px] text-muted-foreground/30 mt-8">
