@@ -16,6 +16,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Pagination params
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "25")));
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
     const supabase = await createClient();
 
     const { data: account } = await supabase
@@ -45,7 +52,7 @@ export async function GET(request: NextRequest) {
       orFilters.push(`partner_id.in.(${Array.from(partnerIds).join(",")})`);
     }
 
-    const { data, error } = await supabase
+    const { data, error, count } = await supabase
       .from("freight_offer_recipients")
       .select(
         "id, token, response, responded_at, quote_amount, quote_currency, first_viewed_at, expires_at, " +
@@ -54,10 +61,12 @@ export async function GET(request: NextRequest) {
           // awarded_recipient_id), so we must name the offer_id relationship.
           "offer:freight_offers!freight_offer_recipients_offer_id_fkey(id, reference, title, status, origin_city, origin_country, dest_city, " +
           "dest_country, load_date_from, unload_date_from, vehicle_type, weight_kg, pricing_mode, " +
-          "price_amount, currency, expires_at, awarded_recipient_id)"
+          "price_amount, currency, expires_at, awarded_recipient_id)",
+        { count: "exact" }
       )
       .or(orFilters.join(","))
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .range(from, to);
 
     if (error) {
       console.error("[carrier-portal/offers] query failed", error);
@@ -97,7 +106,7 @@ export async function GET(request: NextRequest) {
         from_company: tenantNames.get(row.admin_id as string) || null,
       }));
 
-    return NextResponse.json({ offers });
+    return NextResponse.json({ offers, total: count || offers.length });
   } catch (error) {
     console.error("[carrier-portal/offers] error", error);
     return NextResponse.json({ error: "An error occurred" }, { status: 500 });

@@ -23,8 +23,6 @@ import {
   Calendar,
   Package,
   DollarSign,
-  MapPin,
-  Clock,
   RefreshCw,
   MoreHorizontal,
   Eye,
@@ -32,9 +30,13 @@ import {
   Trash2,
   Send,
   ChevronLeft,
+  ChevronRight,
   Globe,
   Lock,
   Users,
+  MessageSquare,
+  TrendingUp,
+  Trophy,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -44,6 +46,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { PublishToExchangeDialog } from "@/components/tms/publish-to-exchange-dialog";
+import { OfferDetailPanel } from "@/components/exchange/offer-detail-panel";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // ─── Country flag ──────────────────────────────────────────
 const COUNTRY_CODES: Record<string, string> = {
@@ -64,14 +77,14 @@ function getCountryCode(c: string | null | undefined) {
   return COUNTRY_CODES[t.toLowerCase()] || "";
 }
 
-function CountryFlag({ country, className = "w-4 h-3" }: { country: string | null | undefined; className?: string }) {
+function CountryFlag({ country, className = "w-5 h-3.5" }: { country: string | null | undefined; className?: string }) {
   const code = getCountryCode(country);
   if (!code) return null;
   return (
     <img
-      src={`https://flagcdn.com/w20/${code.toLowerCase()}.png`}
+      src={`https://flagcdn.com/w40/${code.toLowerCase()}.png`}
       alt={country || ""}
-      className={`${className} rounded-[2px] object-cover shrink-0`}
+      className={`${className} rounded-sm object-cover shrink-0`}
       crossOrigin="anonymous"
     />
   );
@@ -97,6 +110,16 @@ interface FreightOffer {
   currency: string;
   visibility: string;
   created_at: string;
+  recipients_count?: number;
+  responses_count?: number;
+  awarded_carrier?: string | null;
+}
+
+interface Stats {
+  total: number;
+  published: number;
+  bidding: number;
+  awarded: number;
 }
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -118,7 +141,7 @@ function fmtDate(d: string | null | undefined) {
 function fmtDateRange(from: string | null | undefined, to: string | null | undefined) {
   if (!from && !to) return "—";
   if (from === to || !to) return fmtDate(from);
-  return `${fmtDate(from)} - ${fmtDate(to)}`;
+  return `${fmtDate(from)} – ${fmtDate(to)}`;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -141,12 +164,6 @@ const STATUS_LABELS: Record<string, string> = {
   expired: "Expired",
 };
 
-const VISIBILITY_ICONS: Record<string, React.ReactNode> = {
-  private: <Lock className="h-3 w-3" />,
-  public: <Globe className="h-3 w-3" />,
-  external: <Users className="h-3 w-3" />,
-};
-
 // ─── Page ──────────────────────────────────────────────────
 export default function FreightExchangePage() {
   const { session: adminSession } = useAdminSession();
@@ -158,30 +175,115 @@ export default function FreightExchangePage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [visibilityFilter, setVisibilityFilter] = useState<string>("all");
   const [publishOffer, setPublishOffer] = useState<FreightOffer | null>(null);
+  const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
+  const [deleteOfferId, setDeleteOfferId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  // Fetch offers
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [totalCount, setTotalCount] = useState(0);
+
+  // Stats
+  const [stats, setStats] = useState<Stats>({ total: 0, published: 0, bidding: 0, awarded: 0 });
+
+  // ─── Fetch stats ─────────────────────────────────────────
+  const fetchStats = useCallback(async () => {
+    if (!adminSession?.id) return;
+    try {
+      const { count: total } = await supabase
+        .from("freight_offers")
+        .select("*", { count: "exact", head: true })
+        .eq("admin_id", adminSession.id);
+
+      const { count: published } = await supabase
+        .from("freight_offers")
+        .select("*", { count: "exact", head: true })
+        .eq("admin_id", adminSession.id)
+        .eq("status", "published");
+
+      const { count: bidding } = await supabase
+        .from("freight_offers")
+        .select("*", { count: "exact", head: true })
+        .eq("admin_id", adminSession.id)
+        .eq("status", "bidding");
+
+      const { count: awarded } = await supabase
+        .from("freight_offers")
+        .select("*", { count: "exact", head: true })
+        .eq("admin_id", adminSession.id)
+        .eq("status", "awarded");
+
+      setStats({
+        total: total || 0,
+        published: published || 0,
+        bidding: bidding || 0,
+        awarded: awarded || 0,
+      });
+    } catch (err) {
+      console.error("Failed to fetch stats:", err);
+    }
+  }, [adminSession?.id, supabase]);
+
+  // ─── Fetch offers with pagination ────────────────────────
   const fetchOffers = useCallback(async () => {
     if (!adminSession?.id) return;
     setLoading(true);
     try {
       let query = supabase
         .from("freight_offers")
-        .select("*")
+        .select("*", { count: "exact" })
         .eq("admin_id", adminSession.id)
         .order("created_at", { ascending: false });
 
       if (statusFilter !== "all") {
         query = query.eq("status", statusFilter);
       }
-      if (visibilityFilter !== "all") {
-        query = query.eq("visibility", visibilityFilter);
+
+      if (search.trim()) {
+        query = query.or(
+          `reference.ilike.%${search}%,title.ilike.%${search}%,origin_city.ilike.%${search}%,dest_city.ilike.%${search}%`
+        );
       }
 
-      const { data, error } = await query;
+      // Pagination
+      const from = (currentPage - 1) * pageSize;
+      const to = from + pageSize - 1;
+      query = query.range(from, to);
+
+      const { data, count, error } = await query;
       if (error) throw error;
-      setOffers(data || []);
+
+      // Fetch recipient counts for each offer
+      const offerIds = (data || []).map((o: FreightOffer) => o.id);
+      if (offerIds.length > 0) {
+        const { data: recipientData } = await supabase
+          .from("freight_offer_recipients")
+          .select("offer_id, response, dispatcher_decision, carrier_name")
+          .in("offer_id", offerIds);
+
+        const recipientMap = new Map<string, { count: number; responses: number; awarded?: string }>();
+        (recipientData || []).forEach((r: { offer_id: string; response: string | null; dispatcher_decision: string | null; carrier_name: string | null }) => {
+          const curr = recipientMap.get(r.offer_id) || { count: 0, responses: 0 };
+          curr.count++;
+          if (r.response) curr.responses++;
+          if (r.dispatcher_decision === "accepted") curr.awarded = r.carrier_name || undefined;
+          recipientMap.set(r.offer_id, curr);
+        });
+
+        const enriched = (data || []).map((o: FreightOffer) => ({
+          ...o,
+          recipients_count: recipientMap.get(o.id)?.count || 0,
+          responses_count: recipientMap.get(o.id)?.responses || 0,
+          awarded_carrier: recipientMap.get(o.id)?.awarded || null,
+        }));
+        setOffers(enriched);
+      } else {
+        setOffers(data || []);
+      }
+
+      setTotalCount(count || 0);
     } catch (err) {
       console.error("Failed to fetch offers:", err);
       toast({
@@ -192,41 +294,82 @@ export default function FreightExchangePage() {
     } finally {
       setLoading(false);
     }
-  }, [adminSession?.id, supabase, statusFilter, visibilityFilter, toast]);
+  }, [adminSession?.id, supabase, statusFilter, search, currentPage, pageSize, toast]);
 
   useEffect(() => {
     fetchOffers();
-  }, [fetchOffers]);
+    fetchStats();
+  }, [fetchOffers, fetchStats]);
 
-  // Filter by search
-  const filteredOffers = offers.filter((offer) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      offer.reference.toLowerCase().includes(q) ||
-      offer.title?.toLowerCase().includes(q) ||
-      offer.origin_city?.toLowerCase().includes(q) ||
-      offer.dest_city?.toLowerCase().includes(q)
-    );
-  });
+  // ─── Realtime subscription ───────────────────────────────
+  useEffect(() => {
+    if (!adminSession?.id) return;
+    const channel = supabase
+      .channel("exchange-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "freight_offers" }, () => {
+        fetchOffers();
+        fetchStats();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "freight_offer_recipients" }, () => {
+        fetchOffers();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [adminSession?.id, supabase, fetchOffers, fetchStats]);
 
-  // Delete offer
-  const handleDelete = async (id: string) => {
+  // ─── Restore selected offer from URL ─────────────────────
+  useEffect(() => {
+    if (offers.length === 0 || selectedOfferId) return;
+    const url = new URL(window.location.href);
+    const id = url.searchParams.get("offer");
+    if (id) setSelectedOfferId(id);
+  }, [offers, selectedOfferId]);
+
+  // ─── Select offer (update URL) ───────────────────────────
+  const selectOffer = (id: string | null) => {
+    setSelectedOfferId(id);
+    const url = new URL(window.location.href);
+    if (id) {
+      url.searchParams.set("offer", id);
+    } else {
+      url.searchParams.delete("offer");
+    }
+    window.history.replaceState({}, "", url.toString());
+  };
+
+  // ─── Delete offer ────────────────────────────────────────
+  const handleDelete = async () => {
+    if (!deleteOfferId) return;
+    setDeleting(true);
     try {
-      const { error } = await supabase.from("freight_offers").delete().eq("id", id);
+      const { error } = await supabase.from("freight_offers").delete().eq("id", deleteOfferId);
       if (error) throw error;
-      setOffers((prev) => prev.filter((o) => o.id !== id));
+      if (selectedOfferId === deleteOfferId) selectOffer(null);
+      setDeleteOfferId(null);
       toast({ title: "Deleted", description: "Offer deleted successfully" });
+      fetchOffers();
+      fetchStats();
     } catch {
       toast({ title: "Error", description: "Failed to delete offer", variant: "destructive" });
+    } finally {
+      setDeleting(false);
     }
   };
 
+  const totalPages = Math.ceil(totalCount / pageSize);
+
   return (
-    <div className="flex flex-col h-full bg-background">
-      {/* Header */}
-      <div className="border-b border-border/40 bg-card/60 px-4 py-3 sm:px-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex h-[calc(100vh-56px)] overflow-hidden">
+      {/* Left: Offers List */}
+      <div
+        className={`flex flex-col transition-all duration-300 ease-in-out ${
+          selectedOfferId ? "hidden md:flex md:w-1/2 lg:w-1/2" : "w-full"
+        }`}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-border/50">
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.push("/admin/tms/orders")}
@@ -235,215 +378,362 @@ export default function FreightExchangePage() {
               <ChevronLeft className="h-5 w-5" />
             </button>
             <div>
-              <h1 className="text-lg font-semibold text-foreground">Freight Exchange</h1>
-              <p className="text-sm text-muted-foreground">
-                Manage and publish freight offers to carriers
+              <h1 className="text-lg md:text-xl font-semibold text-foreground tracking-tight">
+                Freight Exchange
+              </h1>
+              <p className="text-[10px] md:text-xs text-muted-foreground mt-0.5">
+                {totalCount} offers total
               </p>
             </div>
           </div>
-          <Button asChild>
+          <Button asChild size="sm" className="gap-1.5 h-9 md:h-8 px-3 md:px-4 text-xs">
             <Link href="/admin/tms/exchange/new">
-              <Plus className="h-4 w-4 mr-2" />
-              New Offer
+              <Plus className="h-4 w-4 md:h-3.5 md:w-3.5" />
+              <span className="hidden sm:inline">New Offer</span>
+              <span className="sm:hidden">New</span>
             </Link>
           </Button>
         </div>
-      </div>
 
-      {/* Filters */}
-      <div className="border-b border-border/40 bg-card/30 px-4 py-2 sm:px-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search offers..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-9"
-            />
+        {/* Stats Strip */}
+        <div className="flex items-center gap-4 md:gap-6 px-4 md:px-6 py-2 md:py-3 border-b border-border/50 bg-muted/20 overflow-x-auto scrollbar-hide">
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center">
+              <Package className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-base md:text-lg font-semibold leading-none">{stats.total}</p>
+              <p className="text-[10px] text-muted-foreground">Total</p>
+            </div>
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px] h-9">
-              <SelectValue placeholder="Status" />
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="h-8 w-8 rounded-md bg-blue-500/10 flex items-center justify-center">
+              <Send className="h-4 w-4 text-blue-500" />
+            </div>
+            <div>
+              <p className="text-base md:text-lg font-semibold leading-none">{stats.published}</p>
+              <p className="text-[10px] text-muted-foreground">Published</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="h-8 w-8 rounded-md bg-amber-500/10 flex items-center justify-center">
+              <MessageSquare className="h-4 w-4 text-amber-500" />
+            </div>
+            <div>
+              <p className="text-base md:text-lg font-semibold leading-none">{stats.bidding}</p>
+              <p className="text-[10px] text-muted-foreground">Bidding</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="h-8 w-8 rounded-md bg-green-500/10 flex items-center justify-center">
+              <Trophy className="h-4 w-4 text-green-500" />
+            </div>
+            <div>
+              <p className="text-base md:text-lg font-semibold leading-none">{stats.awarded}</p>
+              <p className="text-[10px] text-muted-foreground">Awarded</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="border-b border-border/50 bg-card/30 px-4 py-2 md:px-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search offers..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="pl-8 h-9"
+              />
+            </div>
+            <Select
+              value={statusFilter}
+              onValueChange={(v) => {
+                setStatusFilter(v);
+                setCurrentPage(1);
+              }}
+            >
+              <SelectTrigger className="w-[140px] h-9">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="published">Published</SelectItem>
+                <SelectItem value="bidding">Bidding</SelectItem>
+                <SelectItem value="awarded">Awarded</SelectItem>
+                <SelectItem value="booked">Booked</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+                <SelectItem value="expired">Expired</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="ghost" size="icon" onClick={fetchOffers} className="h-9 w-9">
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
+        </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-auto">
+          {loading && offers.length === 0 ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : offers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+              <Package className="h-12 w-12 text-muted-foreground/50 mb-4" />
+              <h3 className="text-lg font-medium text-foreground mb-1">No offers found</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                {search || statusFilter !== "all"
+                  ? "Try adjusting your filters"
+                  : "Create your first freight offer to get started"}
+              </p>
+              {!search && statusFilter === "all" && (
+                <Button asChild>
+                  <Link href="/admin/tms/exchange/new">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Offer
+                  </Link>
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="divide-y divide-border/50">
+              {offers.map((offer) => (
+                <div
+                  key={offer.id}
+                  onClick={() => selectOffer(offer.id)}
+                  className={`px-4 md:px-6 py-3 cursor-pointer hover:bg-muted/30 transition-colors ${
+                    selectedOfferId === offer.id ? "bg-primary/5 border-l-2 border-l-primary" : ""
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    {/* Left: Route & Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="font-mono text-sm font-medium text-foreground">
+                          {offer.reference}
+                        </span>
+                        <Badge className={`text-[10px] ${STATUS_COLORS[offer.status] || "bg-muted"}`}>
+                          {STATUS_LABELS[offer.status] || offer.status}
+                        </Badge>
+                        {offer.visibility === "private" ? (
+                          <Lock className="h-3 w-3 text-muted-foreground" />
+                        ) : (
+                          <Globe className="h-3 w-3 text-muted-foreground" />
+                        )}
+                      </div>
+                      {/* Route with flags */}
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="flex items-center gap-1.5">
+                          <CountryFlag country={offer.origin_country} className="w-4 h-3" />
+                          <span className="text-foreground truncate max-w-[100px]">
+                            {offer.origin_city || "—"}
+                          </span>
+                        </div>
+                        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <div className="flex items-center gap-1.5">
+                          <CountryFlag country={offer.dest_country} className="w-4 h-3" />
+                          <span className="text-foreground truncate max-w-[100px]">
+                            {offer.dest_city || "—"}
+                          </span>
+                        </div>
+                      </div>
+                      {/* Meta row */}
+                      <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {fmtDateRange(offer.load_date_from, offer.load_date_to)}
+                        </span>
+                        {offer.recipients_count !== undefined && offer.recipients_count > 0 && (
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            {offer.recipients_count}
+                          </span>
+                        )}
+                        {offer.responses_count !== undefined && offer.responses_count > 0 && (
+                          <span className="flex items-center gap-1">
+                            <MessageSquare className="h-3 w-3" />
+                            {offer.responses_count}
+                          </span>
+                        )}
+                        {offer.awarded_carrier && (
+                          <span className="flex items-center gap-1 text-green-600">
+                            <Trophy className="h-3 w-3" />
+                            {offer.awarded_carrier}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right: Price & Actions */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-right">
+                        {offer.pricing_mode === "open" ? (
+                          <span className="text-xs text-muted-foreground">Open</span>
+                        ) : (
+                          <p className="text-sm font-semibold text-foreground">
+                            {fmtCurrency(offer.price_amount, offer.currency)}
+                          </p>
+                        )}
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => selectOffer(offer.id)}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            View
+                          </DropdownMenuItem>
+                          <DropdownMenuItem asChild>
+                            <Link href={`/admin/tms/exchange/${offer.id}/edit`}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit
+                            </Link>
+                          </DropdownMenuItem>
+                          {(offer.status === "draft" ||
+                            offer.status === "published" ||
+                            offer.status === "bidding") && (
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPublishOffer(offer);
+                              }}
+                            >
+                              <Send className="h-4 w-4 mr-2" />
+                              {offer.status === "draft" ? "Publish" : "Manage"}
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteOfferId(offer.id);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Pagination */}
+        <div className="flex items-center justify-between px-4 md:px-6 py-2 md:py-2.5 border-t border-border/50 shrink-0 bg-background/95">
+          <p className="text-[10px] md:text-xs text-muted-foreground">
+            {totalCount > 0 ? (
+              <>
+                <span className="hidden sm:inline">
+                  {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalCount)} of{" "}
+                </span>
+                {totalCount}
+                <span className="hidden sm:inline"> offers</span>
+              </>
+            ) : (
+              "No offers"
+            )}
+          </p>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-0.5 md:gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 md:h-7 md:w-7"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((p) => p - 1)}
+              >
+                <ChevronLeft className="h-4 w-4 md:h-3.5 md:w-3.5" />
+              </Button>
+              <span className="text-xs text-muted-foreground px-2 md:hidden">
+                {currentPage}/{totalPages}
+              </span>
+              <div className="hidden md:flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                  .reduce<(number | "...")[]>((acc, p, idx, arr) => {
+                    if (idx > 0 && p - arr[idx - 1] > 1) acc.push("...");
+                    acc.push(p);
+                    return acc;
+                  }, [])
+                  .map((p, i) =>
+                    p === "..." ? (
+                      <span key={`dots-${i}`} className="text-xs text-muted-foreground px-1">
+                        ...
+                      </span>
+                    ) : (
+                      <Button
+                        key={p}
+                        variant={currentPage === p ? "default" : "ghost"}
+                        size="icon"
+                        className={`h-7 w-7 text-xs ${
+                          currentPage === p ? "bg-primary text-primary-foreground" : ""
+                        }`}
+                        onClick={() => setCurrentPage(p)}
+                      >
+                        {p}
+                      </Button>
+                    )
+                  )}
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 md:h-7 md:w-7"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage((p) => p + 1)}
+              >
+                <ChevronRight className="h-4 w-4 md:h-3.5 md:w-3.5" />
+              </Button>
+            </div>
+          )}
+          <Select
+            value={String(pageSize)}
+            onValueChange={(v) => {
+              setPageSize(Number(v));
+              setCurrentPage(1);
+            }}
+          >
+            <SelectTrigger className="w-[70px] md:w-[90px] h-8 md:h-7 text-[10px] md:text-xs">
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="published">Published</SelectItem>
-              <SelectItem value="bidding">Bidding</SelectItem>
-              <SelectItem value="awarded">Awarded</SelectItem>
-              <SelectItem value="booked">Booked</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-              <SelectItem value="expired">Expired</SelectItem>
+              <SelectItem value="25">25 / pg</SelectItem>
+              <SelectItem value="50">50 / pg</SelectItem>
+              <SelectItem value="100">100 / pg</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={visibilityFilter} onValueChange={setVisibilityFilter}>
-            <SelectTrigger className="w-[140px] h-9">
-              <SelectValue placeholder="Visibility" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Visibility</SelectItem>
-              <SelectItem value="private">Private</SelectItem>
-              <SelectItem value="public">Public</SelectItem>
-              <SelectItem value="external">External</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="ghost" size="icon" onClick={fetchOffers} className="h-9 w-9">
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </Button>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-4 sm:p-6">
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : filteredOffers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Package className="h-12 w-12 text-muted-foreground/50 mb-4" />
-            <h3 className="text-lg font-medium text-foreground mb-1">No offers found</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              {search || statusFilter !== "all" || visibilityFilter !== "all"
-                ? "Try adjusting your filters"
-                : "Create your first freight offer to get started"}
-            </p>
-            {!search && statusFilter === "all" && visibilityFilter === "all" && (
-              <Button asChild>
-                <Link href="/admin/tms/exchange/new">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Offer
-                </Link>
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className="grid gap-3">
-            {filteredOffers.map((offer) => (
-              <div
-                key={offer.id}
-                className="bg-card border border-border/50 rounded-lg p-4 hover:border-border transition-colors"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  {/* Left: Route & Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="font-mono text-sm font-medium text-foreground">
-                        {offer.reference}
-                      </span>
-                      <Badge className={STATUS_COLORS[offer.status] || "bg-muted"}>
-                        {STATUS_LABELS[offer.status] || offer.status}
-                      </Badge>
-                      <span className="text-muted-foreground" title={offer.visibility}>
-                        {VISIBILITY_ICONS[offer.visibility]}
-                      </span>
-                    </div>
-                    {offer.title && (
-                      <p className="text-sm text-muted-foreground mb-2 truncate">
-                        {offer.title}
-                      </p>
-                    )}
-                    {/* Route */}
-                    <div className="flex items-center gap-2 text-sm">
-                      <div className="flex items-center gap-1.5">
-                        <CountryFlag country={offer.origin_country} />
-                        <span className="text-foreground">
-                          {offer.origin_city || offer.origin_country || "—"}
-                        </span>
-                      </div>
-                      <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <div className="flex items-center gap-1.5">
-                        <CountryFlag country={offer.dest_country} />
-                        <span className="text-foreground">
-                          {offer.dest_city || offer.dest_country || "—"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+      {/* Right: Detail Panel */}
+      {selectedOfferId && adminSession?.id && (
+        <div className="fixed top-14 left-0 right-0 bottom-0 z-40 md:relative md:top-auto md:left-auto md:right-auto md:bottom-auto md:z-auto w-full md:w-1/2 border-l border-border/50 bg-card overflow-hidden">
+          <OfferDetailPanel
+            offerId={selectedOfferId}
+            adminId={adminSession.id}
+            onClose={() => selectOffer(null)}
+            onStatusChange={() => {
+              fetchOffers();
+              fetchStats();
+            }}
+          />
+        </div>
+      )}
 
-                  {/* Middle: Details */}
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground sm:flex-col sm:items-end sm:gap-1">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-3.5 w-3.5" />
-                      <span>{fmtDateRange(offer.load_date_from, offer.load_date_to)}</span>
-                    </div>
-                    {offer.vehicle_type && (
-                      <div className="flex items-center gap-1">
-                        <Package className="h-3.5 w-3.5" />
-                        <span>{offer.vehicle_type}</span>
-                      </div>
-                    )}
-                    {(offer.weight_kg || offer.ldm) && (
-                      <span>
-                        {offer.weight_kg ? `${(offer.weight_kg / 1000).toFixed(1)}t` : ""}
-                        {offer.weight_kg && offer.ldm ? " / " : ""}
-                        {offer.ldm ? `${offer.ldm} LDM` : ""}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Right: Price & Actions */}
-                  <div className="flex items-center gap-3 sm:flex-col sm:items-end sm:gap-2">
-                    <div className="text-right">
-                      {offer.pricing_mode === "open" ? (
-                        <span className="text-sm text-muted-foreground">Open pricing</span>
-                      ) : (
-                        <>
-                          <p className="text-lg font-semibold text-foreground">
-                            {fmtCurrency(offer.price_amount, offer.currency)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {offer.pricing_mode === "fixed" ? "Fixed" : "Target"}
-                          </p>
-                        </>
-                      )}
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link href={`/admin/tms/exchange/${offer.id}`}>
-                            <Eye className="h-4 w-4 mr-2" />
-                            View
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link href={`/admin/tms/exchange/${offer.id}/edit`}>
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit
-                          </Link>
-                        </DropdownMenuItem>
-                        {(offer.status === "draft" ||
-                          offer.status === "published" ||
-                          offer.status === "bidding") && (
-                          <DropdownMenuItem onClick={() => setPublishOffer(offer)}>
-                            <Send className="h-4 w-4 mr-2" />
-                            {offer.status === "draft" ? "Publish" : "Manage distribution"}
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => handleDelete(offer.id)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Publish dialog */}
+      {/* Publish Dialog */}
       {adminSession?.id && publishOffer && (
         <PublishToExchangeDialog
           open={!!publishOffer}
@@ -454,9 +744,33 @@ export default function FreightExchangePage() {
           onPublished={() => {
             setPublishOffer(null);
             fetchOffers();
+            fetchStats();
           }}
         />
       )}
+
+      {/* Delete Dialog */}
+      <AlertDialog open={!!deleteOfferId} onOpenChange={(open) => !open && setDeleteOfferId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Offer</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this offer? This action cannot be undone and will
+              permanently remove the offer along with all its recipients and responses.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {deleting ? "Deleting..." : "Delete Offer"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
