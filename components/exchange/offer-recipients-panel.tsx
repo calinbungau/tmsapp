@@ -102,9 +102,6 @@ export function OfferRecipientsPanel({
   offerId: string;
   adminId: string;
   onAwardLinkedOrder?: (orderId: string, tripLegId?: string) => void;
-})
-  offerId: string;
-  adminId: string;
 }) {
   const { data, isLoading, mutate } = useSWR(
     [`/api/exchange/offers/${offerId}/recipients`, adminId],
