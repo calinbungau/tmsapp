@@ -121,7 +121,10 @@ export async function sendPushNotification(
             // Web: urgent delivery + branded icon so background notifications
             // render consistently in the OS tray. The `tag` matches the one the
             // service worker uses so the auto-displayed notification and any
-            // SW-shown notification dedupe into a single entry.
+            // SW-shown notification dedupe into a single entry. On web the
+            // carrier is in a logged-in browser, so we deep-link into the
+            // dashboard offer route (the SW click handler does the same); the
+            // native app instead reads `data.actionUrl` (the public portal).
             webpush: {
               headers: { Urgency: "high" },
               notification: {
@@ -361,30 +364,35 @@ export const NotificationTemplates = {
   }),
 
   // ─── Carrier (freight exchange) events ───────────────────────────────────
-  // `token` is the recipient's portal token, used by the carrier service worker
-  // to deep-link straight to /carrier-dashboard/offers/[token].
+  // `token` is the recipient's portal token. `actionUrl` is the public
+  // magic-link portal route (/exchange/o/[token]) — the same link the email
+  // uses. The native app reads `data.actionUrl` on notification tap (exactly
+  // like the driver flow) and navigates the WebView there. We use the public
+  // portal route (not /carrier-dashboard/...) so tapping the push opens the
+  // offer directly without hitting the login wall: it auto-unlocks via session
+  // bypass when logged in, or shows the offer's PIN screen otherwise.
   newFreightOffer: (route: string, reference: string, offerId: string, token?: string | null) => ({
     title: "New freight offer",
     body: `${route} · ref ${reference}`,
-    data: cleanData({ type: "freight_offer_new", offer_id: offerId, token }),
+    data: cleanData({ type: "freight_offer_new", offer_id: offerId, token, actionUrl: portalUrl(token) }),
   }),
 
   quoteAccepted: (reference: string, offerId: string, token?: string | null) => ({
     title: "Offer awarded to you",
     body: `You have been awarded offer ${reference}. The dispatcher will follow up with the transport order.`,
-    data: cleanData({ type: "freight_offer_awarded", offer_id: offerId, token }),
+    data: cleanData({ type: "freight_offer_awarded", offer_id: offerId, token, actionUrl: portalUrl(token) }),
   }),
 
   quoteDeclined: (reference: string, offerId: string, token?: string | null) => ({
     title: "Response declined",
     body: `The dispatcher has declined your response to offer ${reference}.`,
-    data: cleanData({ type: "freight_offer_declined", offer_id: offerId, token }),
+    data: cleanData({ type: "freight_offer_declined", offer_id: offerId, token, actionUrl: portalUrl(token) }),
   }),
 
   offerReopened: (reference: string, offerId: string, token?: string | null) => ({
     title: "Offer re-opened",
     body: `The dispatcher has re-opened offer ${reference}.`,
-    data: cleanData({ type: "freight_offer_reopened", offer_id: offerId, token }),
+    data: cleanData({ type: "freight_offer_reopened", offer_id: offerId, token, actionUrl: portalUrl(token) }),
   }),
 
   carrierChatMessage: (
@@ -396,9 +404,21 @@ export const NotificationTemplates = {
   ) => ({
     title: `Message from ${senderName}`,
     body: preview,
-    data: cleanData({ type: "chat_message", offer_id: offerId, recipient_id: recipientId, token }),
+    data: cleanData({
+      type: "chat_message",
+      offer_id: offerId,
+      recipient_id: recipientId,
+      token,
+      actionUrl: portalUrl(token),
+    }),
   }),
 };
+
+// Public magic-link portal route for a recipient token (same link the email
+// uses). Returns undefined when there is no token so cleanData drops it.
+function portalUrl(token?: string | null): string | undefined {
+  return token ? `/exchange/o/${token}` : undefined;
+}
 
 // FCM data values must all be strings; drop null/undefined entries.
 function cleanData(obj: Record<string, string | null | undefined>): Record<string, string> {
