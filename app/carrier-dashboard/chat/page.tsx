@@ -65,7 +65,7 @@ export default function CarrierChatListPage() {
           const o = row.offer;
           if (!o) return null;
           return (
-            <Link key={row.id} href={`/exchange/o/${row.token}#chat`}>
+            <Link key={row.id} href={`/carrier-dashboard/offers/${row.token}#chat`}>
               <Card className="p-4 flex items-center gap-3 hover:border-primary/40 transition-colors">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 shrink-0">
                   <MessageSquare className="h-5 w-5 text-primary" />
