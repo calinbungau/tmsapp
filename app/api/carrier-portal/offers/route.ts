@@ -50,7 +50,9 @@ export async function GET(request: NextRequest) {
       .select(
         "id, token, response, responded_at, quote_amount, quote_currency, first_viewed_at, expires_at, " +
           "dispatcher_decision, decided_at, admin_id, " +
-          "offer:freight_offers(id, reference, title, status, origin_city, origin_country, dest_city, " +
+          // Disambiguate: two FKs exist between these tables (offer_id and
+          // awarded_recipient_id), so we must name the offer_id relationship.
+          "offer:freight_offers!freight_offer_recipients_offer_id_fkey(id, reference, title, status, origin_city, origin_country, dest_city, " +
           "dest_country, load_date_from, unload_date_from, vehicle_type, weight_kg, pricing_mode, " +
           "price_amount, currency, expires_at, awarded_recipient_id)"
       )
