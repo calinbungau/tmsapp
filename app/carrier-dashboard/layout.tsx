@@ -1,11 +1,18 @@
 "use client";
 
 import type React from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Truck, Package, MessageSquare, User, LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCarrierSession } from "@/hooks/use-carrier-session";
+
+declare global {
+  interface Window {
+    updateNotificationToken?: (token: string) => void;
+  }
+}
 
 const navItems = [
   { href: "/carrier-dashboard", label: "Offers", icon: Package, exact: true },
@@ -21,6 +28,44 @@ export default function CarrierDashboardLayout({
 }) {
   const pathname = usePathname();
   const { session, loading, logout } = useCarrierSession();
+
+  // Bridge for the native BNG Tracking carrier app: it calls
+  // window.updateNotificationToken(token) with the device FCM token, which we
+  // persist + register against the logged-in carrier account so the carrier
+  // receives push for new offers, decisions, and chat messages. If a token was
+  // already captured before login, register it as soon as the session loads.
+  useEffect(() => {
+    if (!session?.id) return;
+
+    const register = async (token: string) => {
+      if (!token) return;
+      try {
+        localStorage.setItem("carrier_fcm_token", token);
+        await fetch("/api/carrier/register-device", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            carrier_account_id: session.id,
+            fcm_token: token,
+            platform: navigator.userAgent,
+          }),
+        });
+      } catch (err) {
+        console.error("[carrier] failed to register device token", err);
+      }
+    };
+
+    window.updateNotificationToken = (token: string) => {
+      void register(token);
+    };
+
+    const existing = localStorage.getItem("carrier_fcm_token");
+    if (existing) void register(existing);
+
+    return () => {
+      delete window.updateNotificationToken;
+    };
+  }, [session?.id]);
 
   if (loading || !session) {
     return (

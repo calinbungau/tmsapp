@@ -1,5 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { SignJWT, importPKCS8 } from "jose";
+
+// Service-role client for contexts (exchange / portal routes) that authenticate
+// via custom headers rather than a Supabase cookie session.
+function getNotificationsServiceClient() {
+  return createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 // Firebase Admin SDK initialization
 // You'll need to set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY env vars
@@ -213,6 +223,86 @@ export async function sendNotificationToAllDrivers(
   return { sent, failed, results };
 }
 
+// ─── Carrier push (BNG Tracking carrier app) ───────────────────────────────
+// Carriers register their device FCM token in `carrier_devices` (keyed by
+// carrier_account_id). These helpers fan a notification out to every device a
+// carrier has registered, mirroring the driver helpers above.
+
+/**
+ * Resolve the set of carrier_account ids to notify, given either a direct
+ * carrier_account_id (the recipient is already linked to a logged-in account)
+ * and/or a business partner id (the carrier may have an account linked to that
+ * partner). Either field may be null.
+ */
+export async function resolveCarrierAccountIds(opts: {
+  carrierAccountId?: string | null;
+  partnerId?: string | null;
+}): Promise<string[]> {
+  const ids = new Set<string>();
+  if (opts.carrierAccountId) ids.add(opts.carrierAccountId);
+
+  if (opts.partnerId) {
+    const supabase = getNotificationsServiceClient();
+    const { data } = await supabase
+      .from("carrier_accounts")
+      .select("id")
+      .eq("partner_id", opts.partnerId)
+      .eq("status", "active");
+    for (const row of data || []) ids.add(row.id);
+  }
+
+  return Array.from(ids);
+}
+
+/**
+ * Send a push notification to every device registered by the given carrier
+ * accounts. Tokens are de-duplicated so a carrier with the offer open on
+ * multiple surfaces only receives one push per device.
+ */
+export async function sendNotificationToCarrierAccounts(
+  carrierAccountIds: string[],
+  notification: NotificationPayload
+): Promise<{ sent: number; failed: number }> {
+  if (!carrierAccountIds.length) return { sent: 0, failed: 0 };
+
+  const supabase = getNotificationsServiceClient();
+  const { data: devices } = await supabase
+    .from("carrier_devices")
+    .select("fcm_token")
+    .in("carrier_account_id", carrierAccountIds)
+    .not("fcm_token", "is", null);
+
+  const tokens = Array.from(
+    new Set((devices || []).map((d) => d.fcm_token).filter(Boolean) as string[])
+  );
+
+  let sent = 0;
+  let failed = 0;
+  for (const token of tokens) {
+    const result = await sendPushNotification(token, notification);
+    if (result.success) sent++;
+    else failed++;
+  }
+  return { sent, failed };
+}
+
+/**
+ * Convenience helper for the freight-exchange flows: notify a carrier given a
+ * recipient row's identifiers. Resolves devices via the linked carrier account
+ * (direct id and/or partner id) and pushes to all of them. No-op when the
+ * carrier has not registered the app yet (they still receive email).
+ */
+export async function sendNotificationToCarrier(
+  ref: { carrierAccountId?: string | null; partnerId?: string | null },
+  notification: NotificationPayload
+): Promise<{ sent: number; failed: number }> {
+  const accountIds = await resolveCarrierAccountIds({
+    carrierAccountId: ref.carrierAccountId,
+    partnerId: ref.partnerId,
+  });
+  return sendNotificationToCarrierAccounts(accountIds, notification);
+}
+
 // Notification templates for common events
 export const NotificationTemplates = {
   maintenanceDue: (vehiclePlate: string, maintenanceType: string) => ({
@@ -243,5 +333,36 @@ export const NotificationTemplates = {
     title,
     body,
     data,
+  }),
+
+  // ─── Carrier (freight exchange) events ───────────────────────────────────
+  newFreightOffer: (route: string, reference: string, offerId: string) => ({
+    title: "New freight offer",
+    body: `${route} · ref ${reference}`,
+    data: { type: "freight_offer_new", offer_id: offerId },
+  }),
+
+  quoteAccepted: (reference: string, offerId: string) => ({
+    title: "Offer awarded to you",
+    body: `You have been awarded offer ${reference}. The dispatcher will follow up with the transport order.`,
+    data: { type: "freight_offer_awarded", offer_id: offerId },
+  }),
+
+  quoteDeclined: (reference: string, offerId: string) => ({
+    title: "Response declined",
+    body: `The dispatcher has declined your response to offer ${reference}.`,
+    data: { type: "freight_offer_declined", offer_id: offerId },
+  }),
+
+  offerReopened: (reference: string, offerId: string) => ({
+    title: "Offer re-opened",
+    body: `The dispatcher has re-opened offer ${reference}.`,
+    data: { type: "freight_offer_reopened", offer_id: offerId },
+  }),
+
+  carrierChatMessage: (senderName: string, preview: string, offerId: string, recipientId: string) => ({
+    title: `Message from ${senderName}`,
+    body: preview,
+    data: { type: "chat_message", offer_id: offerId, recipient_id: recipientId },
   }),
 };

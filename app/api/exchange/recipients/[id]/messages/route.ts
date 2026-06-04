@@ -5,6 +5,7 @@ import {
   getOrCreateRecipientConversation,
   type RecipientRow,
 } from "@/lib/exchange/portal-auth";
+import { sendNotificationToCarrier, NotificationTemplates } from "@/lib/notifications";
 
 /**
  * Dispatcher side of the per-recipient chat. The admin is authenticated via the
@@ -131,6 +132,18 @@ export async function POST(
     .single();
 
   if (msgErr) return NextResponse.json({ error: "send_failed" }, { status: 500 });
+
+  // Push the new dispatcher message to the carrier's device(s) (best-effort).
+  try {
+    const senderName = body.senderName || "Dispatcher";
+    const preview = content.length > 80 ? content.slice(0, 80) + "…" : content;
+    await sendNotificationToCarrier(
+      { carrierAccountId: recipient.carrier_account_id, partnerId: recipient.partner_id },
+      NotificationTemplates.carrierChatMessage(senderName, preview, recipient.offer_id, recipient.id)
+    );
+  } catch (e) {
+    console.error("[exchange/recipients/messages] carrier push failed", e);
+  }
 
   return NextResponse.json({ message });
 }

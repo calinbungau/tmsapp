@@ -5,6 +5,7 @@ import {
   getOrCreateRecipientConversation,
   type RecipientRow,
 } from "@/lib/exchange/portal-auth";
+import { sendNotificationToCarrier, NotificationTemplates } from "@/lib/notifications";
 
 /**
  * Dispatcher decision on a single carrier response.
@@ -135,6 +136,22 @@ export async function POST(
     });
   } catch (e) {
     console.error("[exchange/decision] system message failed", e);
+  }
+
+  // Push the outcome to the carrier's registered device(s) (best-effort).
+  try {
+    const template =
+      decision === "accept"
+        ? NotificationTemplates.quoteAccepted(reference, rec.offer_id)
+        : decision === "decline"
+        ? NotificationTemplates.quoteDeclined(reference, rec.offer_id)
+        : NotificationTemplates.offerReopened(reference, rec.offer_id);
+    await sendNotificationToCarrier(
+      { carrierAccountId: rec.carrier_account_id, partnerId: rec.partner_id },
+      template
+    );
+  } catch (e) {
+    console.error("[exchange/decision] carrier push failed", e);
   }
 
   return NextResponse.json({ ok: true, decision });

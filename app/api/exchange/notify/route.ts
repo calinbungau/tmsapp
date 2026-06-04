@@ -7,6 +7,11 @@ import { resolveCarriersForGroups, type ResolvedCarrier } from "@/lib/exchange/r
 import { createAdminNotification } from "@/lib/admin-notifications";
 import { upsertRecipients } from "@/lib/exchange/recipients";
 import { APP_LINKS, APP_NAME } from "@/lib/exchange/app-links";
+import {
+  resolveCarrierAccountIds,
+  sendNotificationToCarrierAccounts,
+  NotificationTemplates,
+} from "@/lib/notifications";
 
 const APP_BASE = (process.env.NEXT_PUBLIC_APP_URL || "https://app.bngtracking.ro").replace(/\/+$/, "");
 
@@ -186,6 +191,27 @@ export async function POST(request: NextRequest) {
         }
       })
     );
+
+    // Push the offer to carriers who have the app installed (registered a
+    // device). Carriers are matched to accounts via their business-partner id;
+    // those without an account simply receive the email above. Best-effort.
+    try {
+      const partnerIds = Array.from(
+        new Set(carriers.map((c) => c.id).filter(Boolean) as string[])
+      );
+      const accountIdSets = await Promise.all(
+        partnerIds.map((pid) => resolveCarrierAccountIds({ partnerId: pid }))
+      );
+      const accountIds = Array.from(new Set(accountIdSets.flat()));
+      if (accountIds.length) {
+        await sendNotificationToCarrierAccounts(
+          accountIds,
+          NotificationTemplates.newFreightOffer(formatRoute(offer), offer.reference, offerId)
+        );
+      }
+    } catch (e) {
+      console.error("[exchange/notify] carrier push failed", e);
+    }
 
     // Mark the distribution rows for these groups as notified, recording the
     // reach + timestamp in notes so the detail page can show release history.
