@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Truck, Package, MessageSquare, User, LogOut, Loader2 } from "lucide-react";
@@ -12,6 +12,9 @@ import { CarrierPushManager } from "@/components/carrier/carrier-push-manager";
 declare global {
   interface Window {
     updateNotificationToken?: (token: string) => void;
+    // Injected by the native BNG Tracking / Traccar app shell.
+    isNativeApp?: boolean;
+    appInterface?: { postMessage?: (msg: string) => void };
   }
 }
 
@@ -29,6 +32,12 @@ export default function CarrierDashboardLayout({
 }) {
   const pathname = usePathname();
   const { session, loading, logout } = useCarrierSession();
+  // True when the portal is running inside the native BNG Tracking app shell.
+  const [isNativeApp, setIsNativeApp] = useState(false);
+
+  useEffect(() => {
+    setIsNativeApp(Boolean(window.isNativeApp || window.appInterface?.postMessage));
+  }, []);
 
   // Bridge for the native BNG Tracking carrier app: it calls
   // window.updateNotificationToken(token) with the device FCM token. The native
@@ -88,6 +97,23 @@ export default function CarrierDashboardLayout({
     };
     window.addEventListener("carrierTokenUpdated", onToken);
 
+    // Handshake with the native BNG Tracking app shell. This is the exact
+    // signal the driver portal sends — the native app waits for 'authenticated'
+    // / 'login' before it calls window.updateNotificationToken(token) with the
+    // device's mobile FCM token. Without this, the app never injects a mobile
+    // token and only the browser web-push token gets registered.
+    const appInterface = window.appInterface;
+    if (appInterface?.postMessage) {
+      appInterface.postMessage("authenticated");
+      const t = setTimeout(() => {
+        appInterface.postMessage?.("login");
+      }, 500);
+      return () => {
+        clearTimeout(t);
+        window.removeEventListener("carrierTokenUpdated", onToken);
+      };
+    }
+
     return () => {
       window.removeEventListener("carrierTokenUpdated", onToken);
     };
@@ -125,9 +151,13 @@ export default function CarrierDashboardLayout({
       </header>
 
       <main className="flex-1 overflow-auto pb-20">
-        <div className="px-4 pt-4">
-          <CarrierPushManager carrierAccountId={session.id} />
-        </div>
+        {/* In the native app, the shell injects the mobile FCM token via the
+            handshake above, so the browser web-push opt-in is unnecessary. */}
+        {!isNativeApp && (
+          <div className="px-4 pt-4">
+            <CarrierPushManager carrierAccountId={session.id} />
+          </div>
+        )}
         {children}
       </main>
 
