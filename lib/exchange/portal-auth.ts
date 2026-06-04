@@ -74,6 +74,71 @@ export async function validateRecipient(
   return { ok: true, recipient: rec };
 }
 
+/**
+ * Authorize a logged-in carrier account against a recipient row WITHOUT a PIN.
+ * Mirrors the matching used by the carrier offers list: a recipient belongs to
+ * an account when it points at that account directly, or when its partner_id is
+ * one of the tenant partners linked to the account (its own partner_id or any
+ * row in carrier_account_partners). Returns true when access should be granted.
+ */
+export async function carrierAccountMatchesRecipient(
+  supabase: SupabaseClient,
+  carrierAccountId: string,
+  rec: RecipientRow
+): Promise<boolean> {
+  if (!carrierAccountId) return false;
+
+  // Direct link.
+  if (rec.carrier_account_id && rec.carrier_account_id === carrierAccountId) {
+    return true;
+  }
+
+  // The recipient must be addressed to a partner to match by partner.
+  if (!rec.partner_id) return false;
+
+  const { data: account } = await supabase
+    .from("carrier_accounts")
+    .select("id, partner_id")
+    .eq("id", carrierAccountId)
+    .maybeSingle();
+
+  if (!account) return false;
+
+  const partnerIds = new Set<string>();
+  if (account.partner_id) partnerIds.add(account.partner_id);
+
+  const { data: links } = await supabase
+    .from("carrier_account_partners")
+    .select("partner_id")
+    .eq("carrier_account_id", carrierAccountId);
+  for (const l of links || []) {
+    if (l.partner_id) partnerIds.add(l.partner_id);
+  }
+
+  return partnerIds.has(rec.partner_id);
+}
+
+/**
+ * Best-effort: stamp the recipient with the carrier account id once we know the
+ * logged-in account owns it. This keeps the direct (carrier_account_id) match
+ * fast for future visits and ties the chat identity to the account.
+ */
+export async function linkRecipientToAccount(
+  supabase: SupabaseClient,
+  rec: RecipientRow,
+  carrierAccountId: string
+): Promise<void> {
+  if (rec.carrier_account_id === carrierAccountId) return;
+  try {
+    await supabase
+      .from("freight_offer_recipients")
+      .update({ carrier_account_id: carrierAccountId })
+      .eq("id", rec.id);
+  } catch {
+    // non-critical
+  }
+}
+
 /** Record a view (first + last + counter) for a recipient. Best-effort. */
 export async function recordRecipientView(
   supabase: SupabaseClient,

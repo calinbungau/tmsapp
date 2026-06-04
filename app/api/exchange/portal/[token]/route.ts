@@ -4,6 +4,8 @@ import {
   validateRecipient,
   recordRecipientView,
   getOrCreateRecipientConversation,
+  carrierAccountMatchesRecipient,
+  linkRecipientToAccount,
 } from "@/lib/exchange/portal-auth";
 
 const OFFER_FIELDS =
@@ -56,23 +58,46 @@ export async function POST(
   const { token } = await params;
   const supabase = getServiceClient();
 
-  let body: { pin?: string } = {};
+  let body: { pin?: string; carrierAccountId?: string } = {};
   try {
     body = await request.json();
   } catch {
     /* empty body */
   }
 
-  const { ok, error, recipient } = await validateRecipient(supabase, token, body.pin ?? "");
+  // A logged-in carrier may pass their account id (from the dashboard session)
+  // to skip the PIN. Fall back to the header for flexibility.
+  const carrierAccountId =
+    body.carrierAccountId || request.headers.get("x-carrier-id") || null;
 
-  if (!recipient || error === "not_found") {
+  // First load the recipient (token + expiry only) so we can decide how to authorize.
+  const base = await validateRecipient(supabase, token);
+  const recipient = base.recipient;
+
+  if (!recipient || base.error === "not_found") {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
-  if (error === "expired") {
+  if (base.error === "expired") {
     return NextResponse.json({ error: "expired" }, { status: 410 });
   }
-  if (error === "invalid_pin") {
-    return NextResponse.json({ error: "invalid_pin" }, { status: 401 });
+
+  // Authorize via a linked carrier account session, otherwise require the PIN.
+  let viaAccount = false;
+  if (carrierAccountId) {
+    viaAccount = await carrierAccountMatchesRecipient(
+      supabase,
+      carrierAccountId,
+      recipient
+    );
+  }
+
+  if (!viaAccount) {
+    if (String(body.pin ?? "").trim() !== recipient.pin) {
+      return NextResponse.json({ error: "invalid_pin" }, { status: 401 });
+    }
+  } else {
+    // Persist the account link so future visits match directly.
+    await linkRecipientToAccount(supabase, recipient, carrierAccountId!);
   }
 
   // Load offer + posting company.
