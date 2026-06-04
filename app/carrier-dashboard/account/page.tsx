@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Building2, User, Phone, Mail, FileText, LogOut } from "lucide-react";
 import { AppPromo } from "@/components/exchange/app-promo";
+import { CarrierNotificationsPanel } from "@/components/carrier/carrier-notifications-panel";
 
 export default function CarrierAccountPage() {
   const { session, loading, logout } = useCarrierSession();
@@ -40,6 +41,8 @@ export default function CarrierAccountPage() {
           </div>
         ))}
       </Card>
+
+      <CarrierNotificationsPanel carrierAccountId={session.id} />
 
       <AppPromo subtitle="Manage offers on the go with the BNG Tracking mobile app." />
 
