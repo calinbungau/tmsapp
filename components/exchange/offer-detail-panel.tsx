@@ -283,20 +283,22 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
 
   // ─── Build route for map ─────────────────────────────────
   const mapStops = stops.length > 0
-    ? stops.map((s, i) => ({
+    ? stops.map((s) => ({
         id: s.id,
-        sequence_order: s.sequence_order,
         stop_type: s.stop_type === "load" ? "pickup" : s.stop_type === "unload" ? "delivery" : "customs",
-        city: s.city,
-        country: s.country,
-        lat: s.lat,
-        lng: s.lng,
-        status: "pending",
+        company_name: s.company_name || "",
+        address: s.address || "",
+        city: s.city || "",
+        country: s.country || "",
+        lat: Number(s.lat) || 0,
+        lng: Number(s.lng) || 0,
+        planned_date: s.date_from || "",
+        planned_time_from: s.time_from || "",
       }))
     : offer
     ? [
-        { id: "origin", sequence_order: 0, stop_type: "pickup" as const, city: offer.origin_city, country: offer.origin_country, lat: offer.origin_lat, lng: offer.origin_lng, status: "pending" },
-        { id: "dest", sequence_order: 1, stop_type: "delivery" as const, city: offer.dest_city, country: offer.dest_country, lat: offer.dest_lat, lng: offer.dest_lng, status: "pending" },
+        { id: "origin", stop_type: "pickup" as const, company_name: "", address: "", city: offer.origin_city || "", country: offer.origin_country || "", lat: Number(offer.origin_lat) || 0, lng: Number(offer.origin_lng) || 0, planned_date: offer.load_date_from || "", planned_time_from: "" },
+        { id: "dest", stop_type: "delivery" as const, company_name: "", address: "", city: offer.dest_city || "", country: offer.dest_country || "", lat: Number(offer.dest_lat) || 0, lng: Number(offer.dest_lng) || 0, planned_date: offer.delivery_date_from || "", planned_time_from: "" },
       ]
     : [];
 
@@ -378,7 +380,7 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
 
       {/* ─── Route Map ──────────────────────────────────────── */}
       <div className="h-44 shrink-0 border-b border-border/50">
-        <RouteMap stops={mapStops} height="100%" interactive={false} showRouteInfo />
+        <RouteMap stops={mapStops} fullHeight hideBottomPanels showFlags />
       </div>
 
       {/* ─── Tabs ───────────────────────────────────────────── */}
