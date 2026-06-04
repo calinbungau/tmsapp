@@ -68,15 +68,15 @@ interface FreightOffer {
   dest_lng: number | null;
   load_date_from: string | null;
   load_date_to: string | null;
-  delivery_date_from: string | null;
-  delivery_date_to: string | null;
+  unload_date_from: string | null;
+  unload_date_to: string | null;
   vehicle_type: string | null;
-  vehicle_size: string | null;
+  body_type: string | null;
   weight_kg: number | null;
   volume_m3: number | null;
   ldm: number | null;
-  pallets: number | null;
-  cargo_description: string | null;
+  pallet_count: number | null;
+  goods_description: string | null;
   pricing_mode: string;
   price_amount: number | null;
   currency: string;
@@ -117,6 +117,9 @@ interface Recipient {
   first_viewed_at: string | null;
   view_count: number;
   dispatcher_decision: "accepted" | "declined" | null;
+  sent_at: string | null;
+  decided_at: string | null;
+  created_at: string | null;
 }
 
 interface ActivityEntry {
@@ -234,7 +237,6 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
   const [offer, setOffer] = useState<FreightOffer | null>(null);
   const [stops, setStops] = useState<FreightStop[]>([]);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
-  const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [publishOpen, setPublishOpen] = useState(false);
@@ -242,18 +244,16 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
   // ─── Fetch offer data ────────────────────────────────────
   const fetchOffer = useCallback(async () => {
     try {
-      const [offerRes, stopsRes, recipientsRes, activityRes] = await Promise.all([
+      const [offerRes, stopsRes, recipientsRes] = await Promise.all([
         supabase.from("freight_offers").select("*").eq("id", offerId).single(),
         supabase.from("freight_offer_stops").select("*").eq("offer_id", offerId).order("sequence_order"),
         supabase.from("freight_offer_recipients").select("*").eq("offer_id", offerId).order("created_at", { ascending: false }),
-        supabase.from("freight_offer_activity").select("*").eq("offer_id", offerId).order("created_at", { ascending: false }).limit(50),
       ]);
 
       if (offerRes.error) throw offerRes.error;
       setOffer(offerRes.data);
       setStops(stopsRes.data || []);
       setRecipients(recipientsRes.data || []);
-      setActivity(activityRes.data || []);
     } catch (err) {
       console.error("Failed to fetch offer:", err);
       toast({ title: "Error", description: "Failed to load offer details", variant: "destructive" });
@@ -273,7 +273,6 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
       .on("postgres_changes", { event: "*", schema: "public", table: "freight_offers", filter: `id=eq.${offerId}` }, () => fetchOffer())
       .on("postgres_changes", { event: "*", schema: "public", table: "freight_offer_stops", filter: `offer_id=eq.${offerId}` }, () => fetchOffer())
       .on("postgres_changes", { event: "*", schema: "public", table: "freight_offer_recipients", filter: `offer_id=eq.${offerId}` }, () => fetchOffer())
-      .on("postgres_changes", { event: "*", schema: "public", table: "freight_offer_activity", filter: `offer_id=eq.${offerId}` }, () => fetchOffer())
       .subscribe();
 
     return () => {
@@ -298,9 +297,31 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
     : offer
     ? [
         { id: "origin", stop_type: "pickup" as const, company_name: "", address: "", city: offer.origin_city || "", country: offer.origin_country || "", lat: Number(offer.origin_lat) || 0, lng: Number(offer.origin_lng) || 0, planned_date: offer.load_date_from || "", planned_time_from: "" },
-        { id: "dest", stop_type: "delivery" as const, company_name: "", address: "", city: offer.dest_city || "", country: offer.dest_country || "", lat: Number(offer.dest_lat) || 0, lng: Number(offer.dest_lng) || 0, planned_date: offer.delivery_date_from || "", planned_time_from: "" },
+        { id: "dest", stop_type: "delivery" as const, company_name: "", address: "", city: offer.dest_city || "", country: offer.dest_country || "", lat: Number(offer.dest_lat) || 0, lng: Number(offer.dest_lng) || 0, planned_date: offer.unload_date_from || "", planned_time_from: "" },
       ]
     : [];
+
+  // ─── Activity timeline (derived from recipients) ────────
+  const activity: ActivityEntry[] = (() => {
+    const entries: ActivityEntry[] = [];
+    for (const r of recipients) {
+      const who = r.carrier_name || r.email || "Carrier";
+      if (r.sent_at) {
+        entries.push({ id: `${r.id}-sent`, action: `Offer sent to ${who}`, details: null, performed_by: null, performed_by_type: "system", created_at: r.sent_at });
+      }
+      if (r.first_viewed_at) {
+        entries.push({ id: `${r.id}-viewed`, action: `${who} viewed the offer`, details: r.view_count ? { views: r.view_count } : null, performed_by: null, performed_by_type: "carrier", created_at: r.first_viewed_at });
+      }
+      if (r.responded_at && r.response) {
+        const label = r.response === "quoted" ? `${who} submitted a quote` : r.response === "interested" ? `${who} is interested` : `${who} declined`;
+        entries.push({ id: `${r.id}-resp`, action: label, details: r.quote_amount ? { quote: `${r.quote_amount} ${r.quote_currency || ""}`.trim() } : null, performed_by: null, performed_by_type: "carrier", created_at: r.responded_at });
+      }
+      if (r.decided_at && r.dispatcher_decision) {
+        entries.push({ id: `${r.id}-dec`, action: `${who} ${r.dispatcher_decision === "accepted" ? "awarded" : "rejected"}`, details: null, performed_by: null, performed_by_type: "dispatcher", created_at: r.decided_at });
+      }
+    }
+    return entries.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  })();
 
   // ─── Stats ───────────────────────────────────────────────
   const totalViews = recipients.reduce((sum, r) => sum + (r.view_count || 0), 0);
@@ -383,7 +404,7 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
         <RouteMap stops={mapStops} fullHeight hideBottomPanels showFlags />
       </div>
 
-      {/* ─── Tabs ───────────────────────────────────────────── */}
+      {/* ─── Tabs ───────────────���───────────────────────────── */}
       <div className="flex items-center gap-1 px-4 py-2 border-b border-border/50 shrink-0 overflow-x-auto">
         {(["overview", "activity"] as TabKey[]).map((tab) => (
           <button
@@ -463,7 +484,7 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
               <div className="space-y-3">
                 {(stops.length > 0 ? stops : [
                   { id: "o", sequence_order: 0, stop_type: "load", city: offer.origin_city, country: offer.origin_country, address: offer.origin_address, date_from: offer.load_date_from, date_to: offer.load_date_to },
-                  { id: "d", sequence_order: 1, stop_type: "unload", city: offer.dest_city, country: offer.dest_country, address: offer.dest_address, date_from: offer.delivery_date_from, date_to: offer.delivery_date_to },
+                  { id: "d", sequence_order: 1, stop_type: "unload", city: offer.dest_city, country: offer.dest_country, address: offer.dest_address, date_from: offer.unload_date_from, date_to: offer.unload_date_to },
                 ] as any[]).map((stop, idx) => {
                   const typeCfg = STOP_TYPE_CONFIG[stop.stop_type] || STOP_TYPE_CONFIG.intermediate;
                   return (
@@ -506,14 +527,14 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
                   Cargo
                 </h3>
                 <div className="space-y-1.5 text-sm">
-                  {offer.cargo_description && (
-                    <p className="text-muted-foreground">{offer.cargo_description}</p>
+                  {offer.goods_description && (
+                    <p className="text-muted-foreground">{offer.goods_description}</p>
                   )}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     {offer.weight_kg && <span>{(offer.weight_kg / 1000).toFixed(1)} t</span>}
                     {offer.volume_m3 && <span>{offer.volume_m3} m³</span>}
                     {offer.ldm && <span>{offer.ldm} LDM</span>}
-                    {offer.pallets && <span>{offer.pallets} pal</span>}
+                    {offer.pallet_count && <span>{offer.pallet_count} pal</span>}
                   </div>
                 </div>
               </div>
@@ -524,8 +545,8 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
                 </h3>
                 <div className="space-y-1 text-sm">
                   {offer.vehicle_type && <p>{offer.vehicle_type}</p>}
-                  {offer.vehicle_size && <p className="text-xs text-muted-foreground">{offer.vehicle_size}</p>}
-                  {!offer.vehicle_type && !offer.vehicle_size && (
+                  {offer.body_type && <p className="text-xs text-muted-foreground">{offer.body_type}</p>}
+                  {!offer.vehicle_type && !offer.body_type && (
                     <p className="text-muted-foreground text-xs">Not specified</p>
                   )}
                 </div>
