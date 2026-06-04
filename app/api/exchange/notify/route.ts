@@ -5,6 +5,10 @@ import { decrypt } from "@/lib/encryption";
 import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
 import { resolveCarriersForGroups, type ResolvedCarrier } from "@/lib/exchange/resolve-carriers";
 import { createAdminNotification } from "@/lib/admin-notifications";
+import { upsertRecipients } from "@/lib/exchange/recipients";
+import { APP_LINKS, APP_NAME } from "@/lib/exchange/app-links";
+
+const APP_BASE = (process.env.NEXT_PUBLIC_APP_URL || "https://app.bngtracking.ro").replace(/\/+$/, "");
 
 function getSupabase() {
   return createClient(
@@ -104,6 +108,26 @@ export async function POST(request: NextRequest) {
     );
     const withoutEmail = carriers.length - recipients.length;
 
+    // Ensure each resolved carrier has a tokenized recipient row (with PIN).
+    // Re-sending reuses the existing token so a previously shared link keeps
+    // working. We build lookup maps so the email can embed the carrier's link.
+    const recipientByPartner = new Map<string, { token: string; pin: string }>();
+    const recipientByEmail = new Map<string, { token: string; pin: string }>();
+    try {
+      const upserted = await upsertRecipients(supabase, {
+        offerId,
+        adminId,
+        offerExpiresAt: offer.expires_at,
+        carriers,
+      });
+      for (const r of upserted) {
+        if (r.partnerId) recipientByPartner.set(r.partnerId, { token: r.token, pin: r.pin });
+        if (r.email) recipientByEmail.set(r.email.toLowerCase(), { token: r.token, pin: r.pin });
+      }
+    } catch (e) {
+      console.error("[exchange/notify] failed to create recipient links", e);
+    }
+
     // SMTP settings for the acting user (falls back to tenant mailbox).
     const settings = await getUserEmailSettingsRow(supabase, adminId, userId);
     if (!settings || !settings.smtp_password_encrypted) {
@@ -137,11 +161,17 @@ export async function POST(request: NextRequest) {
     await Promise.all(
       recipients.map(async (carrier) => {
         try {
+          const link =
+            recipientByPartner.get(carrier.id) ||
+            (carrier.email ? recipientByEmail.get(carrier.email.toLowerCase()) : undefined);
+          const portalUrl = link ? `${APP_BASE}/exchange/o/${link.token}` : null;
           const html = buildOfferEmailHtml({
             carrierName: carrier.name || "Partener",
             offer,
             companyName,
             signature: settings.signature_html || null,
+            portalUrl,
+            pin: link?.pin || null,
           });
           await transporter.sendMail({
             from: fromAddress,
@@ -310,8 +340,10 @@ function buildOfferEmailHtml(opts: {
   offer: OfferLite;
   companyName: string;
   signature: string | null;
+  portalUrl: string | null;
+  pin: string | null;
 }): string {
-  const { carrierName, offer, companyName, signature } = opts;
+  const { carrierName, offer, companyName, signature, portalUrl, pin } = opts;
 
   const cargoParts = [
     offer.weight_kg ? `${(offer.weight_kg / 1000).toFixed(1)} t` : null,
@@ -336,6 +368,27 @@ function buildOfferEmailHtml(opts: {
     .filter(Boolean)
     .join("");
 
+  // Secure portal CTA + PIN (only when we have a tokenized link for the carrier).
+  const ctaBlock = portalUrl
+    ? `<div style="margin:4px 0 20px;text-align:center;">
+        <a href="${portalUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;">Vizualizați oferta &amp; răspundeți</a>
+        ${
+          pin
+            ? `<p style="margin:12px 0 0;color:#475569;font-size:13px;">Cod PIN de acces: <strong style="font-family:monospace;font-size:18px;letter-spacing:3px;color:#0f172a;">${esc(pin)}</strong></p>`
+            : ""
+        }
+        <p style="margin:6px 0 0;color:#94a3b8;font-size:11px;">Deschideți pagina securizată pentru a accepta, trimite un preț sau a discuta în chat.</p>
+      </div>`
+    : "";
+
+  // App-store promotion for the BNG Tracking carrier app.
+  const appBlock = `<div style="margin-top:16px;padding:16px;background:#0f172a;border-radius:12px;text-align:center;">
+      <p style="margin:0 0 4px;color:#ffffff;font-size:14px;font-weight:600;">Aplicația ${esc(APP_NAME)} pentru transportatori</p>
+      <p style="margin:0 0 12px;color:#94a3b8;font-size:12px;line-height:1.5;">Creați-vă contul gratuit, vedeți toate ofertele și răspundeți direct din telefon.</p>
+      <a href="${APP_LINKS.appStore}" style="display:inline-block;margin:0 4px;background:#ffffff;color:#0f172a;text-decoration:none;font-size:12px;font-weight:600;padding:9px 16px;border-radius:8px;">App Store</a>
+      <a href="${APP_LINKS.googlePlay}" style="display:inline-block;margin:0 4px;background:#ffffff;color:#0f172a;text-decoration:none;font-size:12px;font-weight:600;padding:9px 16px;border-radius:8px;">Google Play</a>
+    </div>`;
+
   return `<!DOCTYPE html>
 <html lang="ro">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -349,9 +402,11 @@ function buildOfferEmailHtml(opts: {
       <div style="padding:24px;">
         <p style="margin:0 0 16px;color:#0f172a;font-size:14px;">Bună ziua <strong>${esc(carrierName)}</strong>,</p>
         <p style="margin:0 0 20px;color:#475569;font-size:14px;line-height:1.5;">
-          Vă punem la dispoziție o ofertă de transport. Dacă sunteți interesat, vă rugăm să răspundeți la acest e-mail cu disponibilitatea și prețul dvs.
+          Vă punem la dispoziție o ofertă de transport. ${portalUrl ? "Apăsați butonul de mai jos pentru a vedea detaliile complete, a răspunde și a discuta direct cu dispecerul." : "Dacă sunteți interesat, vă rugăm să răspundeți la acest e-mail cu disponibilitatea și prețul dvs."}
         </p>
+        ${ctaBlock}
         <table style="width:100%;border-collapse:collapse;border-top:1px solid #e2e8f0;">${rows}</table>
+        ${appBlock}
       </div>
       <div style="padding:16px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;">
         <p style="margin:0;color:#94a3b8;font-size:12px;">Trimis de ${esc(companyName)} prin BNG Tracking</p>

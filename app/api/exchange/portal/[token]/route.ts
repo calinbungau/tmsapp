@@ -1,0 +1,135 @@
+import { NextRequest, NextResponse } from "next/server";
+import {
+  getServiceClient,
+  validateRecipient,
+  recordRecipientView,
+  getOrCreateRecipientConversation,
+} from "@/lib/exchange/portal-auth";
+
+const OFFER_FIELDS =
+  "id, reference, title, status, origin_city, origin_country, origin_postal_code, " +
+  "dest_city, dest_country, dest_postal_code, load_date_from, load_date_to, " +
+  "unload_date_from, unload_date_to, vehicle_type, body_type, weight_kg, ldm, " +
+  "pallet_count, adr_class, goods_description, pricing_mode, price_amount, currency, " +
+  "payment_terms_days, expires_at";
+
+// GET /api/exchange/portal/[token] — lightweight meta (no PIN required).
+// Reveals only enough to render the PIN gate (carrier name + masked status).
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ token: string }> }
+) {
+  const { token } = await params;
+  const supabase = getServiceClient();
+  const { ok, error, recipient } = await validateRecipient(supabase, token);
+
+  if (!recipient) {
+    return NextResponse.json({ status: "not_found" }, { status: 404 });
+  }
+  if (error === "expired") {
+    return NextResponse.json({ status: "expired" }, { status: 410 });
+  }
+
+  // Company that posted the offer (for branding on the PIN gate).
+  const { data: admin } = await supabase
+    .from("admins")
+    .select("company_name")
+    .eq("id", recipient.admin_id)
+    .maybeSingle();
+
+  return NextResponse.json({
+    status: "ok",
+    needsPin: true,
+    carrierName: recipient.carrier_name,
+    companyName: admin?.company_name || null,
+    hasAccount: !!recipient.carrier_account_id,
+    email: recipient.email,
+  });
+}
+
+// POST /api/exchange/portal/[token] — verify PIN and return the full offer,
+// the carrier's current response, the conversation id, and recent messages.
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ token: string }> }
+) {
+  const { token } = await params;
+  const supabase = getServiceClient();
+
+  let body: { pin?: string } = {};
+  try {
+    body = await request.json();
+  } catch {
+    /* empty body */
+  }
+
+  const { ok, error, recipient } = await validateRecipient(supabase, token, body.pin ?? "");
+
+  if (!recipient || error === "not_found") {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+  if (error === "expired") {
+    return NextResponse.json({ error: "expired" }, { status: 410 });
+  }
+  if (error === "invalid_pin") {
+    return NextResponse.json({ error: "invalid_pin" }, { status: 401 });
+  }
+
+  // Load offer + posting company.
+  const { data: offer } = await supabase
+    .from("freight_offers")
+    .select(OFFER_FIELDS)
+    .eq("id", recipient.offer_id)
+    .maybeSingle();
+
+  if (!offer) {
+    return NextResponse.json({ error: "offer_not_found" }, { status: 404 });
+  }
+
+  const { data: admin } = await supabase
+    .from("admins")
+    .select("company_name, email, phone")
+    .eq("id", recipient.admin_id)
+    .maybeSingle();
+
+  await recordRecipientView(supabase, recipient);
+
+  // Ensure the chat thread exists and load recent messages.
+  let conversationId: string | null = null;
+  let messages: unknown[] = [];
+  try {
+    conversationId = await getOrCreateRecipientConversation(
+      supabase,
+      recipient,
+      offer.reference
+    );
+    const { data: msgs } = await supabase
+      .from("messages")
+      .select("id, sender_id, sender_type, sender_name, content, created_at")
+      .eq("conversation_id", conversationId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true })
+      .limit(100);
+    messages = msgs || [];
+  } catch (e) {
+    console.error("[portal] conversation init failed", e);
+  }
+
+  return NextResponse.json({
+    offer,
+    company: admin || null,
+    recipient: {
+      id: recipient.id,
+      carrierName: recipient.carrier_name,
+      email: recipient.email,
+      response: recipient.response,
+      respondedAt: recipient.responded_at,
+      quoteAmount: recipient.quote_amount,
+      quoteCurrency: recipient.quote_currency,
+      quoteMessage: recipient.quote_message,
+      hasAccount: !!recipient.carrier_account_id,
+    },
+    conversationId,
+    messages,
+  });
+}
