@@ -117,6 +117,17 @@ interface FreightOffer {
   expires_at: string | null;
   notes: string | null;
   created_at: string;
+  // Linked order
+  order_id: string | null;
+  trip_leg_id: string | null;
+}
+
+interface LinkedOrder {
+  id: string;
+  reference_number: string | null;
+  customer_price: number | null;
+  customer_currency: string | null;
+  status: string | null;
 }
 
 interface Distribution {
@@ -200,6 +211,7 @@ export default function OfferDetailPage() {
   const offerId = params.id as string;
 
   const [offer, setOffer] = useState<FreightOffer | null>(null);
+  const [linkedOrder, setLinkedOrder] = useState<LinkedOrder | null>(null);
   const [distributions, setDistributions] = useState<Distribution[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPublish, setShowPublish] = useState(false);
@@ -219,6 +231,18 @@ export default function OfferDetailPage() {
         .single();
       if (error) throw error;
       setOffer(data);
+
+      // Fetch linked order if present
+      if (data.order_id) {
+        const { data: orderData } = await supabase
+          .from("orders")
+          .select("id, reference_number, customer_price, customer_currency, status")
+          .eq("id", data.order_id)
+          .single();
+        setLinkedOrder(orderData || null);
+      } else {
+        setLinkedOrder(null);
+      }
 
       // distributions + group info
       const { data: dist } = await supabase
@@ -355,6 +379,22 @@ export default function OfferDetailPage() {
                     <><Lock className="h-3 w-3" /> Private</>
                   )}
                 </Badge>
+                {linkedOrder && (
+                  <Link href={`/admin/tms/orders/${linkedOrder.id}`}>
+                    <Badge
+                      variant="outline"
+                      className="gap-1 bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"
+                    >
+                      <Folder className="h-3 w-3" />
+                      {linkedOrder.reference_number || "Order"}
+                      {linkedOrder.customer_price != null && offer.price_amount != null && (
+                        <span className="ml-1 text-[10px] opacity-80">
+                          ({((linkedOrder.customer_price - offer.price_amount) / linkedOrder.customer_price * 100).toFixed(0)}% margin)
+                        </span>
+                      )}
+                    </Badge>
+                  </Link>
+                )}
               </div>
               {offer.title && (
                 <p className="text-sm text-muted-foreground truncate">{offer.title}</p>
@@ -455,7 +495,21 @@ export default function OfferDetailPage() {
 
           {/* Carrier responses + per-carrier chat */}
           {adminSession?.id && (
-            <OfferRecipientsPanel offerId={offer.id} adminId={adminSession.id} />
+            <OfferRecipientsPanel
+              offerId={offer.id}
+              adminId={adminSession.id}
+              onAwardLinkedOrder={(orderId, tripLegId) => {
+                // Navigate to the order in Execution to create the FWD subcontract
+                // The leg assignment dialog will be triggered from there
+                if (tripLegId) {
+                  // Navigate to the order with leg context - the user can then open the assignment dialog
+                  router.push(`/admin/tms/orders/${orderId}?openLeg=${tripLegId}`);
+                } else {
+                  // Navigate to the order detail - user can manage from there
+                  router.push(`/admin/tms/orders/${orderId}`);
+                }
+              }}
+            />
           )}
 
           {/* Route */}
