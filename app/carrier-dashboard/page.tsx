@@ -103,7 +103,7 @@ export default function CarrierOffersPage() {
             row.dispatcher_decision === "declined" ||
             (!!o.awarded_recipient_id && o.awarded_recipient_id !== row.id);
           return (
-            <Link key={row.id} href={`/exchange/o/${row.token}`}>
+            <Link key={row.id} href={`/carrier-dashboard/offers/${row.token}`}>
               <Card className="p-4 hover:border-primary/40 transition-colors">
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="min-w-0">
