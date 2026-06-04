@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getServiceClient,
-  validateRecipient,
+  authorizeRecipient,
   getOrCreateRecipientConversation,
 } from "@/lib/exchange/portal-auth";
 import { createAdminNotification } from "@/lib/admin-notifications";
@@ -15,10 +15,14 @@ export async function GET(
   const { token } = await params;
   const { searchParams } = new URL(request.url);
   const pin = searchParams.get("pin");
+  const carrierAccountId = searchParams.get("carrierAccountId");
   const after = searchParams.get("after");
   const supabase = getServiceClient();
 
-  const { ok, error, recipient } = await validateRecipient(supabase, token, pin ?? "");
+  const { ok, error, recipient } = await authorizeRecipient(supabase, token, {
+    pin,
+    carrierAccountId,
+  });
   if (!recipient || error === "not_found")
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   if (error === "expired") return NextResponse.json({ error: "expired" }, { status: 410 });
@@ -77,14 +81,17 @@ export async function POST(
   const { token } = await params;
   const supabase = getServiceClient();
 
-  let body: { pin?: string; content?: string } = {};
+  let body: { pin?: string; carrierAccountId?: string; content?: string } = {};
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
 
-  const { ok, error, recipient } = await validateRecipient(supabase, token, body.pin ?? "");
+  const { ok, error, recipient } = await authorizeRecipient(supabase, token, {
+    pin: body.pin,
+    carrierAccountId: body.carrierAccountId,
+  });
   if (!recipient || error === "not_found")
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   if (error === "expired") return NextResponse.json({ error: "expired" }, { status: 410 });

@@ -508,6 +508,7 @@ export function OfferDetailView({
         <ResponsePanel
           token={token}
           pin={pin}
+          carrierAccountId={getStoredCarrierSession()?.id ?? null}
           recipient={recipient!}
           defaultCurrency={offer?.currency || "EUR"}
           onUpdated={(r) => setRecipient(r)}
@@ -515,7 +516,14 @@ export function OfferDetailView({
       )}
 
       {/* Chat */}
-      {conversationId && <PortalChat token={token} pin={pin} initialMessages={messages} />}
+      {conversationId && (
+        <PortalChat
+          token={token}
+          pin={pin}
+          carrierAccountId={getStoredCarrierSession()?.id ?? null}
+          initialMessages={messages}
+        />
+      )}
 
       {/* App promo — only on the standalone public page */}
       {!embedded && <AppPromo />}
@@ -702,12 +710,14 @@ function LockedResponseNotice({
 function ResponsePanel({
   token,
   pin,
+  carrierAccountId,
   recipient,
   defaultCurrency,
   onUpdated,
 }: {
   token: string;
   pin: string;
+  carrierAccountId: string | null;
   recipient: RecipientState;
   defaultCurrency: string;
   onUpdated: (r: RecipientState) => void;
@@ -728,6 +738,7 @@ function ResponsePanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pin,
+          carrierAccountId,
           response,
           quoteAmount: response === "quoted" ? amount : null,
           currency,

@@ -75,6 +75,49 @@ export async function validateRecipient(
 }
 
 /**
+ * Single authorization gate for portal sub-actions (respond, messages, etc.).
+ * A request is authorized either by a valid PIN OR by a logged-in carrier
+ * account session that owns the recipient. This mirrors the main offer route so
+ * that carriers who opened the offer from their dashboard (PIN-less) can also
+ * submit quotes and chat. Expiry is always enforced.
+ */
+export async function authorizeRecipient(
+  supabase: SupabaseClient,
+  token: string,
+  opts: { pin?: string | null; carrierAccountId?: string | null }
+): Promise<ValidateResult> {
+  const base = await validateRecipient(supabase, token);
+  const recipient = base.recipient;
+
+  if (!recipient || base.error === "not_found") {
+    return { ok: false, error: "not_found" };
+  }
+  if (base.error === "expired") {
+    return { ok: false, error: "expired", recipient };
+  }
+
+  // Prefer the carrier account session when present and matching.
+  if (opts.carrierAccountId) {
+    const match = await carrierAccountMatchesRecipient(
+      supabase,
+      opts.carrierAccountId,
+      recipient
+    );
+    if (match) {
+      await linkRecipientToAccount(supabase, recipient, opts.carrierAccountId);
+      return { ok: true, recipient };
+    }
+  }
+
+  // Otherwise fall back to the emailed PIN.
+  if (String(opts.pin ?? "").trim() !== recipient.pin) {
+    return { ok: false, error: "invalid_pin", recipient };
+  }
+
+  return { ok: true, recipient };
+}
+
+/**
  * Authorize a logged-in carrier account against a recipient row WITHOUT a PIN.
  * Mirrors the matching used by the carrier offers list: a recipient belongs to
  * an account when it points at that account directly, or when its partner_id is
