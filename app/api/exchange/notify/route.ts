@@ -4,6 +4,7 @@ import nodemailer from "nodemailer";
 import { decrypt } from "@/lib/encryption";
 import { getUserEmailSettingsRow } from "@/lib/user-email-settings";
 import { resolveCarriersForGroups, type ResolvedCarrier } from "@/lib/exchange/resolve-carriers";
+import { createAdminNotification } from "@/lib/admin-notifications";
 
 function getSupabase() {
   return createClient(
@@ -44,8 +45,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "offerId is required" }, { status: 400 });
     }
 
-    // Load the offer (scoped to the tenant).
-    const { data: offer, error: offerErr } = await supabase
+    // Load the offer (scoped to the tenant). The long select string defeats
+    // supabase-js's literal type parser, so we narrow the row to OfferLite
+    // (the field shape the email/notification helpers below rely on).
+    const { data: offerRow, error: offerErr } = await supabase
       .from("freight_offers")
       .select(
         "id, reference, title, admin_id, origin_city, origin_country, origin_postal_code, " +
@@ -58,9 +61,11 @@ export async function POST(request: NextRequest) {
       .eq("admin_id", adminId)
       .single();
 
-    if (offerErr || !offer) {
+    if (offerErr || !offerRow) {
       return NextResponse.json({ error: "Offer not found" }, { status: 404 });
     }
+
+    const offer = offerRow as unknown as OfferLite;
 
     // Which groups are actively distributed for this offer?
     let distQuery = supabase
@@ -170,26 +175,32 @@ export async function POST(request: NextRequest) {
         .eq("group_id", gid);
     }
 
-    // Internal dispatcher notification confirming the send.
+    // Internal dispatcher notification confirming the send. This goes through
+    // createAdminNotification so it fans out to `user_notifications` (powering
+    // the in-app bell + realtime toast) AND sends an FCM web-push to the
+    // recipient's registered devices — i.e. both "in their interface" channels.
+    // Target the acting user when known, otherwise the whole team.
     try {
-      await supabase.from("notifications").insert({
-        admin_id: adminId,
-        target_type: "user",
-        target_id: userId || adminId,
-        title: "Offer distributed to carriers",
-        body: `${offer.reference} (${formatRoute(offer)}) emailed to ${sent} carrier${sent === 1 ? "" : "s"} across ${groupIds.length} group${groupIds.length === 1 ? "" : "s"}.`,
-        notification_type: "freight_offer_distributed",
-        action_url: `/admin/tms/exchange/${offerId}`,
-        data: {
-          offer_id: offerId,
-          reference: offer.reference,
-          sent,
-          failed,
-          without_email: withoutEmail,
-          groups: groupIds.length,
-        },
-        channels_sent: ["web"],
+      await createAdminNotification({
+        adminId,
+        targetType: userId ? "user" : "all",
+        targetId: userId || undefined,
+        notificationType: "freight_offer_distributed",
         priority: "normal",
+        payload: {
+          title: "Offer distributed to carriers",
+          body: `${offer.reference} (${formatRoute(offer)}) emailed to ${sent} carrier${sent === 1 ? "" : "s"} across ${groupIds.length} group${groupIds.length === 1 ? "" : "s"}.`,
+          icon: "route",
+          actionUrl: `/admin/tms/exchange/${offerId}`,
+          data: {
+            offer_id: offerId,
+            reference: offer.reference,
+            sent,
+            failed,
+            without_email: withoutEmail,
+            groups: groupIds.length,
+          },
+        },
       });
     } catch (e) {
       console.error("[exchange/notify] internal notification insert failed", e);
