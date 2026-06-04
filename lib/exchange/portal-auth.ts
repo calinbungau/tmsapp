@@ -56,7 +56,7 @@ export async function validateRecipient(
 
   if (!recipient) return { ok: false, error: "not_found" };
 
-  const rec = recipient as RecipientRow;
+  const rec = recipient as unknown as RecipientRow;
 
   if (rec.expires_at && new Date(rec.expires_at).getTime() < Date.now()) {
     return { ok: false, error: "expired", recipient: rec };

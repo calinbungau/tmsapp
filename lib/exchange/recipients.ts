@@ -56,14 +56,24 @@ export async function upsertRecipients(
   const expiresAt = computeRecipientExpiry(offerExpiresAt);
 
   // Load existing recipients for this offer so we can reuse tokens/PINs.
-  const { data: existing } = await supabase
+  const { data } = await supabase
     .from("freight_offer_recipients")
     .select("id, partner_id, email, carrier_name, token, pin")
     .eq("offer_id", offerId);
 
-  const byPartner = new Map<string, (typeof existing)[number]>();
-  const byEmail = new Map<string, (typeof existing)[number]>();
-  for (const r of existing || []) {
+  type ExistingRow = {
+    id: string;
+    partner_id: string | null;
+    email: string | null;
+    carrier_name: string | null;
+    token: string;
+    pin: string;
+  };
+  const existing = (data || []) as ExistingRow[];
+
+  const byPartner = new Map<string, ExistingRow>();
+  const byEmail = new Map<string, ExistingRow>();
+  for (const r of existing) {
     if (r.partner_id) byPartner.set(r.partner_id, r);
     if (r.email) byEmail.set(r.email.toLowerCase(), r);
   }

@@ -5,15 +5,21 @@ import { APP_LINKS, APP_NAME } from "@/lib/exchange/app-links";
  * Promotes the BNG Tracking mobile app with App Store / Google Play buttons.
  * Store URLs live in lib/exchange/app-links.ts (swap placeholders when live).
  */
-export function AppPromo({ compact = false }: { compact?: boolean }) {
+export function AppPromo({
+  compact = false,
+  subtitle,
+}: {
+  compact?: boolean;
+  subtitle?: string;
+}) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       {!compact && (
         <>
           <p className="text-sm font-semibold text-foreground">Get the {APP_NAME} app</p>
           <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-            Manage every offer, respond faster, and chat with dispatchers on the go.
-            Create your free carrier account in the app.
+            {subtitle ||
+              "Manage every offer, respond faster, and chat with dispatchers on the go. Create your free carrier account in the app."}
           </p>
         </>
       )}
