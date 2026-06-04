@@ -364,35 +364,41 @@ export const NotificationTemplates = {
   }),
 
   // ─── Carrier (freight exchange) events ───────────────────────────────────
-  // `token` is the recipient's portal token. `actionUrl` is the public
-  // magic-link portal route (/exchange/o/[token]) — the same link the email
-  // uses. The native app reads `data.actionUrl` on notification tap (exactly
-  // like the driver flow) and navigates the WebView there. We use the public
-  // portal route (not /carrier-dashboard/...) so tapping the push opens the
-  // offer directly without hitting the login wall: it auto-unlocks via session
-  // bypass when logged in, or shows the offer's PIN screen otherwise.
+  // `token` is the recipient's portal token.
+  //
+  // Deep-linking from a notification tap is driven by `eventId`. The native
+  // Traccar Manager shell (see traccar/traccar-manager → main_screen.dart) reads
+  // `message.data['eventId']` on tap and navigates the WebView to
+  // `${server}/event/${eventId}` — both on cold start (getInitialMessage) and
+  // warm resume (onMessageOpenedApp). It does NOT read `actionUrl`. We therefore
+  // set `eventId` to the recipient token so the shell opens `/event/{token}`,
+  // which our app redirects to the public, login-free offer portal
+  // (/exchange/o/{token}) — it auto-unlocks via session bypass when logged in,
+  // or shows the offer's PIN screen otherwise.
+  //
+  // `actionUrl` is kept for web push (service worker / fcm_options.link) only.
   newFreightOffer: (route: string, reference: string, offerId: string, token?: string | null) => ({
     title: "New freight offer",
     body: `${route} · ref ${reference}`,
-    data: cleanData({ type: "freight_offer_new", offer_id: offerId, token, actionUrl: portalUrl(token) }),
+    data: cleanData({ type: "freight_offer_new", offer_id: offerId, token, eventId: token, actionUrl: portalUrl(token) }),
   }),
 
   quoteAccepted: (reference: string, offerId: string, token?: string | null) => ({
     title: "Offer awarded to you",
     body: `You have been awarded offer ${reference}. The dispatcher will follow up with the transport order.`,
-    data: cleanData({ type: "freight_offer_awarded", offer_id: offerId, token, actionUrl: portalUrl(token) }),
+    data: cleanData({ type: "freight_offer_awarded", offer_id: offerId, token, eventId: token, actionUrl: portalUrl(token) }),
   }),
 
   quoteDeclined: (reference: string, offerId: string, token?: string | null) => ({
     title: "Response declined",
     body: `The dispatcher has declined your response to offer ${reference}.`,
-    data: cleanData({ type: "freight_offer_declined", offer_id: offerId, token, actionUrl: portalUrl(token) }),
+    data: cleanData({ type: "freight_offer_declined", offer_id: offerId, token, eventId: token, actionUrl: portalUrl(token) }),
   }),
 
   offerReopened: (reference: string, offerId: string, token?: string | null) => ({
     title: "Offer re-opened",
     body: `The dispatcher has re-opened offer ${reference}.`,
-    data: cleanData({ type: "freight_offer_reopened", offer_id: offerId, token, actionUrl: portalUrl(token) }),
+    data: cleanData({ type: "freight_offer_reopened", offer_id: offerId, token, eventId: token, actionUrl: portalUrl(token) }),
   }),
 
   carrierChatMessage: (
@@ -409,6 +415,7 @@ export const NotificationTemplates = {
       offer_id: offerId,
       recipient_id: recipientId,
       token,
+      eventId: token,
       actionUrl: portalUrl(token),
     }),
   }),
