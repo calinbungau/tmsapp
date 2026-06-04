@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { Loader2, Package, MapPin, Calendar, ArrowRight } from "lucide-react";
+import { Loader2, Package, MapPin, Calendar, ArrowRight, Building2, Trophy, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getStoredCarrierSession } from "@/hooks/use-carrier-session";
@@ -14,6 +14,8 @@ interface OfferRow {
   quote_amount: number | null;
   quote_currency: string | null;
   expires_at: string | null;
+  dispatcher_decision: "accepted" | "declined" | null;
+  from_company: string | null;
   offer: {
     id: string;
     reference: string;
@@ -30,6 +32,7 @@ interface OfferRow {
     pricing_mode: string | null;
     price_amount: number | null;
     currency: string | null;
+    awarded_recipient_id: string | null;
   } | null;
 }
 
@@ -95,6 +98,10 @@ export default function CarrierOffersPage() {
         offers.map((row) => {
           const o = row.offer;
           if (!o) return null;
+          const isWon = !!o.awarded_recipient_id && o.awarded_recipient_id === row.id;
+          const isLost =
+            row.dispatcher_decision === "declined" ||
+            (!!o.awarded_recipient_id && o.awarded_recipient_id !== row.id);
           return (
             <Link key={row.id} href={`/exchange/o/${row.token}`}>
               <Card className="p-4 hover:border-primary/40 transition-colors">
@@ -102,15 +109,33 @@ export default function CarrierOffersPage() {
                   <div className="min-w-0">
                     <p className="text-xs text-muted-foreground font-mono">{o.reference}</p>
                     <p className="text-sm font-medium truncate">{o.title || "Freight offer"}</p>
+                    {row.from_company && (
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5 truncate">
+                        <Building2 className="h-3 w-3 shrink-0" />
+                        {row.from_company}
+                      </p>
+                    )}
                   </div>
-                  {row.response && (
-                    <span
-                      className={`text-[11px] font-medium px-2 py-0.5 rounded-full shrink-0 ${
-                        responseStyles[row.response] || "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {row.response}
+                  {isWon ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full shrink-0 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                      <Trophy className="h-3 w-3" />
+                      Awarded
                     </span>
+                  ) : isLost ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full shrink-0 bg-muted text-muted-foreground">
+                      <XCircle className="h-3 w-3" />
+                      Not selected
+                    </span>
+                  ) : (
+                    row.response && (
+                      <span
+                        className={`text-[11px] font-medium px-2 py-0.5 rounded-full shrink-0 ${
+                          responseStyles[row.response] || "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {row.response}
+                      </span>
+                    )
                   )}
                 </div>
 

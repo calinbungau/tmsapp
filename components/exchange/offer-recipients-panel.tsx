@@ -12,7 +12,12 @@ import {
   CheckCircle2,
   XCircle,
   BadgeEuro,
+  Trophy,
+  Check,
+  X,
+  RotateCcw,
 } from "lucide-react";
+import { toast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -35,6 +40,15 @@ interface Recipient {
   first_viewed_at: string | null;
   last_viewed_at: string | null;
   view_count: number;
+  dispatcher_decision: "accepted" | "declined" | null;
+  decided_at: string | null;
+}
+
+interface OfferAward {
+  status: string | null;
+  awarded_recipient_id: string | null;
+  awarded_carrier_id: string | null;
+  awarded_at: string | null;
 }
 
 interface ChatMessage {
@@ -87,16 +101,62 @@ export function OfferRecipientsPanel({
   offerId: string;
   adminId: string;
 }) {
-  const { data, isLoading } = useSWR(
+  const { data, isLoading, mutate } = useSWR(
     [`/api/exchange/offers/${offerId}/recipients`, adminId],
     ([url, id]) => jsonFetcher(url, id),
     { refreshInterval: 20000 }
   );
   const recipients: Recipient[] = data?.recipients || [];
+  const award: OfferAward | null = data?.offer || null;
   const [chatWith, setChatWith] = useState<Recipient | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   const responded = recipients.filter((r) => r.response).length;
   const viewed = recipients.filter((r) => r.first_viewed_at).length;
+  const isAwarded = award?.status === "awarded" && !!award.awarded_recipient_id;
+  const awardedRecipient = recipients.find((r) => r.id === award?.awarded_recipient_id);
+
+  const decide = async (
+    recipient: Recipient,
+    decision: "accept" | "decline" | "reopen"
+  ) => {
+    setPendingId(recipient.id);
+    try {
+      const res = await fetch(`/api/exchange/recipients/${recipient.id}/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-id": adminId },
+        body: JSON.stringify({ decision }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "Failed");
+      }
+      const name = recipient.carrier_name || recipient.email || "Carrier";
+      toast({
+        title:
+          decision === "accept"
+            ? `Offer awarded to ${name}`
+            : decision === "decline"
+              ? `Declined ${name}`
+              : "Offer re-opened",
+        description:
+          decision === "accept"
+            ? "Other carriers were marked as declined and the carrier was notified."
+            : decision === "reopen"
+              ? "You can now make a new decision."
+              : "The carrier has been notified.",
+      });
+      await mutate();
+    } catch (e) {
+      toast({
+        title: "Action failed",
+        description: e instanceof Error ? e.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setPendingId(null);
+    }
+  };
 
   return (
     <div className="rounded-lg border border-border/50 bg-card p-4">
@@ -114,6 +174,21 @@ export function OfferRecipientsPanel({
         )}
       </div>
 
+      {isAwarded && (
+        <div className="mb-3 flex items-center gap-2 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
+          <Trophy className="h-4 w-4 shrink-0" />
+          <span className="text-pretty">
+            Awarded to{" "}
+            <span className="font-semibold">
+              {awardedRecipient?.carrier_name || awardedRecipient?.email || "a carrier"}
+            </span>
+            {awardedRecipient?.response === "quoted" &&
+              awardedRecipient.quote_amount != null &&
+              ` · ${awardedRecipient.quote_amount} ${awardedRecipient.quote_currency || "EUR"}`}
+          </span>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="flex items-center justify-center py-6">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -126,6 +201,8 @@ export function OfferRecipientsPanel({
         <div className="divide-y divide-border/40">
           {recipients.map((r) => {
             const rc = r.response ? responseConfig[r.response] : null;
+            const busy = pendingId === r.id;
+            const isWinner = r.id === award?.awarded_recipient_id;
             return (
               <div key={r.id} className="flex items-center gap-3 py-3">
                 <div className="min-w-0 flex-1">
@@ -139,6 +216,18 @@ export function OfferRecipientsPanel({
                       >
                         <rc.icon className="h-3 w-3" />
                         {rc.label}
+                      </span>
+                    )}
+                    {r.dispatcher_decision === "accepted" && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                        <Trophy className="h-3 w-3" />
+                        Awarded
+                      </span>
+                    )}
+                    {r.dispatcher_decision === "declined" && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                        <X className="h-3 w-3" />
+                        Declined
                       </span>
                     )}
                   </div>
@@ -165,15 +254,62 @@ export function OfferRecipientsPanel({
                     </p>
                   )}
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0"
-                  onClick={() => setChatWith(r)}
-                >
-                  <MessageSquare className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Chat</span>
-                </Button>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {/* Decision controls: only meaningful once the carrier has
+                      responded with interest or a quote. */}
+                  {r.response && r.response !== "declined" && !r.dispatcher_decision && !isAwarded && (
+                    <>
+                      <Button
+                        size="sm"
+                        className="shrink-0"
+                        disabled={busy}
+                        onClick={() => decide(r, "accept")}
+                      >
+                        {busy ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Check className="h-4 w-4 sm:mr-1" />
+                        )}
+                        <span className="hidden sm:inline">Accept</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        disabled={busy}
+                        onClick={() => decide(r, "decline")}
+                      >
+                        <X className="h-4 w-4 sm:mr-1" />
+                        <span className="hidden sm:inline">Decline</span>
+                      </Button>
+                    </>
+                  )}
+                  {(r.dispatcher_decision || (isAwarded && isWinner)) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0"
+                      disabled={busy}
+                      onClick={() => decide(r, "reopen")}
+                    >
+                      {busy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-4 w-4 sm:mr-1" />
+                      )}
+                      <span className="hidden sm:inline">Reopen</span>
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => setChatWith(r)}
+                  >
+                    <MessageSquare className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Chat</span>
+                  </Button>
+                </div>
               </div>
             );
           })}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import bcrypt from "bcryptjs";
+import { resolveAndLinkAccount } from "@/lib/exchange/identity";
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,9 +42,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If a portal token is supplied, pull partner_id + prefill from the recipient.
+    // An optional onboarding token may be either an offer recipient token OR a
+    // dispatcher-generated invite token. Both resolve to a business_partner we
+    // should link the new account to (in addition to VAT/email matches).
+    const inviteToken: string | null = body.invite || null;
     let partnerId: string | null = null;
     let prefillCompany: string | null = null;
+    let inviteRow: { id: string; partner_id: string } | null = null;
+
     if (token) {
       const { data: recipient } = await supabase
         .from("freight_offer_recipients")
@@ -53,6 +59,26 @@ export async function POST(request: NextRequest) {
       if (recipient) {
         partnerId = recipient.partner_id ?? null;
         prefillCompany = recipient.carrier_name ?? null;
+      }
+    }
+
+    if (inviteToken) {
+      const { data: invite } = await supabase
+        .from("carrier_invites")
+        .select("id, partner_id, status")
+        .eq("token", inviteToken)
+        .maybeSingle();
+      if (invite && invite.status !== "revoked") {
+        partnerId = partnerId || invite.partner_id;
+        inviteRow = { id: invite.id, partner_id: invite.partner_id };
+        if (!prefillCompany) {
+          const { data: p } = await supabase
+            .from("business_partners")
+            .select("company_name")
+            .eq("id", invite.partner_id)
+            .maybeSingle();
+          prefillCompany = p?.company_name ?? null;
+        }
       }
     }
 
@@ -80,23 +106,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Backfill: link any existing recipient rows for this partner/email to the
-    // new account so the carrier immediately sees their past offers in the app.
+    // Resolve cross-tenant identity: link this global account to every tenant
+    // business partner that matches by VAT (primary) or email (fallback), plus
+    // the partner they onboarded through. This also backfills past offers.
     try {
-      if (partnerId) {
-        await supabase
-          .from("freight_offer_recipients")
-          .update({ carrier_account_id: account.id })
-          .eq("partner_id", partnerId)
-          .is("carrier_account_id", null);
-      }
-      await supabase
-        .from("freight_offer_recipients")
-        .update({ carrier_account_id: account.id })
-        .eq("email", email)
-        .is("carrier_account_id", null);
+      await resolveAndLinkAccount(
+        supabase,
+        { id: account.id, vat_number: account.vat_number, email: account.email },
+        partnerId
+      );
     } catch (e) {
-      console.error("[carrier-auth/signup] recipient backfill failed", e);
+      console.error("[carrier-auth/signup] identity resolve failed", e);
+    }
+
+    // Mark the invite accepted, if the carrier signed up via an invite link.
+    if (inviteRow) {
+      try {
+        await supabase
+          .from("carrier_invites")
+          .update({
+            status: "accepted",
+            accepted_at: new Date().toISOString(),
+            carrier_account_id: account.id,
+          })
+          .eq("id", inviteRow.id);
+      } catch (e) {
+        console.error("[carrier-auth/signup] invite update failed", e);
+      }
     }
 
     return NextResponse.json({

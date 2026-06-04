@@ -23,7 +23,8 @@ export async function GET(
       .from("freight_offer_recipients")
       .select(
         "id, carrier_name, email, response, responded_at, quote_amount, quote_currency, " +
-          "quote_message, sent_at, first_viewed_at, last_viewed_at, view_count, carrier_account_id"
+          "quote_message, sent_at, first_viewed_at, last_viewed_at, view_count, carrier_account_id, " +
+          "dispatcher_decision, decided_at"
       )
       .eq("offer_id", offerId)
       .eq("admin_id", adminId)
@@ -35,7 +36,16 @@ export async function GET(
       return NextResponse.json({ error: "Failed to load recipients" }, { status: 500 });
     }
 
-    return NextResponse.json({ recipients: data || [] });
+    // Award state for the offer so the UI can show which carrier won (or lock
+    // the controls once an award has been made).
+    const { data: offer } = await supabase
+      .from("freight_offers")
+      .select("status, awarded_recipient_id, awarded_carrier_id, awarded_at")
+      .eq("id", offerId)
+      .eq("admin_id", adminId)
+      .maybeSingle();
+
+    return NextResponse.json({ recipients: data || [], offer: offer || null });
   } catch (error) {
     console.error("[exchange/recipients] error", error);
     return NextResponse.json({ error: "An error occurred" }, { status: 500 });
