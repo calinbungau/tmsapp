@@ -17,6 +17,7 @@ import {
   XCircle,
   ThumbsUp,
   Lock,
+  Trophy,
 } from "lucide-react";
 import { AppPromo } from "@/components/exchange/app-promo";
 import { PortalChat } from "@/components/exchange/portal-chat";
@@ -107,6 +108,10 @@ interface RecipientState {
   quoteAmount: number | null;
   quoteCurrency: string | null;
   quoteMessage: string | null;
+  dispatcherDecision: "accepted" | "declined" | null;
+  decidedAt: string | null;
+  isAwarded: boolean;
+  offerAwarded: boolean;
   hasAccount: boolean;
 }
 interface ChatMessage {
@@ -302,7 +307,9 @@ export default function CarrierPortalPage() {
       </header>
 
       <div className="mx-auto max-w-3xl px-4 py-6 flex flex-col gap-5">
-        {recipient?.response && <ResponseSummary recipient={recipient} />}
+        {(recipient?.response || recipient?.dispatcherDecision) && (
+          <ResponseSummary recipient={recipient} companyName={company?.company_name ?? null} />
+        )}
 
         {/* Route */}
         <section className="rounded-xl border border-border bg-card p-5">
@@ -392,14 +399,21 @@ export default function CarrierPortalPage() {
           </div>
         </section>
 
-        {/* Respond */}
-        <ResponsePanel
-          token={token}
-          pin={pin}
-          recipient={recipient!}
-          defaultCurrency={offer?.currency || "EUR"}
-          onUpdated={(r) => setRecipient(r)}
-        />
+        {/* Respond — locked once the dispatcher has made a final decision */}
+        {recipient?.dispatcherDecision ? (
+          <LockedResponseNotice
+            decision={recipient.dispatcherDecision}
+            isAwarded={recipient.isAwarded}
+          />
+        ) : (
+          <ResponsePanel
+            token={token}
+            pin={pin}
+            recipient={recipient!}
+            defaultCurrency={offer?.currency || "EUR"}
+            onUpdated={(r) => setRecipient(r)}
+          />
+        )}
 
         {/* Chat */}
         {conversationId && <PortalChat token={token} pin={pin} initialMessages={messages} />}
@@ -425,7 +439,51 @@ function Row({ label, value }: { label: string; value?: React.ReactNode }) {
   );
 }
 
-function ResponseSummary({ recipient }: { recipient: RecipientState }) {
+function ResponseSummary({
+  recipient,
+  companyName,
+}: {
+  recipient: RecipientState;
+  companyName: string | null;
+}) {
+  const who = companyName || "The dispatcher";
+
+  // The dispatcher's decision always takes precedence over the carrier's own
+  // response, since it is the latest, authoritative state of the offer.
+  if (recipient.isAwarded) {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-green-500/40 bg-green-500/10 p-4 text-green-700 dark:text-green-300">
+        <Trophy className="h-5 w-5 shrink-0" />
+        <div>
+          <p className="text-sm font-semibold">You won this offer!</p>
+          <p className="text-xs opacity-80">
+            {who} awarded the load to you and will follow up with the transport order. Use the chat
+            below if you have questions.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (recipient.dispatcherDecision === "declined") {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-red-700 dark:text-red-300">
+        <XCircle className="h-5 w-5 shrink-0" />
+        <div>
+          <p className="text-sm font-semibold">
+            {recipient.offerAwarded ? "This offer went to another carrier" : "Your response was declined"}
+          </p>
+          <p className="text-xs opacity-80">
+            {recipient.offerAwarded
+              ? `${who} awarded this load to another carrier. Thanks for quoting — you can still chat with the dispatcher below.`
+              : `${who} declined your response for this load. You can still chat with the dispatcher below.`}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // No dispatcher decision yet → reflect the carrier's own response.
   const map: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
     interested: {
       label: "You marked this offer as interested",
@@ -453,6 +511,29 @@ function ResponseSummary({ recipient }: { recipient: RecipientState }) {
         <p className="text-xs opacity-80">You can update your response below or chat with the dispatcher.</p>
       </div>
     </div>
+  );
+}
+
+function LockedResponseNotice({
+  decision,
+  isAwarded,
+}: {
+  decision: "accepted" | "declined";
+  isAwarded: boolean;
+}) {
+  const awarded = decision === "accepted" || isAwarded;
+  return (
+    <section className="rounded-xl border border-border bg-card p-5">
+      <div className="flex items-center gap-2">
+        <Lock className="h-4 w-4 text-muted-foreground" />
+        <p className="text-sm font-semibold text-foreground">Response closed</p>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+        {awarded
+          ? "This offer has been awarded to you, so responses are now locked. The dispatcher will share the transport order shortly."
+          : "The dispatcher has finalized this offer, so responses are now locked. If this changes, they can re-open it and you'll be able to respond again."}
+      </p>
+    </section>
   );
 }
 

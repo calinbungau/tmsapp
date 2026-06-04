@@ -22,6 +22,8 @@ export interface RecipientRow {
   quote_amount: number | null;
   quote_currency: string | null;
   quote_message: string | null;
+  dispatcher_decision: "accepted" | "declined" | null;
+  decided_at: string | null;
   expires_at: string | null;
   view_count: number;
 }
@@ -49,7 +51,8 @@ export async function validateRecipient(
     .from("freight_offer_recipients")
     .select(
       "id, offer_id, admin_id, partner_id, carrier_account_id, carrier_name, email, token, pin, " +
-        "response, responded_at, quote_amount, quote_currency, quote_message, expires_at, view_count"
+        "response, responded_at, quote_amount, quote_currency, quote_message, " +
+        "dispatcher_decision, decided_at, expires_at, view_count"
     )
     .eq("token", token)
     .maybeSingle();
