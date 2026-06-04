@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { AppPromo } from "@/components/exchange/app-promo";
 import { PortalChat } from "@/components/exchange/portal-chat";
+import { getStoredCarrierSession } from "@/hooks/use-carrier-session";
 
 // ─── Country flag ──────────────────────────────────────────
 const COUNTRY_CODES: Record<string, string> = {
@@ -141,7 +142,18 @@ export default function CarrierPortalPage() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
-  // Load meta on mount (no PIN).
+  // Apply a full offer payload (shared by the session bypass and PIN verify).
+  const applyOfferData = useCallback((data: any) => {
+    setOffer(data.offer);
+    setCompany(data.company);
+    setRecipient(data.recipient);
+    setConversationId(data.conversationId);
+    setMessages(data.messages || []);
+    setPhase("ready");
+  }, []);
+
+  // On mount: fetch meta, and if the visitor already has a carrier session,
+  // try to open the offer directly (no PIN). Fall back to the PIN gate.
   useEffect(() => {
     (async () => {
       try {
@@ -158,13 +170,28 @@ export default function CarrierPortalPage() {
         }
         const data = await res.json();
         setMeta({ carrierName: data.carrierName, companyName: data.companyName });
+
+        // Logged-in carrier? Attempt a PIN-less unlock with their account id.
+        const session = getStoredCarrierSession();
+        if (session?.id) {
+          const unlock = await fetch(`/api/exchange/portal/${token}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ carrierAccountId: session.id }),
+          });
+          if (unlock.ok) {
+            applyOfferData(await unlock.json());
+            return;
+          }
+        }
+
         setPhase("pin");
       } catch {
         setErrorKind("network");
         setPhase("error");
       }
     })();
-  }, [token]);
+  }, [token, applyOfferData]);
 
   const verify = useCallback(async () => {
     if (pin.length < 4) {
@@ -194,19 +221,13 @@ export default function CarrierPortalPage() {
         setVerifying(false);
         return;
       }
-      const data = await res.json();
-      setOffer(data.offer);
-      setCompany(data.company);
-      setRecipient(data.recipient);
-      setConversationId(data.conversationId);
-      setMessages(data.messages || []);
-      setPhase("ready");
+      applyOfferData(await res.json());
     } catch {
       setPinError("Network error. Please try again.");
     } finally {
       setVerifying(false);
     }
-  }, [pin, token]);
+  }, [pin, token, applyOfferData]);
 
   if (phase === "loading") {
     return (
