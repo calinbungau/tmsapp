@@ -345,6 +345,22 @@ const BAND_RGB: Record<Row["band"], [number, number, number] | null> = {
   hold: [255, 237, 213],
 };
 
+// jsPDF's built-in Helvetica only supports CP1252/Latin-1, which lacks the
+// Romanian comma-below letters (ș, ț) and others — they render as garbled
+// glyphs. We strip diacritics down to ASCII so the exported text is clean.
+// A couple of explicit replacements come first because NFD normalization
+// alone doesn't decompose some characters the way we want.
+function stripDiacritics(input: string): string {
+  return input
+    .replace(/ș/g, "s").replace(/Ș/g, "S")
+    .replace(/ț/g, "t").replace(/Ț/g, "T")
+    .replace(/ş/g, "s").replace(/Ş/g, "S")
+    .replace(/ţ/g, "t").replace(/Ţ/g, "T")
+    .replace(/ß/g, "ss")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 // Compose the localized explanation for the PDF's "What it means" column.
 // When a row has per-column copy we prefix each fragment with its (also
 // localized) role label so the single PDF column stays readable.
@@ -378,7 +394,7 @@ async function exportStatusGuidePdf(lang: Lang) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(15);
   doc.setTextColor(15, 23, 42);
-  doc.text(t.title, margin, 40);
+  doc.text(stripDiacritics(t.title), margin, 40);
 
   // Generated-at + language line
   const now = new Date();
@@ -390,7 +406,7 @@ async function exportStatusGuidePdf(lang: Lang) {
   doc.text(`${LANG_LABELS[lang]} · ${stamp}`, pageWidth - margin, 40, { align: "right" });
 
   // Intro paragraph (wrapped)
-  const introLines = doc.splitTextToSize(t.intro, pageWidth - margin * 2) as string[];
+  const introLines = doc.splitTextToSize(stripDiacritics(t.intro), pageWidth - margin * 2) as string[];
   doc.setFontSize(8.5);
   doc.setTextColor(90, 90, 90);
   doc.text(introLines, margin, 58);
@@ -398,13 +414,13 @@ async function exportStatusGuidePdf(lang: Lang) {
   const startY = 58 + introLines.length * 11 + 10;
 
   autoTable(doc, {
-    head: [[t.cols.hash, t.cols.parent, t.cols.internal, t.cols.forwarder, t.cols.explain]],
+    head: [[t.cols.hash, t.cols.parent, t.cols.internal, t.cols.forwarder, t.cols.explain].map(stripDiacritics)],
     body: ROWS.map((r) => [
       String(r.n),
-      r.parent,
-      r.internal,
-      r.fwd,
-      composeExplainForPdf(r, lang),
+      stripDiacritics(r.parent),
+      stripDiacritics(r.internal),
+      stripDiacritics(r.fwd),
+      stripDiacritics(composeExplainForPdf(r, lang)),
     ]),
     startY,
     margin: { left: margin, right: margin, bottom: 32 },
