@@ -632,10 +632,39 @@ useEffect(() => {
           body: JSON.stringify({ cui: taxId }),
         });
 
-        const result = await response.json();
+        const result = await response.json().catch(() => ({ success: false }));
 
         if (!response.ok || !result.success) {
-          alert(result.error || "Failed to lookup company in ANAF");
+          // ANAF is down or returned nothing — fall back to VIES so the user
+          // can still validate and auto-fill an RO company (less detail, but
+          // better than failing). allowRomania bypasses VIES's "use ANAF" hint.
+          const roVat = /^RO/i.test(taxId) ? taxId : `RO${taxId.replace(/^RO/i, "")}`;
+          const viesResponse = await fetch("/api/vies", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ vatNumber: roVat, allowRomania: true }),
+          });
+          const viesResult = await viesResponse.json().catch(() => ({ success: false }));
+
+          if (viesResponse.ok && viesResult.success) {
+            const v = viesResult.data;
+            setFormData((prev) => ({
+              ...prev,
+              name: v.name || prev.name,
+              address_line1: v.street || prev.address_line1,
+              city: v.city || prev.city,
+              postal_code: v.postalCode || prev.postal_code,
+              country: v.country || "Romania",
+              tax_id: v.vatNumber || prev.tax_id,
+            }));
+            alert("Company data loaded from VIES (ANAF fallback).\n\nStatus: Valid & Active");
+          } else {
+            alert(
+              result.error
+                ? `ANAF: ${result.error}\n\nVIES fallback also failed. Please enter details manually.`
+                : "ANAF unavailable and VIES fallback also failed. Please enter details manually."
+            );
+          }
           return;
         }
 

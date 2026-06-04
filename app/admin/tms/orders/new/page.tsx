@@ -442,10 +442,40 @@ function QuickCreatePartnerDialog({
           body: JSON.stringify({ cui: vatNumber }),
         });
 
-        const result = await response.json();
+        const result = await response.json().catch(() => ({ success: false }));
 
         if (!response.ok || !result.success) {
-          toast({ title: "ANAF Error", description: result.error || "Failed to lookup company", variant: "destructive" });
+          // ANAF is down or returned nothing — fall back to VIES so the user
+          // can still validate and auto-fill an RO company (less detail, but
+          // better than failing). allowRomania bypasses VIES's "use ANAF" hint.
+          const roVat = /^RO/i.test(vatNumber) ? vatNumber : `RO${vatNumber.replace(/^RO/i, "")}`;
+          const viesResponse = await fetch("/api/vies", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ vatNumber: roVat, allowRomania: true }),
+          });
+          const viesResult = await viesResponse.json().catch(() => ({ success: false }));
+
+          if (viesResponse.ok && viesResult.success) {
+            const v = viesResult.data;
+            setName(v.name || name);
+            setAddress(v.street || address);
+            setCity(v.city || city);
+            setCountry(v.country || "Romania");
+            setTaxId(v.vatNumber || taxId);
+            toast({
+              title: "Company data loaded from VIES (ANAF fallback)",
+              description: `VAT: ${v.vatNumber} | Status: Valid & Active`,
+            });
+          } else {
+            toast({
+              title: "Lookup failed",
+              description: result.error
+                ? `ANAF: ${result.error}. VIES fallback also failed.`
+                : "ANAF unavailable and VIES fallback also failed. Enter details manually.",
+              variant: "destructive",
+            });
+          }
           return;
         }
 
