@@ -24,7 +24,7 @@
  */
 
 import { Fragment, useState } from "react";
-import { Info } from "lucide-react";
+import { Info, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -47,6 +47,13 @@ const LANG_LABELS: Record<Lang, string> = {
   ro: "RO",
   de: "DE",
   hu: "HU",
+};
+
+const EXPORT_LABELS: Record<Lang, string> = {
+  en: "Export PDF",
+  ro: "Exportă PDF",
+  de: "PDF exportieren",
+  hu: "PDF exportálás",
 };
 
 const HEADER_I18N: Record<Lang, { title: string; intro: string; legend: string; cols: { hash: string; parent: string; internal: string; forwarder: string; explain: string }; roles: { parent: string; internal: string; forwarder: string } }> = {
@@ -324,6 +331,104 @@ const BAND_CLASSES: Record<Row["band"], string> = {
   hold: "bg-orange-500/20 dark:bg-orange-400/[0.20]",
 };
 
+// PDF row-band fill colors — light tints that mirror the on-screen
+// BAND_CLASSES so the exported document is recognizable at a glance.
+const BAND_RGB: Record<Row["band"], [number, number, number] | null> = {
+  header: null,
+  draft: [241, 245, 249],
+  confirmed: [241, 245, 249],
+  execution: [219, 234, 254],
+  documents: [209, 250, 229],
+  invoicing: [254, 243, 199],
+  completed: [220, 252, 231],
+  cancelled: [254, 226, 226],
+  hold: [255, 237, 213],
+};
+
+// Compose the localized explanation for the PDF's "What it means" column.
+// When a row has per-column copy we prefix each fragment with its (also
+// localized) role label so the single PDF column stays readable.
+function composeExplainForPdf(r: Row, lang: Lang): string {
+  const base = r.explain[lang];
+  if (!r.explainCols) return base;
+  const cols = r.explainCols[lang];
+  const roles = HEADER_I18N[lang].roles;
+  const parts: string[] = [];
+  if (base) parts.push(base);
+  if (cols.internal) parts.push(`${roles.internal}: ${cols.internal}`);
+  if (cols.forwarder) parts.push(`${roles.forwarder}: ${cols.forwarder}`);
+  return parts.join("\n");
+}
+
+// Builds and downloads the status guide as a landscape A4 PDF in the
+// chosen language. jsPDF + jspdf-autotable are already project deps; we
+// import them lazily so they only load when the user actually exports.
+async function exportStatusGuidePdf(lang: Lang) {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+
+  const t = HEADER_I18N[lang];
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 32;
+
+  // Title
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.setTextColor(15, 23, 42);
+  doc.text(t.title, margin, 40);
+
+  // Generated-at + language line
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${pad(now.getDate())}.${pad(now.getMonth() + 1)}.${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(120, 120, 120);
+  doc.text(`${LANG_LABELS[lang]} · ${stamp}`, pageWidth - margin, 40, { align: "right" });
+
+  // Intro paragraph (wrapped)
+  const introLines = doc.splitTextToSize(t.intro, pageWidth - margin * 2) as string[];
+  doc.setFontSize(8.5);
+  doc.setTextColor(90, 90, 90);
+  doc.text(introLines, margin, 58);
+
+  const startY = 58 + introLines.length * 11 + 10;
+
+  autoTable(doc, {
+    head: [[t.cols.hash, t.cols.parent, t.cols.internal, t.cols.forwarder, t.cols.explain]],
+    body: ROWS.map((r) => [
+      String(r.n),
+      r.parent,
+      r.internal,
+      r.fwd,
+      composeExplainForPdf(r, lang),
+    ]),
+    startY,
+    margin: { left: margin, right: margin, bottom: 32 },
+    styles: { font: "helvetica", fontSize: 8, cellPadding: 4, valign: "top", lineColor: [226, 232, 240], lineWidth: 0.5 },
+    headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.5 },
+    columnStyles: {
+      0: { halign: "center", cellWidth: 26, textColor: [120, 120, 120] },
+      1: { cellWidth: 150, fontStyle: "bold", textColor: [15, 23, 42] },
+      2: { cellWidth: 110 },
+      3: { cellWidth: 110 },
+      4: { cellWidth: "auto", textColor: [90, 90, 90] },
+    },
+    // Tint each row by its lifecycle band, matching the on-screen colors.
+    didParseCell: (data) => {
+      if (data.section !== "body") return;
+      const band = ROWS[data.row.index]?.band;
+      const rgb = band ? BAND_RGB[band] : null;
+      if (rgb) data.cell.styles.fillColor = rgb;
+    },
+  });
+
+  doc.save(`status-reference-guide-${lang}.pdf`);
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────
@@ -336,7 +441,19 @@ export interface StatusGuideProps {
 
 export function StatusGuide({ className }: StatusGuideProps) {
   const [lang, setLang] = useState<Lang>("en");
+  const [exporting, setExporting] = useState(false);
   const t = HEADER_I18N[lang];
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await exportStatusGuidePdf(lang);
+    } catch (err) {
+      console.error("[v0] status guide PDF export failed:", err);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <Dialog>
@@ -366,15 +483,32 @@ export function StatusGuide({ className }: StatusGuideProps) {
                 {t.intro}
               </p>
             </div>
-            <Tabs value={lang} onValueChange={v => setLang(v as Lang)}>
-              <TabsList className="h-8">
-                {(Object.keys(LANG_LABELS) as Lang[]).map(l => (
-                  <TabsTrigger key={l} value={l} className="text-xs h-6 px-2.5">
-                    {LANG_LABELS[l]}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
+            <div className="flex items-center gap-2">
+              <Tabs value={lang} onValueChange={v => setLang(v as Lang)}>
+                <TabsList className="h-8">
+                  {(Object.keys(LANG_LABELS) as Lang[]).map(l => (
+                    <TabsTrigger key={l} value={l} className="text-xs h-6 px-2.5">
+                      {LANG_LABELS[l]}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleExport}
+                disabled={exporting}
+                className="h-8 gap-1.5 text-xs"
+              >
+                {exporting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                {EXPORT_LABELS[lang]}
+              </Button>
+            </div>
           </div>
         </DialogHeader>
 
