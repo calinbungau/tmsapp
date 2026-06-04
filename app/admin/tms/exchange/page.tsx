@@ -110,9 +110,15 @@ interface FreightOffer {
   currency: string;
   visibility: string;
   created_at: string;
+  admin_last_seen_at?: string | null;
   recipients_count?: number;
   responses_count?: number;
   awarded_carrier?: string | null;
+  // Event tracking
+  last_event_type?: "quote" | "response" | "view" | "message" | null;
+  last_event_label?: string | null;
+  last_event_at?: string | null;
+  has_unseen_event?: boolean;
 }
 
 interface Stats {
@@ -144,6 +150,19 @@ function fmtDateRange(from: string | null | undefined, to: string | null | undef
   return `${fmtDate(from)} – ${fmtDate(to)}`;
 }
 
+function fmtRelative(d: string | null | undefined) {
+  if (!d) return "";
+  const diff = Date.now() - new Date(d).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return fmtDate(d);
+}
+
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
   published: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
@@ -163,6 +182,41 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelled",
   expired: "Expired",
 };
+
+// ─── Event line ────────────────────────────────────────────
+const EVENT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  quote: DollarSign,
+  response: MessageSquare,
+  view: Eye,
+  message: MessageSquare,
+};
+
+function EventLine({ offer }: { offer: FreightOffer }) {
+  if (!offer.last_event_label) return null;
+  const Icon = EVENT_ICONS[offer.last_event_type || "view"] || Eye;
+  const unseen = offer.has_unseen_event;
+  return (
+    <div
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs max-w-full ${
+        unseen
+          ? "border-destructive/40 bg-destructive/10 text-destructive"
+          : "border-border/60 bg-muted/30 text-muted-foreground"
+      }`}
+    >
+      {unseen && (
+        <span className="relative flex h-2 w-2 shrink-0">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive" />
+        </span>
+      )}
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+      <span className="truncate font-medium">{offer.last_event_label}</span>
+      <span className={`shrink-0 ${unseen ? "text-destructive/70" : "text-muted-foreground/70"}`}>
+        · {fmtRelative(offer.last_event_at)}
+      </span>
+    </div>
+  );
+}
 
 // ─── Page ──────────────────────────────────────────────────
 export default function FreightExchangePage() {
@@ -255,29 +309,109 @@ export default function FreightExchangePage() {
       const { data, count, error } = await query;
       if (error) throw error;
 
-      // Fetch recipient counts for each offer
+      // Fetch recipient counts + activity for each offer
       const offerIds = (data || []).map((o: FreightOffer) => o.id);
       if (offerIds.length > 0) {
         const { data: recipientData } = await supabase
           .from("freight_offer_recipients")
-          .select("offer_id, response, dispatcher_decision, carrier_name")
+          .select(
+            "id, offer_id, response, dispatcher_decision, carrier_name, email, responded_at, last_viewed_at, quote_amount, quote_currency"
+          )
           .in("offer_id", offerIds);
 
-        const recipientMap = new Map<string, { count: number; responses: number; awarded?: string }>();
-        (recipientData || []).forEach((r: { offer_id: string; response: string | null; dispatcher_decision: string | null; carrier_name: string | null }) => {
+        // Map recipient.id -> offer.id (chat conversations are keyed by recipient id)
+        const recipientToOffer = new Map<string, string>();
+        (recipientData || []).forEach((r: any) => recipientToOffer.set(r.id, r.offer_id));
+        const recipientIds = (recipientData || []).map((r: any) => r.id);
+
+        // Fetch latest chat activity per recipient conversation
+        let convData: any[] = [];
+        if (recipientIds.length > 0) {
+          const { data: convs } = await supabase
+            .from("conversations")
+            .select("context_id, last_message_at, last_message_preview, last_message_sender_name")
+            .eq("context_type", "freight_offer_recipient")
+            .in("context_id", recipientIds);
+          convData = convs || [];
+        }
+
+        // Aggregate per offer
+        type Agg = {
+          count: number;
+          responses: number;
+          awarded?: string;
+          eventType?: "quote" | "response" | "view" | "message";
+          eventLabel?: string;
+          eventAt?: string;
+        };
+        const recipientMap = new Map<string, Agg>();
+        const consider = (offerId: string, at: string | null | undefined, type: Agg["eventType"], label: string) => {
+          if (!at) return;
+          const curr = recipientMap.get(offerId) || { count: 0, responses: 0 };
+          if (!curr.eventAt || new Date(at).getTime() > new Date(curr.eventAt).getTime()) {
+            curr.eventAt = at;
+            curr.eventType = type;
+            curr.eventLabel = label;
+          }
+          recipientMap.set(offerId, curr);
+        };
+
+        (recipientData || []).forEach((r: any) => {
           const curr = recipientMap.get(r.offer_id) || { count: 0, responses: 0 };
           curr.count++;
           if (r.response) curr.responses++;
           if (r.dispatcher_decision === "accepted") curr.awarded = r.carrier_name || undefined;
           recipientMap.set(r.offer_id, curr);
+
+          const who = r.carrier_name || r.email || "A carrier";
+          if (r.response === "quoted" && r.responded_at) {
+            const amount = r.quote_amount != null ? ` · ${fmtCurrency(r.quote_amount, r.quote_currency || "EUR")}` : "";
+            consider(r.offer_id, r.responded_at, "quote", `New quote from ${who}${amount}`);
+          } else if (r.response && r.responded_at) {
+            const verb = r.response === "interested" ? "is interested" : r.response === "declined" ? "declined" : "responded";
+            consider(r.offer_id, r.responded_at, "response", `${who} ${verb}`);
+          } else if (r.last_viewed_at) {
+            consider(r.offer_id, r.last_viewed_at, "view", `${who} viewed the offer`);
+          }
         });
 
-        const enriched = (data || []).map((o: FreightOffer) => ({
-          ...o,
-          recipients_count: recipientMap.get(o.id)?.count || 0,
-          responses_count: recipientMap.get(o.id)?.responses || 0,
-          awarded_carrier: recipientMap.get(o.id)?.awarded || null,
-        }));
+        convData.forEach((c: any) => {
+          const offerId = recipientToOffer.get(c.context_id);
+          if (!offerId || !c.last_message_at) return;
+          const who = c.last_message_sender_name || "A carrier";
+          consider(offerId, c.last_message_at, "message", `New message from ${who}`);
+        });
+
+        const enriched: FreightOffer[] = (data || []).map((o: FreightOffer) => {
+          const agg = recipientMap.get(o.id);
+          const eventAt = agg?.eventAt || null;
+          const hasUnseen =
+            !!eventAt && (!o.admin_last_seen_at || new Date(eventAt).getTime() > new Date(o.admin_last_seen_at).getTime());
+          return {
+            ...o,
+            recipients_count: agg?.count || 0,
+            responses_count: agg?.responses || 0,
+            awarded_carrier: agg?.awarded || null,
+            last_event_type: agg?.eventType || null,
+            last_event_label: agg?.eventLabel || null,
+            last_event_at: eventAt,
+            has_unseen_event: hasUnseen,
+          };
+        });
+
+        // Sort: unseen events first (newest), then active (published/bidding), then newest
+        const activeStatuses = new Set(["published", "bidding"]);
+        enriched.sort((a, b) => {
+          if (a.has_unseen_event !== b.has_unseen_event) return a.has_unseen_event ? -1 : 1;
+          if (a.has_unseen_event && b.has_unseen_event) {
+            return new Date(b.last_event_at!).getTime() - new Date(a.last_event_at!).getTime();
+          }
+          const aActive = activeStatuses.has(a.status);
+          const bActive = activeStatuses.has(b.status);
+          if (aActive !== bActive) return aActive ? -1 : 1;
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+
         setOffers(enriched);
       } else {
         setOffers(data || []);
@@ -327,12 +461,22 @@ export default function FreightExchangePage() {
     if (id) setSelectedOfferId(id);
   }, [offers, selectedOfferId]);
 
-  // ─── Select offer (update URL) ───────────────────────────
+  // ─── Select offer (update URL + mark seen) ───────────────
   const selectOffer = (id: string | null) => {
     setSelectedOfferId(id);
     const url = new URL(window.location.href);
     if (id) {
       url.searchParams.set("offer", id);
+      // Clear the blink immediately, then persist the "seen" timestamp
+      const now = new Date().toISOString();
+      setOffers((prev) =>
+        prev.map((o) => (o.id === id ? { ...o, has_unseen_event: false, admin_last_seen_at: now } : o))
+      );
+      supabase
+        .from("freight_offers")
+        .update({ admin_last_seen_at: now })
+        .eq("id", id)
+        .then(() => {});
     } else {
       url.searchParams.delete("offer");
     }
@@ -507,13 +651,17 @@ export default function FreightExchangePage() {
                 <div
                   key={offer.id}
                   onClick={() => selectOffer(offer.id)}
-                  className={`px-4 md:px-6 py-3 cursor-pointer hover:bg-muted/30 transition-colors ${
-                    selectedOfferId === offer.id ? "bg-primary/5 border-l-2 border-l-primary" : ""
+                  className={`px-4 md:px-6 py-3 cursor-pointer transition-colors ${
+                    selectedOfferId === offer.id
+                      ? "bg-primary/5 border-l-2 border-l-primary"
+                      : offer.has_unseen_event
+                      ? "event-blink hover:bg-destructive/10"
+                      : "hover:bg-muted/30"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     {/* Left: Route & Info */}
-                    <div className="flex-1 min-w-0">
+                    <div className="min-w-0 lg:shrink-0">
                       <div className="flex items-center gap-2 mb-1.5">
                         <span className="font-mono text-sm font-medium text-foreground">
                           {offer.reference}
@@ -568,11 +716,22 @@ export default function FreightExchangePage() {
                           </span>
                         )}
                       </div>
+                      {/* Event line — small screens */}
+                      {offer.last_event_label && (
+                        <div className="lg:hidden mt-1.5">
+                          <EventLine offer={offer} />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Middle: Event line — large screens */}
+                    <div className="hidden lg:flex flex-1 items-center justify-center px-4 min-w-0">
+                      {offer.last_event_label && <EventLine offer={offer} />}
                     </div>
 
                     {/* Right: Price & Actions */}
                     <div className="flex items-center gap-2 shrink-0">
-                      <div className="text-right">
+                      <div className="text-right mr-1">
                         {offer.pricing_mode === "open" ? (
                           <span className="text-xs text-muted-foreground">Open</span>
                         ) : (
@@ -581,6 +740,33 @@ export default function FreightExchangePage() {
                           </p>
                         )}
                       </div>
+                      {/* Visible quick actions */}
+                      {(offer.status === "draft" || offer.status === "published" || offer.status === "bidding") && (
+                        <Button
+                          variant={offer.status === "draft" ? "default" : "outline"}
+                          size="sm"
+                          className="h-8 gap-1.5"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPublishOffer(offer);
+                          }}
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">{offer.status === "draft" ? "Publish" : "Manage"}</span>
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 gap-1.5"
+                        asChild
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Link href={`/admin/tms/exchange/${offer.id}/edit`}>
+                          <Edit className="h-3.5 w-3.5" />
+                          <span className="hidden md:inline">Edit</span>
+                        </Link>
+                      </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
