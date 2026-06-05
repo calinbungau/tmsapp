@@ -40,6 +40,8 @@ import {
   Users,
   Clock,
   Banknote,
+  ClipboardList,
+  ExternalLink,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { PublishToExchangeDialog } from "@/components/tms/publish-to-exchange-dialog";
@@ -125,9 +127,25 @@ interface FreightOffer {
 interface LinkedOrder {
   id: string;
   reference_number: string | null;
+  customer_reference: string | null;
+  customer_name: string | null;
   customer_price: number | null;
   customer_currency: string | null;
+  carrier_cost: number | null;
+  carrier_currency: string | null;
+  margin: number | null;
+  estimated_distance_km: number | null;
   status: string | null;
+}
+
+interface LinkedLeg {
+  id: string;
+  leg_number: number | null;
+  from_stop_index: number | null;
+  to_stop_index: number | null;
+  status: string | null;
+  from_label: string | null;
+  to_label: string | null;
 }
 
 interface Distribution {
@@ -212,6 +230,7 @@ export default function OfferDetailPage() {
 
   const [offer, setOffer] = useState<FreightOffer | null>(null);
   const [linkedOrder, setLinkedOrder] = useState<LinkedOrder | null>(null);
+  const [linkedLeg, setLinkedLeg] = useState<LinkedLeg | null>(null);
   const [distributions, setDistributions] = useState<Distribution[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPublish, setShowPublish] = useState(false);
@@ -232,16 +251,54 @@ export default function OfferDetailPage() {
       if (error) throw error;
       setOffer(data);
 
-      // Fetch linked order if present
+      // Fetch linked order (and trip leg) if present
       if (data.order_id) {
         const { data: orderData } = await supabase
           .from("orders")
-          .select("id, reference_number, customer_price, customer_currency, status")
+          .select(
+            "id, reference_number, customer_reference, customer_name, customer_price, customer_currency, carrier_cost, carrier_currency, margin, estimated_distance_km, status"
+          )
           .eq("id", data.order_id)
           .single();
-        setLinkedOrder(orderData || null);
+        setLinkedOrder((orderData as LinkedOrder) || null);
+
+        // When the offer is scoped to a specific leg, resolve its label
+        // from the order's stops so we can show "Leg 2 · City A → City B".
+        if (data.trip_leg_id) {
+          const { data: legData } = await supabase
+            .from("trip_legs")
+            .select("id, leg_number, from_stop_index, to_stop_index, status")
+            .eq("id", data.trip_leg_id)
+            .maybeSingle();
+          if (legData) {
+            const { data: legStops } = await supabase
+              .from("order_stops")
+              .select("sequence_order, city, country")
+              .eq("order_id", data.order_id)
+              .order("sequence_order", { ascending: true });
+            const findLabel = (idx: number | null) => {
+              if (idx == null || !legStops) return null;
+              const s = legStops.find((x: any) => x.sequence_order === idx);
+              return s ? s.city || s.country || null : null;
+            };
+            setLinkedLeg({
+              id: legData.id,
+              leg_number: legData.leg_number ?? null,
+              from_stop_index: legData.from_stop_index ?? null,
+              to_stop_index: legData.to_stop_index ?? null,
+              status: legData.status ?? null,
+              from_label: findLabel(legData.from_stop_index ?? null),
+              to_label: findLabel(legData.to_stop_index ?? null),
+            });
+          } else {
+            setLinkedLeg(null);
+          }
+        } else {
+          setLinkedLeg(null);
+        }
       } else {
         setLinkedOrder(null);
+        setLinkedLeg(null);
       }
 
       // distributions + group info
@@ -387,10 +444,8 @@ export default function OfferDetailPage() {
                     >
                       <Folder className="h-3 w-3" />
                       {linkedOrder.reference_number || "Order"}
-                      {linkedOrder.customer_price != null && offer.price_amount != null && (
-                        <span className="ml-1 text-[10px] opacity-80">
-                          ({((linkedOrder.customer_price - offer.price_amount) / linkedOrder.customer_price * 100).toFixed(0)}% margin)
-                        </span>
+                      {linkedLeg && (
+                        <span className="ml-1 text-[10px] opacity-80">· Leg {linkedLeg.leg_number ?? "?"}</span>
                       )}
                     </Badge>
                   </Link>
@@ -510,6 +565,100 @@ export default function OfferDetailPage() {
                 }
               }}
             />
+          )}
+
+          {/* Linked Transport Order */}
+          {linkedOrder && (
+            <div className="rounded-lg border border-orange-500/30 bg-orange-500/5 p-4">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4 text-orange-400" />
+                  <h2 className="text-sm font-semibold text-foreground">Linked Transport Order</h2>
+                </div>
+                <Link href={`/admin/tms/orders/${linkedOrder.id}`}>
+                  <Button variant="outline" size="sm" className="h-7 gap-1 text-xs">
+                    <ExternalLink className="h-3 w-3" />
+                    Open Order
+                  </Button>
+                </Link>
+              </div>
+
+              {/* Order reference + customer + leg scope */}
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="font-mono text-sm font-medium text-foreground">
+                  {linkedOrder.reference_number || "Order"}
+                </span>
+                {linkedOrder.customer_name && (
+                  <span className="text-xs text-muted-foreground">· {linkedOrder.customer_name}</span>
+                )}
+                {linkedOrder.status && (
+                  <Badge variant="outline" className="text-[10px] capitalize">
+                    {linkedOrder.status.replace(/_/g, " ")}
+                  </Badge>
+                )}
+                {linkedLeg ? (
+                  <Badge variant="outline" className="text-[10px] text-blue-400 border-blue-500/30 bg-blue-500/10">
+                    Leg {linkedLeg.leg_number ?? "?"}
+                    {linkedLeg.from_label && linkedLeg.to_label
+                      ? ` · ${linkedLeg.from_label} → ${linkedLeg.to_label}`
+                      : ""}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                    Whole order
+                  </Badge>
+                )}
+              </div>
+
+              {/* Commercial snapshot */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-md bg-background border border-border/40 p-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Customer Price</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {fmtCurrency(linkedOrder.customer_price, linkedOrder.customer_currency || "EUR")}
+                  </p>
+                </div>
+                <div className="rounded-md bg-background border border-border/40 p-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Offer Price</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {fmtCurrency(offer.price_amount, offer.currency || "EUR")}
+                  </p>
+                </div>
+                {(() => {
+                  // Prefer the order's stored margin; otherwise derive it from
+                  // the customer price and the price we're posting on exchange.
+                  const derived =
+                    linkedOrder.customer_price != null && offer.price_amount != null && linkedOrder.customer_price > 0
+                      ? ((linkedOrder.customer_price - offer.price_amount) / linkedOrder.customer_price) * 100
+                      : null;
+                  const marginPct = linkedOrder.margin != null ? linkedOrder.margin : derived;
+                  return (
+                    <div className="rounded-md bg-background border border-border/40 p-2.5">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Margin</p>
+                      <p
+                        className={`text-sm font-semibold ${
+                          marginPct == null
+                            ? "text-foreground"
+                            : marginPct >= 0
+                            ? "text-emerald-400"
+                            : "text-red-400"
+                        }`}
+                      >
+                        {marginPct == null ? "—" : `${Math.round(marginPct)}%`}
+                      </p>
+                    </div>
+                  );
+                })()}
+                <div className="rounded-md bg-background border border-border/40 p-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Distance</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {linkedOrder.estimated_distance_km != null && linkedOrder.estimated_distance_km > 0
+                      ? `${Math.round(linkedOrder.estimated_distance_km).toLocaleString()} km`
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Route */}
