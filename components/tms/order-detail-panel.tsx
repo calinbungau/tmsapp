@@ -4078,7 +4078,7 @@ const handleSaveInvoice = async (formData: {
               from the parent). Also hide while editing.
               • No offer yet → "Publish on Exchange" opens the full New
                 Freight Exchange page, prefilled from this order.
-              • Offer exists → "Posted on Exchange" jumps to the offer to
+              • Offer exists → "On Exchange" jumps to the offer to
                 manage distribution. */}
           {!editing && !order.parent_order_id && (
             linkedOffer ? (
@@ -4090,7 +4090,7 @@ const handleSaveInvoice = async (formData: {
                 title="View and manage the freight offer linked to this order"
               >
                 <CheckCircle2 className="h-4 w-4 md:h-3 md:w-3" />
-                <span className="hidden sm:inline">Posted on Exchange</span>
+                <span className="hidden sm:inline">On Exchange</span>
               </Button>
             ) : (
               <Button
@@ -4175,7 +4175,7 @@ const handleSaveInvoice = async (formData: {
               })}
             </DropdownMenuContent>
           </DropdownMenu>
-          {/* Status reference guide — opens a localized popover (EN/RO/DE/HU)
+          {/* Status reference guide �� opens a localized popover (EN/RO/DE/HU)
               explaining how parent / internal / forwarder statuses map to
               each other. Lives right next to the Change Status trigger so
               users who aren't sure which status to pick can self-serve. */}
