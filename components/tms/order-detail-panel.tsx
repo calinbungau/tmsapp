@@ -4078,20 +4078,35 @@ const handleSaveInvoice = async (formData: {
               from the parent). Also hide while editing.
               • No offer yet → "Publish on Exchange" opens the full New
                 Freight Exchange page, prefilled from this order.
-              • Offer exists → "On Exchange" jumps to the offer to
-                manage distribution. */}
+              • Draft offer exists → "Exchange Draft" (orange) since it is
+                not yet live to carriers.
+              • Published/bidding/awarded offer → "On Exchange" (green) jumps
+                to the offer to manage distribution. */}
           {!editing && !order.parent_order_id && (
             linkedOffer ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-9 md:h-7 text-xs gap-1 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 px-2 md:px-3"
-                onClick={() => router.push(`/admin/tms/exchange/${linkedOffer.id}`)}
-                title="View and manage the freight offer linked to this order"
-              >
-                <CheckCircle2 className="h-4 w-4 md:h-3 md:w-3" />
-                <span className="hidden sm:inline">On Exchange</span>
-              </Button>
+              (() => {
+                const isDraft = (linkedOffer.status ?? "").toLowerCase() === "draft";
+                return (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-9 md:h-7 text-xs gap-1 px-2 md:px-3 ${
+                      isDraft
+                        ? "text-orange-400 hover:text-orange-300 hover:bg-orange-500/10"
+                        : "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+                    }`}
+                    onClick={() => router.push(`/admin/tms/exchange/${linkedOffer.id}`)}
+                    title={
+                      isDraft
+                        ? "A freight offer draft is linked to this order but is not yet published to carriers"
+                        : "View and manage the freight offer linked to this order"
+                    }
+                  >
+                    <CheckCircle2 className="h-4 w-4 md:h-3 md:w-3" />
+                    <span className="hidden sm:inline">{isDraft ? "Exchange Draft" : "On Exchange"}</span>
+                  </Button>
+                );
+              })()
             ) : (
               <Button
                 variant="ghost"
