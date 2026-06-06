@@ -1685,6 +1685,10 @@ export default function OrderDetailPanel({ orderId, editTripId, onClose, onStatu
   // the dialog. Refreshed from /api/orders/[id]/tracking-shares.
   const [showShareTrackingDialog, setShowShareTrackingDialog] = useState(false);
   const [activeTrackingShares, setActiveTrackingShares] = useState<number>(0);
+  // Existing freight-exchange offer linked to this order (if any). When
+  // present, the header shows "Posted on Exchange" instead of the publish
+  // action so operators jump straight to managing the offer.
+  const [linkedOffer, setLinkedOffer] = useState<{ id: string; status: string | null } | null>(null);
   // Timestamp of the most recent "Send Doc to Customer" email,
   // pulled from order_activity_log. Drives the small caption under
   // the header button so operators can see at a glance whether docs
@@ -2124,6 +2128,22 @@ setEditData({
     setActiveTrackingShares(count || 0);
   }, [orderId, supabase]);
   useEffect(() => { refreshTrackingShares(); }, [refreshTrackingShares]);
+
+  // Look up whether this order has already been posted on the freight
+  // exchange. If so the header swaps the "Publish on Exchange" action for
+  // a "Posted on Exchange" chip that opens the existing offer.
+  const refreshLinkedOffer = useCallback(async () => {
+    if (!orderId) return;
+    const { data } = await supabase
+      .from("freight_offers")
+      .select("id, status")
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setLinkedOffer(data ? { id: data.id, status: data.status ?? null } : null);
+  }, [orderId, supabase]);
+  useEffect(() => { refreshLinkedOffer(); }, [refreshLinkedOffer]);
 
   // Realtime: auto-refresh when order or its stops change
   useEffect(() => {
@@ -4053,6 +4073,53 @@ const handleSaveInvoice = async (formData: {
               />
             </>
           )}
+          {/* Freight Exchange — available on orders that are not
+              subcontracted children (those already have a carrier assignment
+              from the parent). Also hide while editing.
+              • No offer yet → "Publish on Exchange" opens the full New
+                Freight Exchange page, prefilled from this order.
+              • Draft offer exists → "Exchange Draft" (orange) since it is
+                not yet live to carriers.
+              • Published/bidding/awarded offer → "On Exchange" (green) jumps
+                to the offer to manage distribution. */}
+          {!editing && !order.parent_order_id && (
+            linkedOffer ? (
+              (() => {
+                const isDraft = (linkedOffer.status ?? "").toLowerCase() === "draft";
+                return (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-9 md:h-7 text-xs gap-1 px-2 md:px-3 ${
+                      isDraft
+                        ? "text-orange-400 hover:text-orange-300 hover:bg-orange-500/10"
+                        : "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+                    }`}
+                    onClick={() => router.push(`/admin/tms/exchange/${linkedOffer.id}`)}
+                    title={
+                      isDraft
+                        ? "A freight offer draft is linked to this order but is not yet published to carriers"
+                        : "View and manage the freight offer linked to this order"
+                    }
+                  >
+                    <CheckCircle2 className="h-4 w-4 md:h-3 md:w-3" />
+                    <span className="hidden sm:inline">{isDraft ? "Exchange Draft" : "On Exchange"}</span>
+                  </Button>
+                );
+              })()
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 md:h-7 text-xs gap-1 text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 px-2 md:px-3"
+                onClick={() => router.push(`/admin/tms/exchange/new?orderId=${order.id}`)}
+                title="Create a freight offer on the exchange linked to this order"
+              >
+                <Send className="h-4 w-4 md:h-3 md:w-3" />
+                <span className="hidden sm:inline">Publish on Exchange</span>
+              </Button>
+            )
+          )}
           {!editing ? (
             <Button variant="ghost" size="sm" className="h-9 md:h-7 text-xs gap-1 px-2 md:px-3" onClick={() => setEditing(true)}>
               <Edit2 className="h-4 w-4 md:h-3 md:w-3" />
@@ -4123,7 +4190,7 @@ const handleSaveInvoice = async (formData: {
               })}
             </DropdownMenuContent>
           </DropdownMenu>
-          {/* Status reference guide — opens a localized popover (EN/RO/DE/HU)
+          {/* Status reference guide �� opens a localized popover (EN/RO/DE/HU)
               explaining how parent / internal / forwarder statuses map to
               each other. Lives right next to the Change Status trigger so
               users who aren't sure which status to pick can self-serve. */}

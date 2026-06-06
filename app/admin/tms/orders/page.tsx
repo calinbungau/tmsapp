@@ -159,6 +159,9 @@ interface Order {
   executionInternal?: { status: string } | null;
   executionForwarder?: { status: string } | null;
   isMixedExecution?: boolean;
+  // Linked freight-exchange offer state. Drives the status-column chip:
+  // "live" → green "On Exchange", "draft" → orange "Exchange Draft".
+  exchangeState?: "live" | "draft" | null;
 }
 
 const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
@@ -330,6 +333,28 @@ export default function TMSOrdersPage() {
     if (!error && data) {
       // Fetch trips for each order
       const orderIds = data.map((o: any) => o.id);
+
+      // Which of these orders have a freight offer, and is it actually live
+      // on the exchange (published/bidding/awarded) or just a draft? This
+      // powers the status-column chip: "On Exchange" vs "Exchange Draft".
+      const exchangeStatusByOrder = new Map<string, "live" | "draft">();
+      if (orderIds.length > 0) {
+        const { data: exchangeRows } = await supabase
+          .from("freight_offers")
+          .select("order_id, status")
+          .in("order_id", orderIds);
+        (exchangeRows || []).forEach((r: any) => {
+          if (!r.order_id) return;
+          const isLive = (r.status ?? "").toLowerCase() !== "draft";
+          // A live offer always wins over a draft for the same order.
+          if (isLive) {
+            exchangeStatusByOrder.set(r.order_id, "live");
+          } else if (!exchangeStatusByOrder.has(r.order_id)) {
+            exchangeStatusByOrder.set(r.order_id, "draft");
+          }
+        });
+      }
+
       const { data: tripOrdersData } = await supabase
         .from("trip_orders")
         .select(`
@@ -480,7 +505,7 @@ export default function TMSOrdersPage() {
       const sortedWithExec: Order[] = sorted.map((o: any) => {
         // Skip parents that aren't actually in the execution band.
         const showExec = o.status === "in_execution" || o.status === "documents_received";
-        if (!showExec) return { ...o, executionStatus: null, executionInternal: null, executionForwarder: null, isMixedExecution: false };
+        if (!showExec) return { ...o, executionStatus: null, executionInternal: null, executionForwarder: null, isMixedExecution: false, exchangeState: exchangeStatusByOrder.get(o.id) ?? null };
 
         // Lowest internal leg status across all this parent's trips.
         // We deliberately EXCLUDE subcontract legs here — they are
@@ -537,6 +562,7 @@ export default function TMSOrdersPage() {
           executionInternal: bestInternal ? { status: bestInternal.status } : null,
           executionForwarder: bestFwd ? { status: bestFwd.status } : null,
           isMixedExecution: isMixed,
+          exchangeState: exchangeStatusByOrder.get(o.id) ?? null,
         };
       });
 
@@ -815,7 +841,19 @@ export default function TMSOrdersPage() {
   </span>
   )}
   </div>
-  <OrderStatusBadge status={order.status} scope="parent" size="sm" />
+  <div className="flex flex-col items-end gap-1 shrink-0">
+                <OrderStatusBadge status={order.status} scope="parent" size="sm" />
+                {order.exchangeState === "live" && (
+                  <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-emerald-400 border-emerald-500/30 bg-emerald-500/10">
+                    On Exchange
+                  </Badge>
+                )}
+                {order.exchangeState === "draft" && (
+                  <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-orange-400 border-orange-500/30 bg-orange-500/10">
+                    Exchange Draft
+                  </Badge>
+                )}
+  </div>
   </div>
   
   {route && (
@@ -956,8 +994,18 @@ export default function TMSOrdersPage() {
                       <span className="text-xs text-foreground truncate max-w-[100px] block">{customer?.name || "-"}</span>
                     </td>
                     <td className="px-3 py-3">
-                      <div className="flex flex-col gap-1">
-                        <OrderStatusBadge status={order.status} scope="parent" size="sm" />
+                      <div className="flex flex-col gap-1 items-start">
+                  <OrderStatusBadge status={order.status} scope="parent" size="sm" />
+                  {order.exchangeState === "live" && (
+                    <Badge variant="outline" className="text-[8px] px-1.5 py-0 text-emerald-400 border-emerald-500/30 bg-emerald-500/10">
+                      On Exchange
+                    </Badge>
+                  )}
+                  {order.exchangeState === "draft" && (
+                    <Badge variant="outline" className="text-[8px] px-1.5 py-0 text-orange-400 border-orange-500/30 bg-orange-500/10">
+                      Exchange Draft
+                    </Badge>
+                  )}
                         {/* For Mixed orders show BOTH internal and forwarder
                          * sub-pills with tiny scope tags so operators can
                          * see at a glance which side is blocking. For non-

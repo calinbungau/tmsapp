@@ -97,9 +97,11 @@ const jsonFetcher = (url: string, adminId: string) =>
 export function OfferRecipientsPanel({
   offerId,
   adminId,
+  onAwardLinkedOrder,
 }: {
   offerId: string;
   adminId: string;
+  onAwardLinkedOrder?: (orderId: string, tripLegId?: string) => void;
 }) {
   const { data, isLoading, mutate } = useSWR(
     [`/api/exchange/offers/${offerId}/recipients`, adminId],
@@ -131,21 +133,40 @@ export function OfferRecipientsPanel({
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error || "Failed");
       }
+      const data = await res.json().catch(() => ({}));
       const name = recipient.carrier_name || recipient.email || "Carrier";
-      toast({
-        title:
-          decision === "accept"
-            ? `Offer awarded to ${name}`
-            : decision === "decline"
-              ? `Declined ${name}`
-              : "Offer re-opened",
-        description:
-          decision === "accept"
-            ? "Other carriers were marked as declined and the carrier was notified."
-            : decision === "reopen"
-              ? "You can now make a new decision."
-              : "The carrier has been notified.",
-      });
+
+      // If this was an accept with a linked order, notify the parent and show action
+      if (decision === "accept" && data.linkedOrderInfo?.orderId) {
+        toast({
+          title: `Offer awarded to ${name}`,
+          description: "Carrier and cost written back to the order. Create a forwarding subcontract?",
+          action: onAwardLinkedOrder ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onAwardLinkedOrder(data.linkedOrderInfo.orderId, data.linkedOrderInfo.tripLegId)}
+            >
+              Create FWD Order
+            </Button>
+          ) : undefined,
+        });
+      } else {
+        toast({
+          title:
+            decision === "accept"
+              ? `Offer awarded to ${name}`
+              : decision === "decline"
+                ? `Declined ${name}`
+                : "Offer re-opened",
+          description:
+            decision === "accept"
+              ? "Other carriers were marked as declined and the carrier was notified."
+              : decision === "reopen"
+                ? "You can now make a new decision."
+                : "The carrier has been notified.",
+        });
+      }
       await mutate();
     } catch (e) {
       toast({

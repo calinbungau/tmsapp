@@ -59,12 +59,14 @@ export async function POST(
 
   const { data: offer } = await svc
     .from("freight_offers")
-    .select("id, reference")
+    .select("id, reference, order_id, trip_leg_id, price_amount, currency")
     .eq("id", rec.offer_id)
     .maybeSingle();
   const reference = offer?.reference || "offer";
 
   let systemMessage = "";
+  // Info about linked order for client-side FWD creation
+  let linkedOrderInfo: { orderId: string; tripLegId?: string } | null = null;
 
   if (decision === "accept") {
     // Award the offer to this recipient.
@@ -89,6 +91,73 @@ export async function POST(
       .update({ dispatcher_decision: "declined", decided_at: nowIso })
       .eq("offer_id", rec.offer_id)
       .neq("id", rec.id);
+
+    // ─── Award reflect-back to linked order ───────────────────
+    // If this offer was published from an order, write the awarded carrier
+    // and cost back to the order/leg so the TMS stays in sync.
+    if (offer?.order_id) {
+      const carrierCost = rec.quote_amount ?? offer.price_amount ?? null;
+      const carrierCurrency = rec.quote_currency ?? offer.currency ?? "EUR";
+
+      if (offer.trip_leg_id) {
+        // Update the specific trip leg
+        await svc
+          .from("trip_legs")
+          .update({
+            carrier_id: rec.partner_id,
+            carrier_cost: carrierCost,
+            carrier_currency: carrierCurrency,
+            assignment_type: "subcontract",
+          })
+          .eq("id", offer.trip_leg_id);
+      }
+
+      // Always update the order with carrier info
+      // Fetch current order to compute margin
+      const { data: orderData } = await svc
+        .from("orders")
+        .select("customer_price, customer_currency")
+        .eq("id", offer.order_id)
+        .maybeSingle();
+
+      const customerPrice = orderData?.customer_price ?? 0;
+      const margin = customerPrice > 0 && carrierCost
+        ? ((customerPrice - carrierCost) / customerPrice) * 100
+        : null;
+
+      await svc
+        .from("orders")
+        .update({
+          carrier_id: rec.partner_id,
+          carrier_cost: carrierCost,
+          carrier_currency: carrierCurrency,
+          margin,
+        })
+        .eq("id", offer.order_id);
+
+      // Log to order_activity_log
+      await svc.from("order_activity_log").insert({
+        order_id: offer.order_id,
+        action: "exchange_award",
+        performed_by_type: "admin",
+        performed_by_id: adminId,
+        details: {
+          offer_reference: reference,
+          carrier_name: rec.carrier_name,
+          carrier_id: rec.partner_id,
+          carrier_cost: carrierCost,
+          carrier_currency: carrierCurrency,
+          quote_amount: rec.quote_amount,
+          trip_leg_id: offer.trip_leg_id,
+        },
+      });
+
+      // Set linked order info for client response
+      linkedOrderInfo = {
+        orderId: offer.order_id,
+        tripLegId: offer.trip_leg_id ?? undefined,
+      };
+    }
 
     systemMessage = `You have been awarded offer ${reference}. The dispatcher will follow up with the transport order.`;
   } else if (decision === "decline") {
@@ -154,5 +223,5 @@ export async function POST(
     console.error("[exchange/decision] carrier push failed", e);
   }
 
-  return NextResponse.json({ ok: true, decision });
+  return NextResponse.json({ ok: true, decision, linkedOrderInfo });
 }
