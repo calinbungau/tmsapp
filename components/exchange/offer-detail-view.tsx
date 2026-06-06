@@ -17,6 +17,7 @@ import {
   ThumbsUp,
   Lock,
   Trophy,
+  Handshake,
 } from "lucide-react";
 import { AppPromo } from "@/components/exchange/app-promo";
 import { PortalChat } from "@/components/exchange/portal-chat";
@@ -111,6 +112,11 @@ interface RecipientState {
   quoteMessage: string | null;
   dispatcherDecision: "accepted" | "declined" | null;
   decidedAt: string | null;
+  counterAmount: number | null;
+  counterCurrency: string | null;
+  counterMessage: string | null;
+  counterStatus: "pending" | "accepted" | "declined" | null;
+  counterAt: string | null;
   isAwarded: boolean;
   offerAwarded: boolean;
   hasAccount: boolean;
@@ -504,6 +510,14 @@ export function OfferDetailView({
           decision={recipient.dispatcherDecision}
           isAwarded={recipient.isAwarded}
         />
+      ) : recipient?.counterStatus === "pending" ? (
+        <CounterOfferPanel
+          token={token}
+          pin={pin}
+          carrierAccountId={getStoredCarrierSession()?.id ?? null}
+          recipient={recipient}
+          onUpdated={(r) => setRecipient(r)}
+        />
       ) : (
         <ResponsePanel
           token={token}
@@ -851,6 +865,230 @@ function ResponsePanel({
           >
             {busy === "quoted" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
             Submit quote
+          </button>
+        </div>
+      )}
+
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+    </section>
+  );
+}
+
+// Shown when the dispatcher has sent a counter-offer in response to the
+// carrier's quote. The carrier can accept it (auto-awards at the counter
+// price), decline it, or send a fresh quote back (re-negotiate).
+function CounterOfferPanel({
+  token,
+  pin,
+  carrierAccountId,
+  recipient,
+  onUpdated,
+}: {
+  token: string;
+  pin: string;
+  carrierAccountId: string | null;
+  recipient: RecipientState;
+  onUpdated: (r: RecipientState) => void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showRequote, setShowRequote] = useState(false);
+  const [amount, setAmount] = useState(
+    recipient.counterAmount != null ? String(recipient.counterAmount) : ""
+  );
+  const [currency, setCurrency] = useState(
+    recipient.counterCurrency || recipient.quoteCurrency || "EUR"
+  );
+  const [message, setMessage] = useState("");
+
+  const counterLabel =
+    recipient.counterAmount != null
+      ? `${recipient.counterAmount} ${recipient.counterCurrency || "EUR"}`
+      : "—";
+  const yourQuoteLabel =
+    recipient.quoteAmount != null
+      ? `${recipient.quoteAmount} ${recipient.quoteCurrency || "EUR"}`
+      : null;
+
+  const act = async (action: "accept" | "decline") => {
+    setBusy(action);
+    setError(null);
+    try {
+      const res = await fetch(`/api/exchange/portal/${token}/counter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin, carrierAccountId, action }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError("Could not save your response. Please try again.");
+        setBusy(null);
+        return;
+      }
+      onUpdated({
+        ...recipient,
+        counterStatus: action === "accept" ? "accepted" : "declined",
+        dispatcherDecision: action === "accept" ? "accepted" : recipient.dispatcherDecision,
+        isAwarded: action === "accept" ? true : recipient.isAwarded,
+        // When accepted, the agreed price becomes the carrier's quote of record.
+        quoteAmount: action === "accept" ? recipient.counterAmount : recipient.quoteAmount,
+        quoteCurrency: action === "accept" ? recipient.counterCurrency : recipient.quoteCurrency,
+      });
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const requote = async () => {
+    setBusy("requote");
+    setError(null);
+    try {
+      const res = await fetch(`/api/exchange/portal/${token}/respond`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pin,
+          carrierAccountId,
+          response: "quoted",
+          quoteAmount: amount,
+          currency,
+          message,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(
+          data.error === "invalid_quote"
+            ? "Please enter a valid quote amount."
+            : "Could not save your quote. Please try again."
+        );
+        setBusy(null);
+        return;
+      }
+      onUpdated({
+        ...recipient,
+        response: "quoted",
+        quoteAmount: Number(amount),
+        quoteCurrency: currency,
+        quoteMessage: message,
+        respondedAt: new Date().toISOString(),
+        // Re-quoting supersedes the dispatcher's counter-offer.
+        counterStatus: null,
+        counterAmount: null,
+        counterCurrency: null,
+        counterMessage: null,
+      });
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-5">
+      <div className="flex items-center gap-2">
+        <Handshake className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+        <p className="text-sm font-semibold text-foreground">Counter-offer from dispatcher</p>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1">
+        {yourQuoteLabel && (
+          <div>
+            <p className="text-xs text-muted-foreground">You quoted</p>
+            <p className="text-sm font-medium text-foreground line-through decoration-muted-foreground/50">
+              {yourQuoteLabel}
+            </p>
+          </div>
+        )}
+        <div>
+          <p className="text-xs text-muted-foreground">They propose</p>
+          <p className="text-lg font-bold text-amber-700 dark:text-amber-300">{counterLabel}</p>
+        </div>
+      </div>
+
+      {recipient.counterMessage && (
+        <p className="mt-3 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground">
+          {recipient.counterMessage}
+        </p>
+      )}
+
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <button
+          onClick={() => act("accept")}
+          disabled={!!busy}
+          className="flex items-center justify-center gap-2 rounded-lg bg-green-600 px-3 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {busy === "accept" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+          Accept {counterLabel}
+        </button>
+        <button
+          onClick={() => setShowRequote((v) => !v)}
+          disabled={!!busy}
+          className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors disabled:opacity-50 ${
+            showRequote
+              ? "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300"
+              : "border-blue-500/30 bg-blue-500/5 text-blue-700 hover:bg-blue-500/10 dark:text-blue-300"
+          }`}
+        >
+          <Banknote className="h-4 w-4" />
+          Re-quote
+        </button>
+        <button
+          onClick={() => act("decline")}
+          disabled={!!busy}
+          className="flex items-center justify-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-500/10 disabled:opacity-50 dark:text-red-300"
+        >
+          {busy === "decline" ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+          Decline
+        </button>
+      </div>
+
+      {showRequote && (
+        <div className="mt-4 rounded-lg border border-border bg-background p-4">
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="text-xs font-medium text-muted-foreground">Your new price</label>
+              <input
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
+                placeholder="0.00"
+                className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
+              />
+            </div>
+            <div className="w-24">
+              <label className="text-xs font-medium text-muted-foreground">Currency</label>
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-border bg-card px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
+              >
+                <option value="EUR">EUR</option>
+                <option value="USD">USD</option>
+                <option value="GBP">GBP</option>
+                <option value="RON">RON</option>
+                <option value="PLN">PLN</option>
+              </select>
+            </div>
+          </div>
+          <label className="mt-3 block text-xs font-medium text-muted-foreground">Message (optional)</label>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            rows={2}
+            placeholder="Counter their counter…"
+            className="mt-1 w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
+          />
+          <button
+            onClick={requote}
+            disabled={!!busy || !amount}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {busy === "requote" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+            Send new quote
           </button>
         </div>
       )}

@@ -51,6 +51,19 @@ export async function POST(
   }
 
   const nowIso = new Date().toISOString();
+  // When the carrier submits any fresh response (re-quote / interested / decline)
+  // while a dispatcher counter-offer was pending, that counter is superseded.
+  const clearStaleCounter =
+    recipient.counter_status === "pending"
+      ? {
+          counter_status: null,
+          counter_amount: null,
+          counter_currency: null,
+          counter_message: null,
+          counter_at: null,
+          counter_responded_at: null,
+        }
+      : {};
   const { error: updateErr } = await supabase
     .from("freight_offer_recipients")
     .update({
@@ -60,6 +73,7 @@ export async function POST(
       quote_currency: body.currency || "EUR",
       quote_message: body.message?.trim() || null,
       updated_at: nowIso,
+      ...clearStaleCounter,
     })
     .eq("id", recipient.id);
 

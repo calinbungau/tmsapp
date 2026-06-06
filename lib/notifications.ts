@@ -401,6 +401,24 @@ export const NotificationTemplates = {
     data: cleanData({ type: "freight_offer_reopened", offer_id: offerId, token, eventId: token, actionUrl: portalUrl(token) }),
   }),
 
+  counterOffer: (reference: string, offerId: string, token?: string | null) => ({
+    title: "Counter-offer received",
+    body: `The dispatcher sent a counter-offer for ${reference}. Tap to accept, decline, or re-quote.`,
+    data: cleanData({ type: "freight_offer_counter", offer_id: offerId, token, eventId: token, actionUrl: portalUrl(token) }),
+  }),
+
+  counterAccepted: (reference: string, offerId: string, token?: string | null) => ({
+    title: "Carrier accepted your counter-offer",
+    body: `The carrier accepted your counter-offer for ${reference}. The offer is now awarded.`,
+    data: cleanData({ type: "freight_offer_counter_accepted", offer_id: offerId, token, eventId: token, actionUrl: portalUrl(token) }),
+  }),
+
+  counterDeclined: (reference: string, offerId: string, token?: string | null) => ({
+    title: "Carrier declined your counter-offer",
+    body: `The carrier declined your counter-offer for ${reference}.`,
+    data: cleanData({ type: "freight_offer_counter_declined", offer_id: offerId, token, eventId: token, actionUrl: portalUrl(token) }),
+  }),
+
   carrierChatMessage: (
     senderName: string,
     preview: string,
