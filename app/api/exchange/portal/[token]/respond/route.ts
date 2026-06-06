@@ -38,6 +38,63 @@ export async function POST(
     return NextResponse.json({ error: "invalid_pin" }, { status: 401 });
 
   const response = String(body.response || "").toLowerCase();
+
+  // ── Withdraw: the carrier cancels their existing response/quote, returning
+  // the recipient to the "no response yet" state so they can respond afresh.
+  if (response === "withdrawn") {
+    // Once the dispatcher has finalized (awarded/declined), the carrier can no
+    // longer take it back.
+    if (recipient.dispatcher_decision) {
+      return NextResponse.json({ error: "locked" }, { status: 409 });
+    }
+    const nowIso = new Date().toISOString();
+    const { error: clearErr } = await supabase
+      .from("freight_offer_recipients")
+      .update({
+        response: null,
+        responded_at: null,
+        quote_amount: null,
+        quote_currency: null,
+        quote_message: null,
+        counter_status: null,
+        counter_amount: null,
+        counter_currency: null,
+        counter_message: null,
+        counter_at: null,
+        counter_responded_at: null,
+        updated_at: nowIso,
+      })
+      .eq("id", recipient.id);
+    if (clearErr) {
+      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+    }
+
+    const { data: wOffer } = await supabase
+      .from("freight_offers")
+      .select("reference")
+      .eq("id", recipient.offer_id)
+      .maybeSingle();
+    const wCarrier = recipient.carrier_name || recipient.email || "A carrier";
+    try {
+      await createAdminNotification({
+        adminId: recipient.admin_id,
+        targetType: "all",
+        notificationType: "freight_offer_response",
+        priority: "low",
+        payload: {
+          title: "Carrier withdrew response",
+          body: `${wCarrier} withdrew their response for ${wOffer?.reference || "offer"}.`,
+          icon: "route",
+          actionUrl: `/admin/tms/exchange/${recipient.offer_id}`,
+          data: { offer_id: recipient.offer_id, recipient_id: recipient.id, response: "withdrawn" },
+        },
+      });
+    } catch (e) {
+      console.error("[portal/respond] withdraw notification failed", e);
+    }
+    return NextResponse.json({ success: true, response: null });
+  }
+
   if (!VALID.has(response)) {
     return NextResponse.json({ error: "invalid_response" }, { status: 400 });
   }
