@@ -38,6 +38,7 @@ import {
   MoreVertical,
   Ban,
   Pencil,
+  Route,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { OfferRecipientsPanel } from "@/components/exchange/offer-recipients-panel";
@@ -404,6 +405,12 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
             {stops.length > 2 && (
               <span className="text-xs text-muted-foreground/70">+{stops.length - 2} stops</span>
             )}
+            {offer.distance_km != null && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground/80 bg-muted/50 rounded px-1.5 py-0.5">
+                <Route className="h-3 w-3" />
+                {Math.round(offer.distance_km).toLocaleString()} km
+              </span>
+            )}
           </div>
         </div>
 
@@ -488,7 +495,29 @@ export function OfferDetailPanel({ offerId, adminId, onClose, onStatusChange }: 
 
       {/* ─── Route Map ──────────────────────────────────────── */}
       <div className="h-44 shrink-0 border-b border-border/50">
-        <RouteMap stops={mapStops} fullHeight hideBottomPanels showFlags />
+        <RouteMap
+          stops={mapStops}
+          fullHeight
+          hideBottomPanels
+          showFlags
+          /* Use the route saved on the offer so we never recalculate it. */
+          initialRouteGeometry={offer.route_geometry ?? undefined}
+          initialRouteDistance={offer.distance_km ?? undefined}
+          skipInitialRouteFetch={!!offer.route_geometry}
+          /* Backfill the cached route once if the offer predates this feature. */
+          onRouteCalculated={(info) => {
+            if (offer.distance_km == null && info?.distance_km) {
+              supabase
+                .from("freight_offers")
+                .update({
+                  distance_km: Math.round(info.distance_km),
+                  route_geometry: info.geometry ?? null,
+                })
+                .eq("id", offerId)
+                .then(() => {});
+            }
+          }}
+        />
       </div>
 
       {/* ─── Tabs ───────────────���───────────────────────────── */}

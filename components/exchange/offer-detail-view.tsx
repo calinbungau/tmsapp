@@ -101,6 +101,7 @@ interface Offer {
   currency: string;
   payment_terms_days: number | null;
   expires_at: string | null;
+  distance_km: number | null;
 }
 interface RecipientState {
   id: string;
@@ -442,7 +443,14 @@ export function OfferDetailView({
               <Calendar className="h-3.5 w-3.5" /> {fmtDateRange(offer?.load_date_from, offer?.load_date_to)}
             </p>
           </div>
-          <ArrowRight className="mt-1 h-5 w-5 text-muted-foreground shrink-0" />
+          <div className="mt-1 flex flex-col items-center shrink-0">
+            <ArrowRight className="h-5 w-5 text-muted-foreground" />
+            {offer?.distance_km != null && (
+              <span className="mt-1 whitespace-nowrap text-[11px] font-medium text-foreground/70">
+                {Math.round(offer.distance_km).toLocaleString()} km
+              </span>
+            )}
+          </div>
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <MapPin className="h-4 w-4 text-green-600 shrink-0" />
