@@ -24,7 +24,8 @@ export async function GET(
       .select(
         "id, carrier_name, email, response, responded_at, quote_amount, quote_currency, " +
           "quote_message, sent_at, first_viewed_at, last_viewed_at, view_count, carrier_account_id, " +
-          "dispatcher_decision, decided_at"
+          "dispatcher_decision, decided_at, counter_amount, counter_currency, counter_message, " +
+          "counter_at, counter_status, counter_responded_at"
       )
       .eq("offer_id", offerId)
       .eq("admin_id", adminId)

@@ -167,6 +167,11 @@ export async function POST(
       quoteMessage: recipient.quote_message,
       dispatcherDecision: recipient.dispatcher_decision,
       decidedAt: recipient.decided_at,
+      counterAmount: recipient.counter_amount,
+      counterCurrency: recipient.counter_currency,
+      counterMessage: recipient.counter_message,
+      counterStatus: recipient.counter_status,
+      counterAt: recipient.counter_at,
       // True only when THIS recipient is the one the offer was awarded to.
       isAwarded:
         offer.status === "awarded" &&

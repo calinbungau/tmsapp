@@ -111,6 +111,11 @@ interface RecipientState {
   quoteMessage: string | null;
   dispatcherDecision: "accepted" | "declined" | null;
   decidedAt: string | null;
+  counterAmount: number | null;
+  counterCurrency: string | null;
+  counterMessage: string | null;
+  counterStatus: "pending" | "accepted" | "declined" | null;
+  counterAt: string | null;
   isAwarded: boolean;
   offerAwarded: boolean;
   hasAccount: boolean;
@@ -503,6 +508,14 @@ export function OfferDetailView({
         <LockedResponseNotice
           decision={recipient.dispatcherDecision}
           isAwarded={recipient.isAwarded}
+        />
+      ) : recipient?.counterStatus === "pending" ? (
+        <CounterOfferPanel
+          token={token}
+          pin={pin}
+          carrierAccountId={getStoredCarrierSession()?.id ?? null}
+          recipient={recipient}
+          onUpdated={(r) => setRecipient(r)}
         />
       ) : (
         <ResponsePanel

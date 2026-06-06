@@ -16,6 +16,8 @@ import {
   Check,
   X,
   RotateCcw,
+  Handshake,
+  Clock,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +29,14 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Recipient {
   id: string;
@@ -42,6 +52,12 @@ interface Recipient {
   view_count: number;
   dispatcher_decision: "accepted" | "declined" | null;
   decided_at: string | null;
+  counter_amount: number | null;
+  counter_currency: string | null;
+  counter_message: string | null;
+  counter_at: string | null;
+  counter_status: "pending" | "accepted" | "declined" | null;
+  counter_responded_at: string | null;
 }
 
 interface OfferAward {
@@ -112,6 +128,7 @@ export function OfferRecipientsPanel({
   const award: OfferAward | null = data?.offer || null;
   const [chatWith, setChatWith] = useState<Recipient | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [counterFor, setCounterFor] = useState<Recipient | null>(null);
 
   const responded = recipients.filter((r) => r.response).length;
   const viewed = recipients.filter((r) => r.first_viewed_at).length;
@@ -120,14 +137,24 @@ export function OfferRecipientsPanel({
 
   const decide = async (
     recipient: Recipient,
-    decision: "accept" | "decline" | "reopen"
+    decision: "accept" | "decline" | "reopen" | "counter",
+    counter?: { amount: string; currency: string; message: string }
   ) => {
     setPendingId(recipient.id);
     try {
       const res = await fetch(`/api/exchange/recipients/${recipient.id}/decision`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-id": adminId },
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify({
+          decision,
+          ...(decision === "counter"
+            ? {
+                counterAmount: counter?.amount,
+                counterCurrency: counter?.currency,
+                counterMessage: counter?.message,
+              }
+            : {}),
+        }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -150,6 +177,11 @@ export function OfferRecipientsPanel({
               Create FWD Order
             </Button>
           ) : undefined,
+        });
+      } else if (decision === "counter") {
+        toast({
+          title: `Counter-offer sent to ${name}`,
+          description: "The carrier can accept, decline, or send a new quote.",
         });
       } else {
         toast({
@@ -251,6 +283,18 @@ export function OfferRecipientsPanel({
                         Declined
                       </span>
                     )}
+                    {r.counter_status === "pending" && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                        <Clock className="h-3 w-3" />
+                        Counter sent · {r.counter_amount} {r.counter_currency || "EUR"}
+                      </span>
+                    )}
+                    {r.counter_status === "declined" && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                        <X className="h-3 w-3" />
+                        Counter declined
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                     {r.first_viewed_at ? (
@@ -277,8 +321,9 @@ export function OfferRecipientsPanel({
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   {/* Decision controls: only meaningful once the carrier has
-                      responded with interest or a quote. */}
-                  {r.response && r.response !== "declined" && !r.dispatcher_decision && !isAwarded && (
+                      responded with interest or a quote. While a counter-offer
+                      is pending we hide Accept/Decline (waiting on the carrier). */}
+                  {r.response && r.response !== "declined" && !r.dispatcher_decision && !isAwarded && r.counter_status !== "pending" && (
                     <>
                       <Button
                         size="sm"
@@ -293,6 +338,18 @@ export function OfferRecipientsPanel({
                         )}
                         <span className="hidden sm:inline">Accept</span>
                       </Button>
+                      {r.response === "quoted" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 text-amber-600 dark:text-amber-400 border-amber-500/40 hover:bg-amber-500/10"
+                          disabled={busy}
+                          onClick={() => setCounterFor(r)}
+                        >
+                          <Handshake className="h-4 w-4 sm:mr-1" />
+                          <span className="hidden sm:inline">Counter</span>
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
@@ -304,6 +361,23 @@ export function OfferRecipientsPanel({
                         <span className="hidden sm:inline">Decline</span>
                       </Button>
                     </>
+                  )}
+                  {/* While the carrier is mulling our counter, allow withdrawing it. */}
+                  {r.counter_status === "pending" && !isAwarded && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0"
+                      disabled={busy}
+                      onClick={() => decide(r, "reopen")}
+                    >
+                      {busy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-4 w-4 sm:mr-1" />
+                      )}
+                      <span className="hidden sm:inline">Withdraw</span>
+                    </Button>
                   )}
                   {(r.dispatcher_decision || (isAwarded && isWinner)) && (
                     <Button
@@ -349,7 +423,135 @@ export function OfferRecipientsPanel({
           )}
         </SheetContent>
       </Sheet>
+
+      <CounterOfferDialog
+        recipient={counterFor}
+        defaultCurrency={awardedRecipient?.quote_currency || "EUR"}
+        onClose={() => setCounterFor(null)}
+        onSubmit={async (counter) => {
+          if (!counterFor) return;
+          await decide(counterFor, "counter", counter);
+          setCounterFor(null);
+        }}
+      />
     </div>
+  );
+}
+
+function CounterOfferDialog({
+  recipient,
+  defaultCurrency,
+  onClose,
+  onSubmit,
+}: {
+  recipient: Recipient | null;
+  defaultCurrency: string;
+  onClose: () => void;
+  onSubmit: (counter: { amount: string; currency: string; message: string }) => Promise<void>;
+}) {
+  const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState(defaultCurrency);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  // Reset the form whenever a new recipient is targeted.
+  useEffect(() => {
+    if (recipient) {
+      setAmount("");
+      setCurrency(recipient.quote_currency || defaultCurrency);
+      setMessage("");
+    }
+  }, [recipient, defaultCurrency]);
+
+  const carrierQuote =
+    recipient?.quote_amount != null
+      ? `${recipient.quote_amount} ${recipient.quote_currency || "EUR"}`
+      : null;
+
+  return (
+    <Dialog open={!!recipient} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Handshake className="h-4 w-4 text-amber-500" />
+            Send a counter-offer
+          </DialogTitle>
+          <DialogDescription>
+            Propose a different price to{" "}
+            <span className="font-medium text-foreground">
+              {recipient?.carrier_name || recipient?.email || "this carrier"}
+            </span>
+            . They can accept, decline, or send a new quote.
+          </DialogDescription>
+        </DialogHeader>
+
+        {carrierQuote && (
+          <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+            <span className="text-muted-foreground">Carrier quoted </span>
+            <span className="font-semibold text-foreground">{carrierQuote}</span>
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <label className="text-xs font-medium text-muted-foreground">Your counter price</label>
+            <input
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
+              placeholder="0.00"
+              autoFocus
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500/40"
+            />
+          </div>
+          <div className="w-24">
+            <label className="text-xs font-medium text-muted-foreground">Currency</label>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500/40"
+            >
+              <option value="EUR">EUR</option>
+              <option value="USD">USD</option>
+              <option value="GBP">GBP</option>
+              <option value="RON">RON</option>
+              <option value="PLN">PLN</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">Message (optional)</label>
+          <Textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            rows={2}
+            placeholder="e.g. We can do this load at this rate."
+            className="mt-1 resize-none"
+          />
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            disabled={busy || !amount || Number(amount) <= 0}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onSubmit({ amount, currency, message });
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin sm:mr-1" /> : <Handshake className="h-4 w-4 sm:mr-1" />}
+            Send counter-offer
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
