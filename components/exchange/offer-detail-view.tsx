@@ -18,6 +18,7 @@ import {
   Lock,
   Trophy,
   Handshake,
+  Pencil,
 } from "lucide-react";
 import { AppPromo } from "@/components/exchange/app-promo";
 import { PortalChat } from "@/components/exchange/portal-chat";
@@ -415,7 +416,10 @@ export function OfferDetailView({
   // ─── Ready ───────────────────────────────────────────────
   const body = (
     <div className={embedded ? "mx-auto max-w-3xl px-4 py-4 flex flex-col gap-5" : "mx-auto max-w-3xl px-4 py-6 flex flex-col gap-5"}>
-      {(recipient?.response || recipient?.dispatcherDecision) && (
+      {/* Summary banner only for dispatcher outcomes (awarded / declined).
+          The carrier's own "sent" state is shown inline in the response panel
+          to avoid a duplicate banner. */}
+      {(recipient?.dispatcherDecision || recipient?.isAwarded) && (
         <ResponseSummary recipient={recipient} companyName={company?.company_name ?? null} />
       )}
 
@@ -736,6 +740,10 @@ function ResponsePanel({
   defaultCurrency: string;
   onUpdated: (r: RecipientState) => void;
 }) {
+  const hasResponded = !!recipient.response;
+  // Once a response exists we collapse to a minimalist "sent" state; the carrier
+  // opens the editor explicitly via "Update".
+  const [editing, setEditing] = useState(!hasResponded);
   const [showQuote, setShowQuote] = useState(recipient.response === "quoted");
   const [amount, setAmount] = useState(recipient.quoteAmount != null ? String(recipient.quoteAmount) : "");
   const [currency, setCurrency] = useState(recipient.quoteCurrency || defaultCurrency);
@@ -777,6 +785,7 @@ function ResponsePanel({
         quoteMessage: response === "quoted" ? message : recipient.quoteMessage,
         respondedAt: new Date().toISOString(),
       });
+      setEditing(false);
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -784,12 +793,134 @@ function ResponsePanel({
     }
   };
 
+  const withdraw = async () => {
+    setBusy("withdraw");
+    setError(null);
+    try {
+      const res = await fetch(`/api/exchange/portal/${token}/respond`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin, carrierAccountId, response: "withdrawn" }),
+      });
+      if (!res.ok) {
+        setError("Could not withdraw. Please try again.");
+        setBusy(null);
+        return;
+      }
+      onUpdated({
+        ...recipient,
+        response: null,
+        quoteAmount: null,
+        quoteMessage: null,
+        respondedAt: null,
+        counterStatus: null,
+        counterAmount: null,
+      });
+      // Reset the editor to a clean slate for a fresh response.
+      setAmount("");
+      setMessage("");
+      setShowQuote(false);
+      setEditing(true);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // ── Minimalist "already sent" state ──────────────────────────
+  if (hasResponded && !editing) {
+    const sent =
+      recipient.response === "quoted"
+        ? {
+            cls: "border-green-500/40 bg-green-500/5",
+            iconCls: "text-green-600 dark:text-green-400",
+            icon: <CheckCircle2 className="h-5 w-5" />,
+            title: "Quote sent",
+            detail: fmtCurrency(recipient.quoteAmount, recipient.quoteCurrency || "EUR"),
+          }
+        : recipient.response === "interested"
+          ? {
+              cls: "border-blue-500/40 bg-blue-500/5",
+              iconCls: "text-blue-600 dark:text-blue-400",
+              icon: <ThumbsUp className="h-5 w-5" />,
+              title: "Marked as interested",
+              detail: null as string | null,
+            }
+          : {
+              cls: "border-red-500/30 bg-red-500/5",
+              iconCls: "text-red-600 dark:text-red-400",
+              icon: <XCircle className="h-5 w-5" />,
+              title: "You declined this offer",
+              detail: null as string | null,
+            };
+    return (
+      <section className={`rounded-xl border p-4 ${sent.cls}`}>
+        <div className="flex items-center gap-3">
+          <span className={sent.iconCls}>{sent.icon}</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <p className="text-sm font-semibold text-foreground">{sent.title}</p>
+              {sent.detail && (
+                <span className="text-base font-bold text-foreground">{sent.detail}</span>
+              )}
+            </div>
+            {recipient.respondedAt && (
+              <p className="text-xs text-muted-foreground">
+                Sent {fmtDate(recipient.respondedAt)} · awaiting the dispatcher
+              </p>
+            )}
+            {recipient.quoteMessage && recipient.response === "quoted" && (
+              <p className="mt-1 text-xs text-muted-foreground truncate">“{recipient.quoteMessage}”</p>
+            )}
+          </div>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <button
+            onClick={() => {
+              setShowQuote(recipient.response === "quoted");
+              setEditing(true);
+            }}
+            disabled={!!busy}
+            className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Update response
+          </button>
+          <button
+            onClick={withdraw}
+            disabled={!!busy}
+            className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-red-600 hover:border-red-500/40 disabled:opacity-50"
+          >
+            {busy === "withdraw" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+            Cancel
+          </button>
+        </div>
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      </section>
+    );
+  }
+
   return (
     <section className="rounded-xl border border-border bg-card p-5">
-      <p className="text-sm font-semibold text-foreground">Your response</p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Let the dispatcher know if you can take this load.
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-foreground">
+            {hasResponded ? "Update your response" : "Your response"}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Let the dispatcher know if you can take this load.
+          </p>
+        </div>
+        {hasResponded && (
+          <button
+            onClick={() => setEditing(false)}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
 
       <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
         <button

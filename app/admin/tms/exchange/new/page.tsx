@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AddressAutocomplete, ParsedAddress } from "@/components/ui/address-autocomplete";
+import { PublishToExchangeDialog } from "@/components/tms/publish-to-exchange-dialog";
 
 // ─── Constants ─────────────────────────────────────────────
 const VEHICLE_TYPES = [
@@ -247,6 +248,9 @@ function NewFreightOfferForm() {
   ]);
   const [saving, setSaving] = useState(false);
   const [saveMode, setSaveMode] = useState<"draft" | "publish" | null>(null);
+  // When publishing, we first persist the offer as a draft, then open the
+  // distribution dialog (carrier groups + public board) — same flow as Manage.
+  const [publishDialog, setPublishDialog] = useState<{ id: string; reference: string } | null>(null);
 
   // Order linkage — persisted onto the created offer so it shows as
   // "Posted on Exchange" back on the order.
@@ -478,8 +482,10 @@ function NewFreightOfferForm() {
         order_id: linkedOrder?.id || null,
         trip_leg_id: tripLegId || null,
         title: form.title || null,
-        status: publish ? "published" : "draft",
-        published_at: publish ? new Date().toISOString() : null,
+        // Always persist as a draft first. Publishing is finalized through the
+        // distribution dialog (carrier groups / public), which flips the status.
+        status: "draft",
+        published_at: null,
         visibility: "private",
         // Origin (first stop) - for backwards compatibility
         origin_company: firstStop.company_name || null,
@@ -561,11 +567,16 @@ function NewFreightOfferForm() {
 
       if (stopsError) throw stopsError;
 
+      if (publish) {
+        // Offer is saved; open the distribution dialog so the operator picks
+        // carrier groups and/or the public board before it goes live.
+        setPublishDialog({ id: offer.id, reference });
+        return;
+      }
+
       toast({
-        title: publish ? "Published" : "Created",
-        description: publish
-          ? `Offer ${reference} is now live on the exchange`
-          : `Offer ${reference} saved as draft`,
+        title: "Created",
+        description: `Offer ${reference} saved as draft`,
       });
       // When linked to an order, land on the offer detail so the operator
       // can immediately manage distribution; otherwise back to the list.
@@ -1187,6 +1198,29 @@ function NewFreightOfferForm() {
           </div>
         </div>
       </div>
+
+      {publishDialog && adminSession?.id && (
+        <PublishToExchangeDialog
+          open={!!publishDialog}
+          onOpenChange={(o) => {
+            if (!o) {
+              // Closing the dialog without publishing leaves a saved draft —
+              // send the operator to its detail page to manage it later.
+              const id = publishDialog.id;
+              setPublishDialog(null);
+              router.push(`/admin/tms/exchange/${id}`);
+            }
+          }}
+          offerId={publishDialog.id}
+          offerReference={publishDialog.reference}
+          adminId={adminSession.id}
+          onPublished={() => {
+            const id = publishDialog.id;
+            setPublishDialog(null);
+            router.push(`/admin/tms/exchange/${id}`);
+          }}
+        />
+      )}
     </div>
   );
 }
