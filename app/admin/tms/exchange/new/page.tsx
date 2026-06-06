@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminSession } from "@/hooks/use-admin-session";
@@ -35,6 +35,9 @@ import {
   ArrowUp,
   Send,
   ClipboardList,
+  Percent,
+  Calculator,
+  Route as RouteIcon,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AddressAutocomplete, ParsedAddress } from "@/components/ui/address-autocomplete";
@@ -215,6 +218,24 @@ function generateReference() {
   return `FX-${yy}${mm}${dd}-${rand}`;
 }
 
+// Straight-line fallback distance (km) across an ordered list of coordinates.
+function haversineTotal(coords: { lat: number; lon: number }[]): number {
+  const R = 6371;
+  let total = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const a = coords[i - 1];
+    const b = coords[i];
+    const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+    const dLon = ((b.lon - a.lon) * Math.PI) / 180;
+    const lat1 = (a.lat * Math.PI) / 180;
+    const lat2 = (b.lat * Math.PI) / 180;
+    const h =
+      Math.sin(dLat / 2) ** 2 + Math.sin(dLon / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+    total += 2 * R * Math.asin(Math.sqrt(h));
+  }
+  return total;
+}
+
 // ─── Linked order info (when arriving from an order via ?orderId=) ──
 interface LinkedOrder {
   id: string;
@@ -252,6 +273,18 @@ function NewFreightOfferForm() {
   // distribution dialog (carrier groups + public board) — same flow as Manage.
   const [publishDialog, setPublishDialog] = useState<{ id: string; reference: string } | null>(null);
 
+  // Route distance + geometry. Computed ONCE (from the linked order if present,
+  // otherwise a single routing call when stop coords are ready) and persisted
+  // onto the offer so downstream views never have to recalculate.
+  const [routeDistanceKm, setRouteDistanceKm] = useState<number | null>(null);
+  const [routeGeometry, setRouteGeometry] = useState<[number, number][] | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+
+  // Smart pricing calculator (mirrors the order → exchange dialog)
+  const [pricingCalcMode, setPricingCalcMode] = useState<"margin" | "km">("margin");
+  const [marginPercent, setMarginPercent] = useState<string>("15");
+  const [ratePerKm, setRatePerKm] = useState<string>("1.20");
+
   // Order linkage — persisted onto the created offer so it shows as
   // "Posted on Exchange" back on the order.
   const [linkedOrder, setLinkedOrder] = useState<LinkedOrder | null>(null);
@@ -270,7 +303,7 @@ function NewFreightOfferForm() {
           .from("orders")
           .select(
             `id, reference_number, customer_price, customer_currency, carrier_cost, carrier_currency,
-             margin, estimated_distance_km, weight_kg, volume_m3, pallet_count, loading_meters,
+             margin, estimated_distance_km, route_geometry, weight_kg, volume_m3, pallet_count, loading_meters,
              cargo_description, adr_class, temperature_min, temperature_max`
           )
           .eq("id", orderIdParam)
@@ -378,6 +411,21 @@ function NewFreightOfferForm() {
           margin: (order as any).margin ?? null,
           estimated_distance_km: (order as any).estimated_distance_km ?? null,
         });
+
+        // Reuse the order's already-computed distance + saved route so the
+        // exchange never has to recalculate it.
+        const orderKm = (order as any).estimated_distance_km;
+        if (orderKm != null && orderKm > 0) {
+          setRouteDistanceKm(Math.round(Number(orderKm)));
+        }
+        const orderGeom = (order as any).route_geometry;
+        if (Array.isArray(orderGeom) && orderGeom.length > 0) {
+          setRouteGeometry(orderGeom as [number, number][]);
+        }
+        // Default to margin-based suggestion when we know the customer price.
+        if ((order as any).margin != null) {
+          setMarginPercent(String(Math.round(Number((order as any).margin))));
+        }
       } catch (err: any) {
         console.error("Prefill from order error:", err);
         toast({
@@ -395,6 +443,79 @@ function NewFreightOfferForm() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderIdParam, legIdParam, adminSession?.id]);
+
+  // Compute the truck route ONCE on demand (button or first time coords are
+  // complete and we still have no distance). Result is cached in state and
+  // saved with the offer, so no view ever recalculates it.
+  const computeRoute = useCallback(
+    async (forStops: Stop[]) => {
+      const coords = forStops
+        .filter((s) => s.lat != null && s.lng != null && s.lat !== 0 && s.lng !== 0)
+        .map((s) => ({ lat: Number(s.lat), lon: Number(s.lng) }));
+      if (coords.length < 2) return;
+      setRouteLoading(true);
+      try {
+        const res = await fetch("/api/tms/route", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            locations: coords,
+            costing: "truck",
+            costing_options: { truck: { height: 4.0, width: 2.55, length: 16.5, weight: 40.0 } },
+          }),
+        });
+        if (!res.ok) {
+          // Fall back to a straight-line estimate so the user still gets a number.
+          setRouteDistanceKm(Math.round(haversineTotal(coords)));
+          return;
+        }
+        const data = await res.json();
+        if (data?.distance_km) setRouteDistanceKm(Math.round(data.distance_km));
+        if (Array.isArray(data?.latlngs) && data.latlngs.length > 0) {
+          setRouteGeometry(data.latlngs as [number, number][]);
+        }
+      } catch {
+        setRouteDistanceKm(Math.round(haversineTotal(coords)));
+      } finally {
+        setRouteLoading(false);
+      }
+    },
+    []
+  );
+
+  // Auto-calculate once when all stops have coordinates and we don't yet have
+  // a distance (e.g. blank offer where the user picked addresses).
+  useEffect(() => {
+    if (routeDistanceKm != null) return;
+    const ready = stops.filter((s) => s.lat != null && s.lng != null && s.lat !== 0 && s.lng !== 0);
+    if (ready.length >= 2 && ready.length === stops.length) {
+      computeRoute(stops);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stops.map((s) => `${s.lat},${s.lng}`).join("|")]);
+
+  // Source values for the pricing calculator
+  const customerPrice = linkedOrder?.customer_price ?? 0;
+  const calcCurrency = form.currency || linkedOrder?.customer_currency || "EUR";
+
+  // Suggested carrier price from the active calculator mode.
+  const suggestedPrice = (() => {
+    if (pricingCalcMode === "margin") {
+      if (!customerPrice) return null;
+      const m = parseFloat(marginPercent) || 0;
+      return Math.round(customerPrice * (1 - m / 100));
+    }
+    if (!routeDistanceKm) return null;
+    const r = parseFloat(ratePerKm) || 0;
+    return Math.round(routeDistanceKm * r);
+  })();
+
+  // Implied margin given the price currently in the form.
+  const enteredPrice = form.price_amount ? parseFloat(form.price_amount) : null;
+  const impliedMargin =
+    customerPrice > 0 && enteredPrice != null
+      ? ((customerPrice - enteredPrice) / customerPrice) * 100
+      : null;
 
   // Update form field
   const updateField = (field: keyof FormData, value: string) => {
@@ -527,6 +648,9 @@ function NewFreightOfferForm() {
         payment_terms_days: form.payment_terms_days ? parseInt(form.payment_terms_days) : null,
         // Notes
         notes: form.notes || null,
+        // Route — stored once so no view recalculates it.
+        distance_km: routeDistanceKm,
+        route_geometry: routeGeometry,
         created_by: adminSession.id,
       };
 
@@ -1105,6 +1229,149 @@ function NewFreightOfferForm() {
               <DollarSign className="h-4 w-4 text-primary" />
               <h2 className="font-medium text-foreground">Pricing</h2>
             </div>
+
+            {/* Distance + source pricing */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+              <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <RouteIcon className="h-3 w-3" />
+                    Distance
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => computeRoute(stops)}
+                    disabled={routeLoading}
+                    className="text-[11px] text-primary hover:underline disabled:opacity-50"
+                  >
+                    {routeLoading ? "…" : routeDistanceKm != null ? "Recalc" : "Calculate"}
+                  </button>
+                </div>
+                <p className="font-semibold text-sm mt-1">
+                  {routeLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : routeDistanceKm != null ? (
+                    `${routeDistanceKm.toLocaleString()} km`
+                  ) : (
+                    <span className="text-muted-foreground">Not set</span>
+                  )}
+                </p>
+              </div>
+              {linkedOrder?.customer_price != null && (
+                <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
+                  <span className="text-xs text-muted-foreground">Customer price</span>
+                  <p className="font-semibold text-sm mt-1">
+                    {new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: linkedOrder.customer_currency || "EUR",
+                      maximumFractionDigits: 0,
+                    }).format(linkedOrder.customer_price)}
+                  </p>
+                </div>
+              )}
+              {impliedMargin != null && (
+                <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
+                  <span className="text-xs text-muted-foreground">Implied margin</span>
+                  <p
+                    className={`font-semibold text-sm mt-1 ${
+                      impliedMargin < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"
+                    }`}
+                  >
+                    {impliedMargin.toFixed(1)}%
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Smart suggestion calculator */}
+            {(linkedOrder?.customer_price != null || routeDistanceKm != null) && (
+              <div className="mb-4 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                    <Calculator className="h-3.5 w-3.5 text-primary" />
+                    Suggest carrier price
+                  </span>
+                  <div className="inline-flex rounded-md border border-border overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setPricingCalcMode("margin")}
+                      disabled={linkedOrder?.customer_price == null}
+                      className={`px-2 py-1 text-[11px] flex items-center gap-1 disabled:opacity-40 ${
+                        pricingCalcMode === "margin" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground"
+                      }`}
+                    >
+                      <Percent className="h-3 w-3" />
+                      Margin
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPricingCalcMode("km")}
+                      disabled={routeDistanceKm == null}
+                      className={`px-2 py-1 text-[11px] flex items-center gap-1 disabled:opacity-40 ${
+                        pricingCalcMode === "km" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground"
+                      }`}
+                    >
+                      <Truck className="h-3 w-3" />
+                      €/km
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-end gap-3">
+                  {pricingCalcMode === "margin" ? (
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">Target margin %</Label>
+                      <Input
+                        type="number"
+                        step="0.5"
+                        value={marginPercent}
+                        onChange={(e) => setMarginPercent(e.target.value)}
+                        className="h-9 mt-1"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">Rate per km ({calcCurrency})</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={ratePerKm}
+                        onChange={(e) => setRatePerKm(e.target.value)}
+                        className="h-9 mt-1"
+                      />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <span className="text-xs text-muted-foreground">Suggested</span>
+                    <p className="text-lg font-bold text-foreground leading-9">
+                      {suggestedPrice != null
+                        ? new Intl.NumberFormat("en-US", {
+                            style: "currency",
+                            currency: calcCurrency,
+                            maximumFractionDigits: 0,
+                          }).format(suggestedPrice)
+                        : "—"}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={suggestedPrice == null}
+                    onClick={() => {
+                      if (suggestedPrice == null) return;
+                      setForm((prev) => ({
+                        ...prev,
+                        price_amount: String(suggestedPrice),
+                        pricing_mode: prev.pricing_mode === "open" ? "target" : prev.pricing_mode,
+                      }));
+                    }}
+                  >
+                    Apply
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="grid md:grid-cols-4 gap-4">
               <div>
                 <Label className="text-xs text-muted-foreground">Pricing Mode</Label>

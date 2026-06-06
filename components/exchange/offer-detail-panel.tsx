@@ -85,6 +85,8 @@ interface FreightOffer {
   notes: string | null;
   created_at: string;
   admin_id: string;
+  distance_km: number | null;
+  route_geometry: [number, number][] | null;
 }
 
 interface FreightStop {
