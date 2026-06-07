@@ -76,7 +76,7 @@ export async function POST(
   const reference = offer?.reference || "offer";
 
   let systemMessage = "";
-  let linkedOrderInfo: { orderId: string; tripLegId?: string } | null = null;
+  let linkedOrderInfo: { orderId: string; tripLegId?: string; carrierId?: string | null } | null = null;
 
   if (decision === "accept") {
     const result = await awardOfferToRecipient(svc, rec, offer!, {
