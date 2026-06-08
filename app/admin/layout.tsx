@@ -535,15 +535,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* ─── Sidebar ─── */}
       <aside
-        className={`group/sidebar h-full flex flex-col border-r border-border/50 backdrop-blur-sm transition-all duration-300 ease-in-out z-[1000] flex-shrink-0 ${
+        className={`admin-sidebar group/sidebar h-full flex flex-col border-r border-border/50 backdrop-blur-sm transition-all duration-300 ease-in-out z-[1000] flex-shrink-0 ${
           isTouch
             ? `fixed top-0 left-0 w-[240px] shadow-2xl ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`
             : sidebarPinned ? "w-[220px]" : "w-[52px] hover:w-[220px]"
         }`}
-        style={{
-          background: "linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(10, 12, 24, 0.99) 40%, rgba(8, 10, 18, 1) 100%)",
-          boxShadow: "inset -1px 0 0 rgba(59, 130, 246, 0.08), inset 0 1px 0 rgba(59, 130, 246, 0.05)",
-        }}
         onMouseLeave={() => { if (!sidebarPinned && !isTouch) setExpandedGroup(null); }}
       >
         {/* BNG Tracking logo */}
