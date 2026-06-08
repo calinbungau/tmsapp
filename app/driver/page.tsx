@@ -226,9 +226,13 @@ export default function DriverLoginPage() {
               Telematic
             </button>
             <span className="text-muted-foreground/30">|</span>
-            <a href="/admin" className="text-sm text-muted-foreground hover:text-primary">
+            <button
+              type="button"
+              onClick={() => handleAltLogin(`${window.location.origin}/admin`)}
+              className="text-sm text-muted-foreground hover:text-primary transition-colors"
+            >
               Admin Panel
-            </a>
+            </button>
           </div>
         </CardContent>
       </Card>

@@ -620,20 +620,22 @@ function AdminLoginForm() {
               <MapPin className="h-4 w-4 group-hover:text-primary transition-colors" />
               Telematic
             </button>
-            <a
-              href="/driver"
+            <button
+              type="button"
+              onClick={() => handleAltLogin(`${window.location.origin}/driver`)}
               className="group flex items-center justify-center gap-2 h-11 rounded-xl border border-border/40 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-card/50 transition-all"
             >
               <Truck className="h-4 w-4 group-hover:text-primary transition-colors" />
               Driver
-            </a>
-            <a
-              href="/carrier"
+            </button>
+            <button
+              type="button"
+              onClick={() => handleAltLogin(`${window.location.origin}/carrier`)}
               className="group flex items-center justify-center gap-2 h-11 rounded-xl border border-border/40 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-card/50 transition-all"
             >
               <Package className="h-4 w-4 group-hover:text-primary transition-colors" />
               Carrier
-            </a>
+            </button>
           </div>
 
           {/* Footer */}
