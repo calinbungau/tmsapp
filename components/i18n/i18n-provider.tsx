@@ -28,10 +28,10 @@ const I18nContext = createContext<I18nContextValue | null>(null)
  * The selected locale is persisted per-user in `user_preferences`
  * (key: `ui.language`) through the existing `useUserPreference` hook,
  * which also keeps an optimistic localStorage cache so the first paint
- * is never wrong. Default locale is Romanian.
+ * is never wrong. Default locale is English.
  */
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocale, { loaded }] = useUserPreference<AppLocale>("ui.language", "ro")
+  const [locale, setLocale, { loaded }] = useUserPreference<AppLocale>("ui.language", "en")
 
   // Keep <html lang> in sync for accessibility / SEO.
   useEffect(() => {
@@ -42,12 +42,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<I18nContextValue>(() => {
     const t: TranslateFn = (key, fallback) => {
-      const dict = dictionaries[locale] ?? dictionaries.ro
+      const dict = dictionaries[locale] ?? dictionaries.en
       const hit = resolvePath(dict, key)
       if (hit !== undefined) return hit
-      // Fall back to Romanian, then the provided fallback, then the key.
-      const roHit = resolvePath(dictionaries.ro, key)
-      return roHit ?? fallback ?? key
+      // Fall back to English, then the provided fallback, then the key.
+      const enHit = resolvePath(dictionaries.en, key)
+      return enHit ?? fallback ?? key
     }
     return { locale, setLocale, t, loaded }
   }, [locale, setLocale, loaded])
@@ -61,7 +61,7 @@ export function useTranslation() {
     // Safe fallback so components used outside the provider (or during very
     // early renders) don't crash — they just get identity translations.
     return {
-      locale: "ro" as AppLocale,
+      locale: "en" as AppLocale,
       setLocale: () => {},
       t: ((key: string, fallback?: string) => fallback ?? key) as TranslateFn,
       loaded: false,
