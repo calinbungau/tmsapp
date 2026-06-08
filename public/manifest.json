@@ -1,0 +1,21 @@
+{
+  "name": "BNG Tracking — Transport & Fleet Management",
+  "short_name": "BNG Tracking",
+  "description": "Fleet GPS tracking, transport management, freight exchange, invoicing and cost control in one intelligent platform.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0E101F",
+  "theme_color": "#0E101F",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

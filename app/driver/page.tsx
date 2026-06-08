@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Truck } from "lucide-react";
+import { Truck, MapPin, Shield } from "lucide-react";
 
 // Extend window to include updateNotificationToken
 declare global {
@@ -95,6 +95,17 @@ export default function DriverLoginPage() {
       delete window.updateNotificationToken;
     };
   }, [router]);
+
+  const handleAltLogin = (url: string) => {
+    const w = window as any;
+    if (w.webkit?.messageHandlers?.appInterface) {
+      w.webkit.messageHandlers.appInterface.postMessage(`server|${url}`);
+    } else if (w.appInterface) {
+      w.appInterface.postMessage(`server|${url}`);
+    } else {
+      window.location.replace(url);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -205,10 +216,24 @@ export default function DriverLoginPage() {
               {loading ? "Verifying..." : "Login"}
             </Button>
           </form>
-          <div className="mt-6 text-center">
-            <a href="/admin" className="text-sm text-muted-foreground hover:text-primary">
+          <div className="mt-6 flex items-center justify-center gap-4">
+            <button
+              type="button"
+              onClick={() => handleAltLogin("https://gps.bngtracking.ro/")}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors"
+            >
+              <MapPin className="h-4 w-4" />
+              Telematic
+            </button>
+            <span className="text-muted-foreground/30">|</span>
+            <button
+              type="button"
+              onClick={() => handleAltLogin(`${window.location.origin}/admin`)}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors"
+            >
+              <Shield className="h-4 w-4" />
               Admin Panel
-            </a>
+            </button>
           </div>
         </CardContent>
       </Card>

@@ -64,7 +64,7 @@ export async function awardOfferToRecipient(
     .eq("offer_id", offer.id)
     .neq("id", rec.id);
 
-  let linkedOrderInfo: { orderId: string; tripLegId?: string } | null = null;
+  let linkedOrderInfo: { orderId: string; tripLegId?: string; carrierId?: string | null } | null = null;
 
   // ─── Award reflect-back to the linked order ───────────────────
   if (offer.order_id) {
@@ -127,6 +127,7 @@ export async function awardOfferToRecipient(
     linkedOrderInfo = {
       orderId: offer.order_id,
       tripLegId: offer.trip_leg_id ?? undefined,
+      carrierId: rec.partner_id ?? null,
     };
   }
 

@@ -20,6 +20,8 @@ import {
   Clock,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import { createClient } from "@/lib/supabase/client";
+import { createForwardingOrderForLeg } from "@/lib/tms/forwarding/create-forwarding-order-for-leg";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -163,21 +165,83 @@ export function OfferRecipientsPanel({
       const data = await res.json().catch(() => ({}));
       const name = recipient.carrier_name || recipient.email || "Carrier";
 
-      // If this was an accept with a linked order, notify the parent and show action
+      // If this was an accept with a linked order, auto-create the forwarding
+      // subcontract order for the leg, then surface it.
       if (decision === "accept" && data.linkedOrderInfo?.orderId) {
-        toast({
-          title: `Offer awarded to ${name}`,
-          description: "Carrier and cost written back to the order. Create a forwarding subcontract?",
-          action: onAwardLinkedOrder ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onAwardLinkedOrder(data.linkedOrderInfo.orderId, data.linkedOrderInfo.tripLegId)}
-            >
-              Create FWD Order
-            </Button>
-          ) : undefined,
-        });
+        const info = data.linkedOrderInfo as {
+          orderId: string;
+          tripLegId?: string;
+          carrierId?: string | null;
+        };
+
+        // Only leg-scoped offers can be auto-subcontracted (a FWD order is
+        // attached to a specific trip leg). Whole-order offers fall back to the
+        // manual flow.
+        if (info.tripLegId && info.carrierId) {
+          let fwdRef: string | null = null;
+          let fwdId: string | null = null;
+          try {
+            const supabase = createClient();
+            const { data: legRow } = await supabase
+              .from("trip_legs")
+              .select(
+                "id, leg_number, from_city, to_city, from_stop_index, to_stop_index, trip_id"
+              )
+              .eq("id", info.tripLegId)
+              .single();
+
+            const fwd = await createForwardingOrderForLeg(supabase, {
+              adminId,
+              creatorId: adminId,
+              parentOrderId: info.orderId,
+              carrierId: info.carrierId,
+              tripLeg: {
+                id: info.tripLegId,
+                leg_number: (legRow as any)?.leg_number ?? 1,
+                from_city: (legRow as any)?.from_city ?? null,
+                to_city: (legRow as any)?.to_city ?? null,
+                from_stop_index: (legRow as any)?.from_stop_index ?? null,
+                to_stop_index: (legRow as any)?.to_stop_index ?? null,
+                trip_id: (legRow as any)?.trip_id ?? null,
+              },
+            });
+            fwdRef = fwd.forwardingOrderRef;
+            fwdId = fwd.forwardingOrderId;
+          } catch (fwdErr) {
+            console.log("[v0] auto-FWD creation failed:", (fwdErr as Error)?.message);
+          }
+
+          toast({
+            title: `Offer awarded to ${name}`,
+            description: fwdRef
+              ? `Forwarding order ${fwdRef} was created and the carrier/cost written back to the order.`
+              : "Carrier and cost written back to the order.",
+            action: onAwardLinkedOrder ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onAwardLinkedOrder(fwdId || info.orderId, info.tripLegId)}
+              >
+                {fwdRef ? "Open FWD Order" : "Open Order"}
+              </Button>
+            ) : undefined,
+          });
+        } else {
+          // Whole-order offer (no leg): keep the manual handoff.
+          toast({
+            title: `Offer awarded to ${name}`,
+            description: "Carrier and cost written back to the order. Create a forwarding subcontract?",
+            action: onAwardLinkedOrder ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onAwardLinkedOrder(info.orderId, info.tripLegId)}
+              >
+                Create FWD Order
+              </Button>
+            ) : undefined,
+          });
+        }
       } else if (decision === "counter") {
         toast({
           title: `Counter-offer sent to ${name}`,

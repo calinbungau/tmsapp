@@ -13,7 +13,7 @@ const OFFER_FIELDS =
   "dest_city, dest_country, dest_postal_code, load_date_from, load_date_to, " +
   "unload_date_from, unload_date_to, vehicle_type, body_type, weight_kg, ldm, " +
   "pallet_count, adr_class, goods_description, pricing_mode, price_amount, currency, " +
-  "payment_terms_days, expires_at, awarded_recipient_id, awarded_at";
+  "payment_terms_days, expires_at, awarded_recipient_id, awarded_at, distance_km";
 
 // GET /api/exchange/portal/[token] — lightweight meta (no PIN required).
 // Reveals only enough to render the PIN gate (carrier name + masked status).

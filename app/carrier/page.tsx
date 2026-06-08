@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Truck, Loader2 } from "lucide-react";
+import { Truck, Loader2, MapPin, Shield } from "lucide-react";
 import {
   getStoredCarrierSession,
   setStoredCarrierSession,
@@ -40,6 +40,17 @@ function CarrierAuth() {
       setChecking(false);
     }
   }, [router]);
+
+  const handleAltLogin = (url: string) => {
+    const w = window as any;
+    if (w.webkit?.messageHandlers?.appInterface) {
+      w.webkit.messageHandlers.appInterface.postMessage(`server|${url}`);
+    } else if (w.appInterface) {
+      w.appInterface.postMessage(`server|${url}`);
+    } else {
+      window.location.replace(url);
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,6 +206,25 @@ function CarrierAuth() {
                   </button>
                 </>
               )}
+            </div>
+
+            <div className="mt-6 grid grid-cols-2 gap-3 border-t border-border/40 pt-4">
+              <button
+                type="button"
+                onClick={() => handleAltLogin("https://gps.bngtracking.ro/")}
+                className="group flex items-center justify-center gap-2 h-11 rounded-xl border border-border/40 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-card/50 transition-all"
+              >
+                <MapPin className="h-4 w-4 group-hover:text-primary transition-colors" />
+                Telematic
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAltLogin(`${window.location.origin}/admin`)}
+                className="group flex items-center justify-center gap-2 h-11 rounded-xl border border-border/40 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-card/50 transition-all"
+              >
+                <Shield className="h-4 w-4 group-hover:text-primary transition-colors" />
+                Admin Panel
+              </button>
             </div>
           </CardContent>
         </Card>
