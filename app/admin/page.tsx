@@ -7,6 +7,7 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminSession } from "@/hooks/use-admin-session";
 import { isModuleEnabled } from "@/lib/modules";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -289,33 +290,33 @@ function AnimatedBackground() {
 
 // Module configuration
 const MODULES = [
-  { key: "tms", label: "Transport", icon: Truck, href: "/admin/tms/orders", desc: "Orders & Dispatch" },
-  { key: "maintenance", label: "Maintenance", icon: Wrench, href: "/admin/maintenance", desc: "Service & Repairs" },
-  { key: "documents", label: "Documents", icon: FileText, href: "/admin/documents", desc: "Files & Compliance" },
-  { key: "fsm", label: "Field Service", icon: ClipboardList, href: "/admin/fsm/tasks", desc: "Tasks & Jobs" },
-  { key: "telematic", label: "Telematic", icon: MapPin, href: "/admin/telematic/live", desc: "GPS Tracking" },
-  { key: "hr", label: "HR", icon: Users, href: "/admin/hr", desc: "Human Resources" },
-  { key: "email", label: "Email", icon: Mail, href: "/admin/email", desc: "Communications" },
-  { key: "chat", label: "Chat", icon: MessageSquare, href: "/admin/chat", desc: "Messaging" },
-  { key: "settings", label: "Settings", icon: Settings, href: "/admin/settings", desc: "Configuration" },
-  { key: "logs", label: "Activity", icon: Activity, href: "/admin/logs", desc: "System Logs" },
+  { key: "tms", labelKey: "dashboard.transport", icon: Truck, href: "/admin/tms/orders", descKey: "dashboard.transportDesc" },
+  { key: "maintenance", labelKey: "nav.maintenance", icon: Wrench, href: "/admin/maintenance", descKey: "dashboard.maintenanceDesc" },
+  { key: "documents", labelKey: "nav.documents", icon: FileText, href: "/admin/documents", descKey: "dashboard.documentsDesc" },
+  { key: "fsm", labelKey: "dashboard.fieldService", icon: ClipboardList, href: "/admin/fsm/tasks", descKey: "dashboard.fieldServiceDesc" },
+  { key: "telematic", labelKey: "nav.telematic", icon: MapPin, href: "/admin/telematic/live", descKey: "dashboard.telematicDesc" },
+  { key: "hr", labelKey: "nav.hr", icon: Users, href: "/admin/hr", descKey: "dashboard.hrDesc" },
+  { key: "email", labelKey: "nav.email", icon: Mail, href: "/admin/email", descKey: "dashboard.emailDesc" },
+  { key: "chat", labelKey: "nav.chat", icon: MessageSquare, href: "/admin/chat", descKey: "dashboard.chatDesc" },
+  { key: "settings", labelKey: "nav.settings", icon: Settings, href: "/admin/settings", descKey: "dashboard.settingsDesc" },
+  { key: "logs", labelKey: "dashboard.activity", icon: Activity, href: "/admin/logs", descKey: "dashboard.activityDesc" },
 ];
 
 const MASTER_DATA = [
-  { key: "drivers", label: "Drivers", icon: Users, href: "/admin/drivers" },
-  { key: "vehicles", label: "Vehicles", icon: Car, href: "/admin/vehicles" },
-  { key: "trailers", label: "Trailers", icon: Container, href: "/admin/trailers" },
-  { key: "employees", label: "Employees", icon: Users, href: "/admin/employees" },
-  { key: "partners", label: "Partners", icon: Building2, href: "/admin/business-partners" },
+  { key: "drivers", labelKey: "nav.drivers", icon: Users, href: "/admin/drivers" },
+  { key: "vehicles", labelKey: "nav.vehicles", icon: Car, href: "/admin/vehicles" },
+  { key: "trailers", labelKey: "nav.trailers", icon: Container, href: "/admin/trailers" },
+  { key: "employees", labelKey: "nav.employees", icon: Users, href: "/admin/employees" },
+  { key: "partners", labelKey: "nav.partners", icon: Building2, href: "/admin/business-partners" },
 ];
 
 const CREATE_OPTIONS = [
-  { label: "New Order", icon: Truck, href: "/admin/tms/orders/new", module: "tms" },
-  { label: "New Task", icon: ClipboardList, href: "/admin/fsm/tasks/new", module: "fsm" },
-  { label: "Schedule Maintenance", icon: Wrench, href: "/admin/maintenance?action=new", module: "maintenance" },
-  { label: "Add Driver", icon: Users, href: "/admin/drivers?action=new", module: "masterdata" },
-  { label: "Add Vehicle", icon: Car, href: "/admin/vehicles?action=new", module: "masterdata" },
-  { label: "Add Trailer", icon: Container, href: "/admin/trailers?action=new", module: "masterdata" },
+  { key: "new-order", labelKey: "dashboard.newOrder", icon: Truck, href: "/admin/tms/orders/new", module: "tms" },
+  { key: "new-task", labelKey: "dashboard.newTask", icon: ClipboardList, href: "/admin/fsm/tasks/new", module: "fsm" },
+  { key: "schedule-maintenance", labelKey: "dashboard.scheduleMaintenance", icon: Wrench, href: "/admin/maintenance?action=new", module: "maintenance" },
+  { key: "add-driver", labelKey: "dashboard.addDriver", icon: Users, href: "/admin/drivers?action=new", module: "masterdata" },
+  { key: "add-vehicle", labelKey: "dashboard.addVehicle", icon: Car, href: "/admin/vehicles?action=new", module: "masterdata" },
+  { key: "add-trailer", labelKey: "dashboard.addTrailer", icon: Container, href: "/admin/trailers?action=new", module: "masterdata" },
 ];
 
 interface SearchResult {
@@ -328,6 +329,7 @@ interface SearchResult {
 
 export default function AdminDashboard() {
   const { session: adminSession, loading: sessionLoading } = useAdminSession();
+  const { t } = useTranslation();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);

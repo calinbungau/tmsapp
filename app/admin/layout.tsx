@@ -18,6 +18,7 @@ import { AdminNotificationsBell } from "@/components/admin-notifications-bell";
 import { ThemeSync } from "@/components/theme-sync";
 import { PERMISSION_KEYS } from "@/hooks/use-permissions";
 import { isModuleEnabled, isRouteAccessible } from "@/lib/modules";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,6 +64,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [isTouch, setIsTouch] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const { t } = useTranslation();
 
   // Detect touch devices (tablets, phones)
   useEffect(() => {
@@ -390,16 +392,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const segments = pathname.replace("/admin", "").split("/").filter(Boolean);
     const crumbs: { label: string; href: string }[] = [];
     const labelMap: Record<string, string> = {
-      tms: "TMS", orders: "Orders", planning: "Planning", forwarding: "Forwarder Board", reports: "Reports", "ai-usage": "AI Usage", exchange: "Freight Exchange", "carrier-groups": "Carrier Groups",
-      fsm: "FSM", tasks: "Tasks", forms: "Forms", "live-map": "Live Map", chat: "Chat",
-      geofences: "Geofences", drivers: "Drivers", vehicles: "Vehicles", trailers: "Trailers",
-      documents: "Documents", maintenance: "Maintenance", hr: "HR",
-      finance: "Finance", dashboard: "Dashboard", invoices: "Invoices", "cost-catalog": "Cost Catalog", "cost-entries": "Cost Entries", budgets: "Budgets", kpis: "KPIs",
-      settings: "Settings", company: "Company Profile", template: "Template Builder", logs: "Logs", employees: "Employees",
-      departments: "Departments", "business-partners": "Partners",
-      notifications: "Notifications", new: "New", email: "Email",
-      telematic: "Telematic", live: "Live", history: "History", groups: "Groups", notifications: "Notifications", reports: "Reports",
-      "action-center": "Action Center",
+      tms: t("nav.tms"), orders: t("nav.orders"), planning: t("nav.planning"), forwarding: t("nav.forwarderBoard"), reports: t("nav.reports"), "ai-usage": t("nav.aiUsage"), exchange: t("nav.exchange"), "carrier-groups": t("nav.carrierGroups"),
+      fsm: t("nav.fsm"), tasks: t("nav.tasks"), forms: t("nav.forms"), "live-map": t("nav.liveMap"), chat: t("nav.chat"),
+      geofences: t("nav.geofences"), drivers: t("nav.drivers"), vehicles: t("nav.vehicles"), trailers: t("nav.trailers"),
+      documents: t("nav.documents"), maintenance: t("nav.maintenance"), hr: t("nav.hr"),
+      finance: t("nav.finance"), dashboard: t("nav.dashboard"), invoices: t("nav.invoices"), "cost-catalog": t("nav.costCatalog"), "cost-entries": t("nav.costEntries"), budgets: t("nav.budgets"), kpis: t("nav.kpis"),
+      settings: t("nav.settings"), company: t("nav.companyProfile"), template: t("nav.templateBuilder"), logs: t("nav.logs"), employees: t("nav.employees"),
+      departments: t("nav.departments"), "business-partners": t("nav.partners"),
+      new: t("nav.new"), email: t("nav.email"),
+      telematic: t("nav.telematic"), live: t("nav.live"), history: t("nav.history"), groups: t("nav.groups"), notifications: t("nav.notifications"),
+      "action-center": t("nav.actionCenter"),
     };
     let path = "/admin";
     for (const seg of segments) {
@@ -419,90 +421,90 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const navItems: NavItem[] = [
     ...(isModuleEnabled("tms") && (canAccess("tms") || hasFullAccess()) ? [{
       href: "/admin/tms/orders",
-      label: "TMS",
+      label: t("nav.tms"),
       icon: Truck,
       module: "tms",
       children: [
-        { href: "/admin/tms/orders", label: "Orders", icon: Package },
-        { href: "/admin/tms/orders/new", label: "New Order", icon: Plus },
-        { href: "/admin/tms/planning", label: "Dispatch Board", icon: Radio },
-        { href: "/admin/tms/forwarding", label: "Forwarder Board", icon: ArrowLeftRight },
+        { href: "/admin/tms/orders", label: t("nav.orders"), icon: Package },
+        { href: "/admin/tms/orders/new", label: t("nav.newOrder"), icon: Plus },
+        { href: "/admin/tms/planning", label: t("nav.dispatchBoard"), icon: Radio },
+        { href: "/admin/tms/forwarding", label: t("nav.forwarderBoard"), icon: ArrowLeftRight },
         {
           group: true as const,
           key: "exchange",
-          label: "Freight Exchange",
+          label: t("nav.exchange"),
           icon: Globe,
           items: [
-            { href: "/admin/tms/exchange", label: "Offers", icon: Globe },
-            { href: "/admin/tms/exchange/carrier-groups", label: "Carrier Groups", icon: Users },
+            { href: "/admin/tms/exchange", label: t("nav.offers"), icon: Globe },
+            { href: "/admin/tms/exchange/carrier-groups", label: t("nav.carrierGroups"), icon: Users },
           ],
         },
-        { href: "/admin/action-center", label: "Action Center", icon: AlertCircle, badge: actionCenterAlerts },
+        { href: "/admin/action-center", label: t("nav.actionCenter"), icon: AlertCircle, badge: actionCenterAlerts },
         ...(isModuleEnabled("finance") && (canAccess("finance") || hasFullAccess()) ? [{
           group: true as const,
           key: "finance",
-          label: "Finance",
+          label: t("nav.finance"),
           icon: Wallet,
           items: [
-            { href: "/admin/finance/dashboard", label: "Dashboard", icon: LineChart },
-            { href: "/admin/finance/review", label: "Review Queue", icon: Sparkles },
-            { href: "/admin/finance/invoices", label: "Invoices", icon: FileText },
-            { href: "/admin/finance/cost-catalog", label: "Cost Catalog", icon: BookOpen },
-            { href: "/admin/finance/cost-entries", label: "Cost Entries", icon: Receipt },
-            { href: "/admin/finance/budgets", label: "Budgets", icon: PiggyBank },
-            { href: "/admin/finance/kpis", label: "KPIs", icon: Target },
-            { href: "/admin/finance/reports", label: "Reports", icon: BarChart3 },
+            { href: "/admin/finance/dashboard", label: t("nav.dashboard"), icon: LineChart },
+            { href: "/admin/finance/review", label: t("nav.reviewQueue"), icon: Sparkles },
+            { href: "/admin/finance/invoices", label: t("nav.invoices"), icon: FileText },
+            { href: "/admin/finance/cost-catalog", label: t("nav.costCatalog"), icon: BookOpen },
+            { href: "/admin/finance/cost-entries", label: t("nav.costEntries"), icon: Receipt },
+            { href: "/admin/finance/budgets", label: t("nav.budgets"), icon: PiggyBank },
+            { href: "/admin/finance/kpis", label: t("nav.kpis"), icon: Target },
+            { href: "/admin/finance/reports", label: t("nav.reports"), icon: BarChart3 },
           ],
         }] : []),
-        { href: "/admin/tms/toll-rates", label: "Toll Rates", icon: Calculator },
-        { href: "/admin/tms/reports", label: "Reports", icon: BarChart3 },
-        { href: "/admin/tms/ai-usage", label: "AI Usage", icon: Sparkles },
+        { href: "/admin/tms/toll-rates", label: t("nav.tollRates"), icon: Calculator },
+        { href: "/admin/tms/reports", label: t("nav.reports"), icon: BarChart3 },
+        { href: "/admin/tms/ai-usage", label: t("nav.aiUsage"), icon: Sparkles },
       ],
     }] : []),
     ...(isModuleEnabled("telematic") && (canAccess("telematic") || hasFullAccess()) ? [{
       href: "/admin/telematic/live",
-      label: "Telematic",
+      label: t("nav.telematic"),
       icon: Satellite,
       module: "telematic",
       children: [
-        { href: "/admin/telematic/live", label: "Live", icon: Radio },
-        { href: "/admin/telematic/reports", label: "Reports", icon: BarChart3 },
-        { href: "/admin/telematic/history", label: "History", icon: History },
-        { href: "/admin/telematic/groups", label: "Groups", icon: FolderKanban },
-        { href: "/admin/telematic/geofences", label: "Geofences", icon: MapPin },
-        { href: "/admin/telematic/notifications", label: "Notifications", icon: BellRing },
+        { href: "/admin/telematic/live", label: t("nav.live"), icon: Radio },
+        { href: "/admin/telematic/reports", label: t("nav.reports"), icon: BarChart3 },
+        { href: "/admin/telematic/history", label: t("nav.history"), icon: History },
+        { href: "/admin/telematic/groups", label: t("nav.groups"), icon: FolderKanban },
+        { href: "/admin/telematic/geofences", label: t("nav.geofences"), icon: MapPin },
+        { href: "/admin/telematic/notifications", label: t("nav.notifications"), icon: BellRing },
       ],
     }] : []),
     ...(isModuleEnabled("fsm") && (canAccess("fsm") || hasFullAccess()) ? [{
       href: "/admin/fsm/tasks",
-      label: "FSM",
+      label: t("nav.fsm"),
       icon: Route,
       module: "fsm",
       children: [
-        { href: "/admin/fsm/tasks", label: "Tasks", icon: ListTodo },
-        { href: "/admin/fsm/tasks/new", label: "New Task", icon: Plus },
-        { href: "/admin/fsm/live-map", label: "Live Map", icon: Radio },
-        { href: "/admin/fsm/geofences", label: "Geofences", icon: MapPin },
-        { href: "/admin/fsm/forms", label: "Task Forms", icon: Shapes },
+        { href: "/admin/fsm/tasks", label: t("nav.tasks"), icon: ListTodo },
+        { href: "/admin/fsm/tasks/new", label: t("nav.newTask"), icon: Plus },
+        { href: "/admin/fsm/live-map", label: t("nav.liveMap"), icon: Radio },
+        { href: "/admin/fsm/geofences", label: t("nav.geofences"), icon: MapPin },
+        { href: "/admin/fsm/forms", label: t("nav.taskForms"), icon: Shapes },
       ],
     }] : []),
-    ...(isModuleEnabled("forms") && (canAccess("forms") || hasFullAccess()) ? [{ href: "/admin/forms", label: "Forms", icon: ClipboardList, module: "forms" }] : []),
-    ...(isModuleEnabled("documents") && (canAccess("documents") || hasFullAccess()) ? [{ href: "/admin/documents", label: "Documents", icon: FileText, module: "documents", badge: documentAlerts }] : []),
-    ...(isModuleEnabled("maintenance") && (canAccess("maintenance") || hasFullAccess()) ? [{ href: "/admin/maintenance", label: "Maintenance", icon: Wrench, module: "maintenance", badge: maintenanceAlerts }] : []),
-    ...(isModuleEnabled("hr") && (canAccess("hr") || hasFullAccess()) ? [{ href: "/admin/hr", label: "HR", icon: CalendarDays, module: "hr" }] : []),
+    ...(isModuleEnabled("forms") && (canAccess("forms") || hasFullAccess()) ? [{ href: "/admin/forms", label: t("nav.forms"), icon: ClipboardList, module: "forms" }] : []),
+    ...(isModuleEnabled("documents") && (canAccess("documents") || hasFullAccess()) ? [{ href: "/admin/documents", label: t("nav.documents"), icon: FileText, module: "documents", badge: documentAlerts }] : []),
+    ...(isModuleEnabled("maintenance") && (canAccess("maintenance") || hasFullAccess()) ? [{ href: "/admin/maintenance", label: t("nav.maintenance"), icon: Wrench, module: "maintenance", badge: maintenanceAlerts }] : []),
+    ...(isModuleEnabled("hr") && (canAccess("hr") || hasFullAccess()) ? [{ href: "/admin/hr", label: t("nav.hr"), icon: CalendarDays, module: "hr" }] : []),
     ...(isModuleEnabled("masterdata") && (canAccess("vehicles") || canAccess("drivers") || canAccess("employees") || hasFullAccess()) ? [{
       href: "/admin/drivers",
-      label: "Master Data",
+      label: t("nav.masterData"),
       icon: Database,
       module: "masterdata",
       children: [
-        ...(canAccess("vehicles") || hasFullAccess() ? [{ href: "/admin/vehicles", label: "Vehicles", icon: Car }] : []),
-        ...(canAccess("vehicles") || hasFullAccess() ? [{ href: "/admin/trailers", label: "Trailers", icon: Truck }] : []),
-        ...(canAccess("drivers") || hasFullAccess() ? [{ href: "/admin/drivers", label: "Drivers", icon: Users }] : []),
-        ...(canAccess("vehicles") || canAccess("drivers") || hasFullAccess() ? [{ href: "/admin/fleet-groups", label: "Fleet Groups", icon: FolderKanban }] : []),
-        { href: "/admin/business-partners", label: "Partners", icon: Handshake },
-        ...(canAccess("employees") || hasFullAccess() ? [{ href: "/admin/employees", label: "Employees", icon: UserCircle }] : []),
-        ...(canAccess("employees") || hasFullAccess() ? [{ href: "/admin/departments", label: "Departments", icon: Building2 }] : []),
+        ...(canAccess("vehicles") || hasFullAccess() ? [{ href: "/admin/vehicles", label: t("nav.vehicles"), icon: Car }] : []),
+        ...(canAccess("vehicles") || hasFullAccess() ? [{ href: "/admin/trailers", label: t("nav.trailers"), icon: Truck }] : []),
+        ...(canAccess("drivers") || hasFullAccess() ? [{ href: "/admin/drivers", label: t("nav.drivers"), icon: Users }] : []),
+        ...(canAccess("vehicles") || canAccess("drivers") || hasFullAccess() ? [{ href: "/admin/fleet-groups", label: t("nav.fleetGroups"), icon: FolderKanban }] : []),
+        { href: "/admin/business-partners", label: t("nav.partners"), icon: Handshake },
+        ...(canAccess("employees") || hasFullAccess() ? [{ href: "/admin/employees", label: t("nav.employees"), icon: UserCircle }] : []),
+        ...(canAccess("employees") || hasFullAccess() ? [{ href: "/admin/departments", label: t("nav.departments"), icon: Building2 }] : []),
       ],
     }] : []),
   ];
@@ -712,7 +714,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   )}
   </span>
   <span className={`truncate whitespace-nowrap transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 group-hover/sidebar:opacity-100"}`}>
-  Email
+  {t("nav.email")}
   </span>
   {emailUnread > 0 && sidebarExpanded && (
   <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
@@ -732,7 +734,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             >
               <Settings className="h-4.5 w-4.5 flex-shrink-0" />
               <span className={`truncate whitespace-nowrap transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 group-hover/sidebar:opacity-100"}`}>
-                Settings
+                {t("nav.settings")}
               </span>
             </Link>
           )}
@@ -747,7 +749,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             >
               <ScrollText className="h-4.5 w-4.5 flex-shrink-0" />
               <span className={`truncate whitespace-nowrap transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 group-hover/sidebar:opacity-100"}`}>
-                Logs
+                {t("nav.logs")}
               </span>
             </Link>
           )}
@@ -835,26 +837,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     <div className="px-3 py-2">
                       <p className="text-sm font-medium truncate">{userEmail}</p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {adminSession?.role || (adminSession?.isOwner ? "Owner" : "Admin")}
+                        {adminSession?.role || (adminSession?.isOwner ? t("header.owner") : t("header.admin"))}
                       </p>
                     </div>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
                       <Link href="/admin/settings" className="cursor-pointer">
                         <Settings className="h-4 w-4 mr-2" />
-                        Settings
+                        {t("nav.settings")}
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link href="/admin/notifications" className="cursor-pointer">
                         <ClipboardList className="h-4 w-4 mr-2" />
-                        All Notifications
+                        {t("header.allNotifications")}
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link href="/admin/logs" className="cursor-pointer">
                         <ScrollText className="h-4 w-4 mr-2" />
-                        Activity Logs
+                        {t("header.activityLogs")}
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
@@ -863,7 +865,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       onClick={handleLogout}
                     >
                       <LogOut className="h-4 w-4 mr-2" />
-                      Log out
+                      {t("common.logout")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
