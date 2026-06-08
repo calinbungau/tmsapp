@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Truck, MapPin } from "lucide-react";
+import { Truck, MapPin, Shield } from "lucide-react";
 
 // Extend window to include updateNotificationToken
 declare global {
@@ -229,8 +229,9 @@ export default function DriverLoginPage() {
             <button
               type="button"
               onClick={() => handleAltLogin(`${window.location.origin}/admin`)}
-              className="text-sm text-muted-foreground hover:text-primary transition-colors"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors"
             >
+              <Shield className="h-4 w-4" />
               Admin Panel
             </button>
           </div>
