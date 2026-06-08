@@ -10,10 +10,12 @@ import { Label } from "@/components/ui/label";
 import { Shield, Check, HardDrive, Users, Car, FileText, Building, Building2, MapPin, Loader2, ChevronRight, UserCog, FolderTree, ArrowLeftRight, Mail, Link2, Bell } from "lucide-react";
 import { useAdminSession } from "@/hooks/use-admin-session";
 import { AppearanceSettings } from "@/components/appearance-settings";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import Link from "next/link";
 
 export default function AdminSettingsPage() {
   const { session: adminSession } = useAdminSession();
+  const { t } = useTranslation();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -137,16 +139,16 @@ export default function AdminSettingsPage() {
         .eq("id", adminSession.id);
 
       if (error) {
-        setMessage({ type: "error", text: "Failed to update company name" });
+        setMessage({ type: "error", text: t("settings.msgCompanyFailed") });
       } else {
         // Update localStorage
         const session = JSON.parse(localStorage.getItem("admin_session") || "{}");
         session.company_name = companyName;
         localStorage.setItem("admin_session", JSON.stringify(session));
-        setMessage({ type: "success", text: "Company name updated successfully" });
+        setMessage({ type: "success", text: t("settings.msgCompanyUpdated") });
       }
     } catch {
-      setMessage({ type: "error", text: "Something went wrong" });
+      setMessage({ type: "error", text: t("settings.msgSomethingWrong") });
     } finally {
       setLoading(false);
     }
@@ -170,12 +172,12 @@ export default function AdminSettingsPage() {
         .eq("id", adminSession.id);
 
       if (error) {
-        setTraccarMessage({ type: "error", text: "Failed to save Traccar settings" });
+        setTraccarMessage({ type: "error", text: t("settings.msgTraccarFailed") });
       } else {
-        setTraccarMessage({ type: "success", text: "Traccar settings saved successfully" });
+        setTraccarMessage({ type: "success", text: t("settings.msgTraccarSaved") });
       }
     } catch {
-      setTraccarMessage({ type: "error", text: "Something went wrong" });
+      setTraccarMessage({ type: "error", text: t("settings.msgSomethingWrong") });
     } finally {
       setLoading(false);
     }
@@ -183,7 +185,7 @@ export default function AdminSettingsPage() {
 
   const handleTestTraccar = async () => {
     if (!adminSession?.id || !traccarServerUrl || !traccarEmail || !traccarPassword) {
-      setTraccarMessage({ type: "error", text: "Please fill in all Traccar fields" });
+      setTraccarMessage({ type: "error", text: t("settings.msgTraccarFields") });
       return;
     }
     
@@ -201,16 +203,16 @@ export default function AdminSettingsPage() {
       if (response.ok && data.devices) {
         setTraccarMessage({ 
           type: "success", 
-          text: `Connected successfully! Found ${data.devices.length} device(s).` 
+          text: t("settings.msgTraccarConnected").replace("{count}", String(data.devices.length)),
         });
       } else {
         setTraccarMessage({ 
           type: "error", 
-          text: data.error || "Failed to connect to Traccar" 
+          text: data.error || t("settings.msgTraccarConnectFailed"),
         });
       }
     } catch {
-      setTraccarMessage({ type: "error", text: "Failed to test Traccar connection" });
+      setTraccarMessage({ type: "error", text: t("settings.msgTraccarTestFailed") });
     } finally {
       setTestingTraccar(false);
     }
@@ -222,12 +224,12 @@ export default function AdminSettingsPage() {
     setMessage(null);
 
     if (newPassword !== confirmPassword) {
-      setMessage({ type: "error", text: "New passwords do not match" });
+      setMessage({ type: "error", text: t("settings.msgPasswordMismatch") });
       return;
     }
 
     if (newPassword.length < 4) {
-      setMessage({ type: "error", text: "Password must be at least 4 characters" });
+      setMessage({ type: "error", text: t("settings.msgPasswordTooShort") });
       return;
     }
 
@@ -244,13 +246,13 @@ export default function AdminSettingsPage() {
         .single();
 
       if (fetchError || !admin) {
-        setMessage({ type: "error", text: "Failed to verify current password" });
+        setMessage({ type: "error", text: t("settings.msgPasswordVerifyFailed") });
         setLoading(false);
         return;
       }
 
       if (admin.password_hash !== currentPassword) {
-        setMessage({ type: "error", text: "Current password is incorrect" });
+        setMessage({ type: "error", text: t("settings.msgPasswordIncorrect") });
         setLoading(false);
         return;
       }
@@ -262,15 +264,15 @@ export default function AdminSettingsPage() {
         .eq("id", adminSession.id);
 
       if (updateError) {
-        setMessage({ type: "error", text: "Failed to update password" });
+        setMessage({ type: "error", text: t("settings.msgPasswordUpdateFailed") });
       } else {
-        setMessage({ type: "success", text: "Password changed successfully" });
+        setMessage({ type: "success", text: t("settings.msgPasswordChanged") });
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
       }
     } catch {
-      setMessage({ type: "error", text: "Something went wrong" });
+      setMessage({ type: "error", text: t("settings.msgSomethingWrong") });
     } finally {
       setLoading(false);
     }
@@ -279,8 +281,8 @@ export default function AdminSettingsPage() {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="text-muted-foreground">Manage your account and view usage statistics</p>
+        <h1 className="text-2xl font-semibold">{t("settings.title")}</h1>
+        <p className="text-muted-foreground">{t("settings.subtitle")}</p>
       </div>
 
       {/* Appearance: theme + language */}
@@ -298,8 +300,8 @@ export default function AdminSettingsPage() {
                       <UserCog className="h-5 w-5 text-blue-500" />
                     </div>
                     <div>
-                      <h3 className="font-medium">Users & Roles</h3>
-                      <p className="text-sm text-muted-foreground">Manage user accounts and permissions</p>
+                      <h3 className="font-medium">{t("settings.usersRoles")}</h3>
+                      <p className="text-sm text-muted-foreground">{t("settings.usersRolesDesc")}</p>
                     </div>
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -316,8 +318,8 @@ export default function AdminSettingsPage() {
                       <Shield className="h-5 w-5 text-purple-500" />
                     </div>
                     <div>
-                      <h3 className="font-medium">Roles & Permissions</h3>
-                      <p className="text-sm text-muted-foreground">Configure access control and roles</p>
+                      <h3 className="font-medium">{t("settings.rolesPermissions")}</h3>
+                      <p className="text-sm text-muted-foreground">{t("settings.rolesPermissionsDesc")}</p>
                     </div>
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -334,8 +336,8 @@ export default function AdminSettingsPage() {
                       <Building className="h-5 w-5 text-amber-500" />
                     </div>
                     <div>
-                      <h3 className="font-medium">Company Profile</h3>
-                      <p className="text-sm text-muted-foreground">Company details, numbering format, defaults</p>
+                      <h3 className="font-medium">{t("settings.companyProfile")}</h3>
+                      <p className="text-sm text-muted-foreground">{t("settings.companyProfileDesc")}</p>
                     </div>
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -352,8 +354,8 @@ export default function AdminSettingsPage() {
                       <ArrowLeftRight className="h-5 w-5 text-emerald-500" />
                     </div>
                     <div>
-                      <h3 className="font-medium">Forwarder Configurator</h3>
-                      <p className="text-sm text-muted-foreground">Profit currency, margins, templates & notifications</p>
+                      <h3 className="font-medium">{t("settings.forwarderConfigurator")}</h3>
+                      <p className="text-sm text-muted-foreground">{t("settings.forwarderConfiguratorDesc")}</p>
                     </div>
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -370,8 +372,8 @@ export default function AdminSettingsPage() {
                       <FileText className="h-5 w-5 text-amber-500" />
                     </div>
                     <div>
-                      <h3 className="font-medium">Series Configurator</h3>
-                      <p className="text-sm text-muted-foreground">Document numbering for orders, invoices & more</p>
+                      <h3 className="font-medium">{t("settings.seriesConfigurator")}</h3>
+                      <p className="text-sm text-muted-foreground">{t("settings.seriesConfiguratorDesc")}</p>
                     </div>
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -388,8 +390,8 @@ export default function AdminSettingsPage() {
                       <Mail className="h-5 w-5 text-rose-500" />
                     </div>
                     <div>
-                      <h3 className="font-medium">System Email</h3>
-                      <p className="text-sm text-muted-foreground">SMTP for reports, alerts & notifications</p>
+                      <h3 className="font-medium">{t("settings.systemEmail")}</h3>
+                      <p className="text-sm text-muted-foreground">{t("settings.systemEmailDesc")}</p>
                     </div>
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -406,8 +408,8 @@ export default function AdminSettingsPage() {
                       <Bell className="h-5 w-5 text-orange-500" />
                     </div>
                     <div>
-                      <h3 className="font-medium">Action Center</h3>
-                      <p className="text-sm text-muted-foreground">Alert rules, reminder schedules & escalation</p>
+                      <h3 className="font-medium">{t("settings.actionCenter")}</h3>
+                      <p className="text-sm text-muted-foreground">{t("settings.actionCenterDesc")}</p>
                     </div>
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -424,8 +426,8 @@ export default function AdminSettingsPage() {
                       <Link2 className="h-5 w-5 text-cyan-500" />
                     </div>
                     <div>
-                      <h3 className="font-medium">Integrations</h3>
-                      <p className="text-sm text-muted-foreground">Smartbill, FGO & billing software</p>
+                      <h3 className="font-medium">{t("settings.integrations")}</h3>
+                      <p className="text-sm text-muted-foreground">{t("settings.integrationsDesc")}</p>
                     </div>
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -442,8 +444,8 @@ export default function AdminSettingsPage() {
                       <FileText className="h-5 w-5 text-violet-500" />
                     </div>
                     <div>
-                      <h3 className="font-medium">AI Extraction Instructions</h3>
-                      <p className="text-sm text-muted-foreground">Custom AI prompts for document extraction</p>
+                      <h3 className="font-medium">{t("settings.aiExtraction")}</h3>
+                      <p className="text-sm text-muted-foreground">{t("settings.aiExtractionDesc")}</p>
                     </div>
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -461,8 +463,8 @@ export default function AdminSettingsPage() {
                         <Building2 className="h-5 w-5 text-primary" />
                       </div>
                       <div>
-                        <h3 className="font-medium">Tenant Management</h3>
-                        <p className="text-sm text-muted-foreground">Create & manage admin accounts (Super Admin)</p>
+                        <h3 className="font-medium">{t("settings.tenantManagement")}</h3>
+                        <p className="text-sm text-muted-foreground">{t("settings.tenantManagementDesc")}</p>
                       </div>
                     </div>
                     <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -479,34 +481,34 @@ export default function AdminSettingsPage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <HardDrive className="h-5 w-5 text-primary" />
-            <CardTitle>Usage Statistics</CardTitle>
+            <CardTitle>{t("settings.usageStatistics")}</CardTitle>
           </div>
-          <CardDescription>Your current storage and resource usage</CardDescription>
+          <CardDescription>{t("settings.usageStatisticsDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           {loadingStats ? (
-            <p className="text-muted-foreground">Loading statistics...</p>
+            <p className="text-muted-foreground">{t("settings.loadingStatistics")}</p>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="p-4 bg-muted/50 rounded-lg text-center">
                 <HardDrive className="h-6 w-6 mx-auto mb-2 text-blue-500" />
                 <p className="text-2xl font-bold">{formatBytes(stats.storageSize)}</p>
-                <p className="text-xs text-muted-foreground">Storage Used</p>
+                <p className="text-xs text-muted-foreground">{t("settings.storageUsed")}</p>
               </div>
               <div className="p-4 bg-muted/50 rounded-lg text-center">
                 <Users className="h-6 w-6 mx-auto mb-2 text-green-500" />
                 <p className="text-2xl font-bold">{stats.driverCount}</p>
-                <p className="text-xs text-muted-foreground">Drivers</p>
+                <p className="text-xs text-muted-foreground">{t("settings.drivers")}</p>
               </div>
               <div className="p-4 bg-muted/50 rounded-lg text-center">
                 <Car className="h-6 w-6 mx-auto mb-2 text-orange-500" />
                 <p className="text-2xl font-bold">{stats.vehicleCount}</p>
-                <p className="text-xs text-muted-foreground">Vehicles</p>
+                <p className="text-xs text-muted-foreground">{t("settings.vehicles")}</p>
               </div>
               <div className="p-4 bg-muted/50 rounded-lg text-center">
                 <FileText className="h-6 w-6 mx-auto mb-2 text-purple-500" />
                 <p className="text-2xl font-bold">{stats.inspectionCount}</p>
-                <p className="text-xs text-muted-foreground">Inspections</p>
+                <p className="text-xs text-muted-foreground">{t("settings.inspections")}</p>
               </div>
             </div>
           )}
@@ -518,20 +520,20 @@ export default function AdminSettingsPage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Building className="h-5 w-5 text-primary" />
-            <CardTitle>Company Information</CardTitle>
+            <CardTitle>{t("settings.companyInformation")}</CardTitle>
           </div>
-          <CardDescription>Update your company name displayed in the header</CardDescription>
+          <CardDescription>{t("settings.companyInformationDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex gap-4">
             <Input
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
-              placeholder="Enter company name"
+              placeholder={t("settings.companyNamePlaceholder")}
               className="flex-1"
             />
             <Button onClick={handleUpdateCompany} disabled={loading}>
-              {loading ? "Saving..." : "Save"}
+              {loading ? t("settings.saving") : t("settings.save")}
             </Button>
           </div>
         </CardContent>
@@ -542,40 +544,40 @@ export default function AdminSettingsPage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <MapPin className="h-5 w-5 text-primary" />
-            <CardTitle>Traccar GPS Integration</CardTitle>
+            <CardTitle>{t("settings.traccarTitle")}</CardTitle>
           </div>
           <CardDescription>
-            Connect to your Traccar server to sync vehicle odometer and engine hours
+            {t("settings.traccarDesc")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="traccar-url">Server URL</Label>
+            <Label htmlFor="traccar-url">{t("settings.serverUrl")}</Label>
             <Input
               id="traccar-url"
               value={traccarServerUrl}
               onChange={(e) => setTraccarServerUrl(e.target.value)}
-              placeholder="https://your-traccar-server.com"
+              placeholder={t("settings.serverUrlPlaceholder")}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="traccar-email">Email</Label>
+            <Label htmlFor="traccar-email">{t("settings.email")}</Label>
             <Input
               id="traccar-email"
               type="email"
               value={traccarEmail}
               onChange={(e) => setTraccarEmail(e.target.value)}
-              placeholder="admin@example.com"
+              placeholder={t("settings.emailPlaceholder")}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="traccar-password">Password</Label>
+            <Label htmlFor="traccar-password">{t("settings.password")}</Label>
             <Input
               id="traccar-password"
               type="password"
               value={traccarPassword}
               onChange={(e) => setTraccarPassword(e.target.value)}
-              placeholder="Enter Traccar password"
+              placeholder={t("settings.traccarPasswordPlaceholder")}
             />
           </div>
           
@@ -594,7 +596,7 @@ export default function AdminSettingsPage() {
           
           <div className="flex gap-2">
             <Button onClick={handleSaveTraccar} disabled={loading}>
-              {loading ? "Saving..." : "Save"}
+              {loading ? t("settings.saving") : t("settings.save")}
             </Button>
             <Button
               variant="outline"
@@ -605,10 +607,10 @@ export default function AdminSettingsPage() {
               {testingTraccar ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Testing...
+                  {t("settings.testing")}
                 </>
               ) : (
-                "Test Connection"
+                t("settings.testConnection")
               )}
             </Button>
           </div>
@@ -620,42 +622,42 @@ export default function AdminSettingsPage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-primary" />
-            <CardTitle>Change Password</CardTitle>
+            <CardTitle>{t("settings.changePassword")}</CardTitle>
           </div>
-          <CardDescription>Update your admin password</CardDescription>
+          <CardDescription>{t("settings.changePasswordDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleChangePassword} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="current">Current Password</Label>
+              <Label htmlFor="current">{t("settings.currentPassword")}</Label>
               <Input
                 id="current"
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="Enter current password"
+                placeholder={t("settings.currentPasswordPlaceholder")}
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="new">New Password</Label>
+              <Label htmlFor="new">{t("settings.newPassword")}</Label>
               <Input
                 id="new"
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Enter new password"
+                placeholder={t("settings.newPasswordPlaceholder")}
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirm">Confirm New Password</Label>
+              <Label htmlFor="confirm">{t("settings.confirmNewPassword")}</Label>
               <Input
                 id="confirm"
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm new password"
+                placeholder={t("settings.confirmNewPasswordPlaceholder")}
                 required
               />
             </div>
@@ -674,7 +676,7 @@ export default function AdminSettingsPage() {
             )}
 
             <Button type="submit" disabled={loading}>
-              {loading ? "Saving..." : "Change Password"}
+              {loading ? t("settings.saving") : t("settings.changePassword")}
             </Button>
           </form>
         </CardContent>
@@ -683,12 +685,12 @@ export default function AdminSettingsPage() {
       {/* About */}
       <Card>
         <CardHeader>
-          <CardTitle>About</CardTitle>
+          <CardTitle>{t("settings.about")}</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-2">
-          <p>Driver Daily Inspection System</p>
-          <p>This system allows drivers to complete mandatory daily vehicle inspections by uploading photos of their vehicles.</p>
-          <p className="text-xs mt-4">Account: {adminSession?.email}</p>
+          <p>{t("settings.aboutProduct")}</p>
+          <p>{t("settings.aboutDescription")}</p>
+          <p className="text-xs mt-4">{t("settings.account")}: {adminSession?.email}</p>
         </CardContent>
       </Card>
     </div>
