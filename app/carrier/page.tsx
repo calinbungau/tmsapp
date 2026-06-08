@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Truck, Loader2 } from "lucide-react";
+import { Truck, Loader2, MapPin } from "lucide-react";
 import {
   getStoredCarrierSession,
   setStoredCarrierSession,
@@ -207,18 +207,27 @@ function CarrierAuth() {
                 </>
               )}
             </div>
+
+            <div className="mt-6 grid grid-cols-2 gap-3 border-t border-border/40 pt-4">
+              <button
+                type="button"
+                onClick={() => handleAltLogin("https://gps.bngtracking.ro/")}
+                className="group flex items-center justify-center gap-2 h-11 rounded-xl border border-border/40 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-card/50 transition-all"
+              >
+                <MapPin className="h-4 w-4 group-hover:text-primary transition-colors" />
+                Telematic
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAltLogin(`${window.location.origin}/admin`)}
+                className="group flex items-center justify-center gap-2 h-11 rounded-xl border border-border/40 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-card/50 transition-all"
+              >
+                <Truck className="h-4 w-4 group-hover:text-primary transition-colors" />
+                Admin Panel
+              </button>
+            </div>
           </CardContent>
         </Card>
-
-        <div className="mt-6 text-center">
-          <button
-            type="button"
-            onClick={() => handleAltLogin(`${window.location.origin}/admin`)}
-            className="text-sm text-muted-foreground hover:text-primary transition-colors"
-          >
-            Admin Panel
-          </button>
-        </div>
 
         <div className="mt-6">
           <AppPromo subtitle="Get the BNG Tracking app for the full carrier experience on the go." />
