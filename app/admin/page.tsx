@@ -579,13 +579,13 @@ export default function AdminDashboard() {
       <div className="relative z-10 flex flex-col items-center gap-6 px-6">
         {/* Logo */}
         <div className="flex flex-col items-center">
-          <div className="flex items-center justify-center rounded-2xl bg-[#0E101F] p-5 shadow-lg ring-1 ring-white/5">
+          <div className="flex items-center justify-center rounded-2xl p-5 bg-[#0E101F] shadow-lg ring-1 ring-white/5 dark:bg-transparent dark:p-0 dark:shadow-none dark:ring-0">
             <Image
               src="/images/logo-full-bng.png"
               alt="BNG Tracking"
               width={120}
               height={48}
-              className="block opacity-90"
+              className="block h-12 w-auto object-contain opacity-90"
               priority
             />
           </div>
