@@ -1,9 +1,15 @@
-import { Apple, Play } from "lucide-react";
+"use client";
+
+import { useEffect, useState } from "react";
 import { APP_LINKS, APP_NAME } from "@/lib/exchange/app-links";
 
 /**
  * Promotes the BNG Tracking mobile app with App Store / Google Play buttons.
- * Store URLs live in lib/exchange/app-links.ts (swap placeholders when live).
+ * Store URLs live in lib/exchange/app-links.ts.
+ *
+ * Only renders in a plain browser. When the Flutter bridge is present
+ * (window.appInterface.postMessage), the user is already inside the native
+ * app, so the promo is hidden.
  */
 export function AppPromo({
   compact = false,
@@ -12,6 +18,18 @@ export function AppPromo({
   compact?: boolean;
   subtitle?: string;
 }) {
+  const [showPromo, setShowPromo] = useState(false);
+
+  useEffect(() => {
+    const w = window as any;
+    const bridgePresent =
+      typeof w?.appInterface?.postMessage === "function" ||
+      typeof w?.webkit?.messageHandlers?.appInterface?.postMessage === "function";
+    setShowPromo(!bridgePresent);
+  }, []);
+
+  if (!showPromo) return null;
+
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       {!compact && (
@@ -30,7 +48,7 @@ export function AppPromo({
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-2 rounded-lg bg-foreground px-3 py-2 text-background transition-opacity hover:opacity-90"
         >
-          <Apple className="h-5 w-5" />
+          <img src="/icons/app-store.svg" alt="" aria-hidden="true" className="h-5 w-5" />
           <span className="text-left leading-tight">
             <span className="block text-[10px] opacity-80">Download on the</span>
             <span className="block text-sm font-semibold">App Store</span>
@@ -42,7 +60,7 @@ export function AppPromo({
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-2 rounded-lg bg-foreground px-3 py-2 text-background transition-opacity hover:opacity-90"
         >
-          <Play className="h-5 w-5" />
+          <img src="/icons/google-play.svg" alt="" aria-hidden="true" className="h-5 w-5" />
           <span className="text-left leading-tight">
             <span className="block text-[10px] opacity-80">Get it on</span>
             <span className="block text-sm font-semibold">Google Play</span>
