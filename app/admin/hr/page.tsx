@@ -48,6 +48,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 
 interface LeaveRequest {
   id: string;
@@ -130,6 +131,7 @@ interface Employee {
 
 export default function HRDashboardPage() {
   const { session: adminSession } = useAdminSession();
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("requests");
   const [loading, setLoading] = useState(true);
 
@@ -602,10 +604,10 @@ export default function HRDashboardPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "pending": return <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/30">Pending</Badge>;
-      case "approved": return <Badge className="bg-green-500/10 text-green-600 border-green-500/30">Approved</Badge>;
-      case "rejected": return <Badge className="bg-red-500/10 text-red-600 border-red-500/30">Rejected</Badge>;
-      case "cancelled": return <Badge className="bg-muted text-muted-foreground">Cancelled</Badge>;
+      case "pending": return <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/30">{t("hr.pending")}</Badge>;
+      case "approved": return <Badge className="bg-green-500/10 text-green-600 border-green-500/30">{t("hr.approved")}</Badge>;
+      case "rejected": return <Badge className="bg-red-500/10 text-red-600 border-red-500/30">{t("hr.rejected")}</Badge>;
+      case "cancelled": return <Badge className="bg-muted text-muted-foreground">{t("hr.cancelled")}</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }
   };
@@ -621,8 +623,8 @@ export default function HRDashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">HR - Leave Management</h1>
-        <p className="text-muted-foreground">Manage employee leave requests, policies, and entitlements</p>
+        <h1 className="text-2xl font-bold">{t("hr.title")}</h1>
+        <p className="text-muted-foreground">{t("hr.subtitle")}</p>
       </div>
 
       {/* Stats Cards */}
@@ -635,7 +637,7 @@ export default function HRDashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.pendingCount}</p>
-                <p className="text-xs text-muted-foreground">Pending Requests</p>
+                <p className="text-xs text-muted-foreground">{t("hr.pendingRequests")}</p>
               </div>
             </div>
           </CardContent>
@@ -648,7 +650,7 @@ export default function HRDashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.approvedThisMonth}</p>
-                <p className="text-xs text-muted-foreground">Approved This Month</p>
+                <p className="text-xs text-muted-foreground">{t("hr.approvedThisMonth")}</p>
               </div>
             </div>
           </CardContent>
@@ -661,7 +663,7 @@ export default function HRDashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.employeesOnLeaveToday}</p>
-                <p className="text-xs text-muted-foreground">On Leave Today</p>
+                <p className="text-xs text-muted-foreground">{t("hr.onLeaveToday")}</p>
               </div>
             </div>
           </CardContent>
@@ -674,7 +676,7 @@ export default function HRDashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.totalEmployees}</p>
-                <p className="text-xs text-muted-foreground">Total Employees</p>
+                <p className="text-xs text-muted-foreground">{t("hr.totalEmployees")}</p>
               </div>
             </div>
           </CardContent>
@@ -684,11 +686,11 @@ export default function HRDashboardPage() {
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid grid-cols-5 w-full max-w-2xl">
-          <TabsTrigger value="requests">Requests</TabsTrigger>
-          <TabsTrigger value="entitlements">Balances</TabsTrigger>
-          <TabsTrigger value="types">Leave Types</TabsTrigger>
-          <TabsTrigger value="policies">Policies</TabsTrigger>
-          <TabsTrigger value="holidays">Holidays</TabsTrigger>
+          <TabsTrigger value="requests">{t("hr.tabRequests")}</TabsTrigger>
+          <TabsTrigger value="entitlements">{t("hr.tabBalances")}</TabsTrigger>
+          <TabsTrigger value="types">{t("hr.tabLeaveTypes")}</TabsTrigger>
+          <TabsTrigger value="policies">{t("hr.tabPolicies")}</TabsTrigger>
+          <TabsTrigger value="holidays">{t("hr.tabHolidays")}</TabsTrigger>
         </TabsList>
 
         {/* REQUESTS TAB */}
@@ -698,7 +700,7 @@ export default function HRDashboardPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search employee or type..."
+                  placeholder={t("hr.searchEmployee")}
                   className="pl-9 w-64"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -709,11 +711,11 @@ export default function HRDashboardPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="approved">Approved</SelectItem>
-                  <SelectItem value="rejected">Rejected</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="all">{t("hr.all")}</SelectItem>
+                  <SelectItem value="pending">{t("hr.pending")}</SelectItem>
+                  <SelectItem value="approved">{t("hr.approved")}</SelectItem>
+                  <SelectItem value="rejected">{t("hr.rejected")}</SelectItem>
+                  <SelectItem value="cancelled">{t("hr.cancelled")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -723,20 +725,20 @@ export default function HRDashboardPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Leave Type</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead>Days</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Requested</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t("hr.employee")}</TableHead>
+                  <TableHead>{t("hr.leaveType")}</TableHead>
+                  <TableHead>{t("hr.period")}</TableHead>
+                  <TableHead>{t("hr.days")}</TableHead>
+                  <TableHead>{t("hr.status")}</TableHead>
+                  <TableHead>{t("hr.requested")}</TableHead>
+                  <TableHead className="text-right">{t("hr.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredRequests.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      No leave requests found
+                      {t("hr.noRequests")}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -763,10 +765,10 @@ export default function HRDashboardPage() {
                         {req.status === "pending" && (
                           <div className="flex gap-1 justify-end">
                             <Button size="sm" variant="outline" className="text-green-600 border-green-500/30 hover:bg-green-500/10 bg-transparent" onClick={() => openReview(req, "approved")}>
-                              <CheckCircle className="h-4 w-4 mr-1" /> Approve
+                              <CheckCircle className="h-4 w-4 mr-1" /> {t("hr.approve")}
                             </Button>
                             <Button size="sm" variant="outline" className="text-red-600 border-red-500/30 hover:bg-red-500/10 bg-transparent" onClick={() => openReview(req, "rejected")}>
-                              <XCircle className="h-4 w-4 mr-1" /> Reject
+                              <XCircle className="h-4 w-4 mr-1" /> {t("hr.reject")}
                             </Button>
                           </div>
                         )}
@@ -786,7 +788,7 @@ export default function HRDashboardPage() {
         <TabsContent value="entitlements" className="space-y-4">
           <div className="flex gap-3 items-center justify-between">
             <div className="flex gap-2 items-center">
-              <Label>Year:</Label>
+              <Label>{t("hr.year")}</Label>
               <Select value={entitlementYear.toString()} onValueChange={(v) => setEntitlementYear(parseInt(v))}>
                 <SelectTrigger className="w-28">
                   <SelectValue />
@@ -799,7 +801,7 @@ export default function HRDashboardPage() {
               </Select>
             </div>
             <Button onClick={generateEntitlements}>
-              <Plus className="h-4 w-4 mr-2" /> Generate Entitlements
+              <Plus className="h-4 w-4 mr-2" /> {t("hr.generateEntitlements")}
             </Button>
           </div>
 
@@ -807,20 +809,20 @@ export default function HRDashboardPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Leave Type</TableHead>
-                  <TableHead className="text-center">Entitled</TableHead>
-                  <TableHead className="text-center">Carry Over</TableHead>
-                  <TableHead className="text-center">Used</TableHead>
-                  <TableHead className="text-center">Pending</TableHead>
-                  <TableHead className="text-center">Available</TableHead>
+                  <TableHead>{t("hr.employee")}</TableHead>
+                  <TableHead>{t("hr.leaveType")}</TableHead>
+                  <TableHead className="text-center">{t("hr.entitled")}</TableHead>
+                  <TableHead className="text-center">{t("hr.carryOver")}</TableHead>
+                  <TableHead className="text-center">{t("hr.used")}</TableHead>
+                  <TableHead className="text-center">{t("hr.pendingCol")}</TableHead>
+                  <TableHead className="text-center">{t("hr.available")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {entitlements.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      No entitlements for {entitlementYear}. Click "Generate Entitlements" to create them.
+                      {t("hr.noEntitlements").replace("{year}", entitlementYear.toString())}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -858,14 +860,14 @@ export default function HRDashboardPage() {
         <TabsContent value="types" className="space-y-4">
           <div className="flex justify-end">
             <Button onClick={() => openTypeDialog()}>
-              <Plus className="h-4 w-4 mr-2" /> Add Leave Type
+              <Plus className="h-4 w-4 mr-2" /> {t("hr.addLeaveType")}
             </Button>
           </div>
           <div className="grid gap-3">
             {leaveTypes.length === 0 ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
-                  No leave types configured. Add your first leave type to get started.
+                  {t("hr.noLeaveTypes")}
                 </CardContent>
               </Card>
             ) : (
@@ -878,9 +880,9 @@ export default function HRDashboardPage() {
                         <div>
                           <p className="font-medium">{type.name} <span className="text-xs text-muted-foreground">({type.code})</span></p>
                           <div className="flex gap-2 mt-1">
-                            <Badge variant="outline" className="text-xs">{type.is_paid ? "Paid" : "Unpaid"}</Badge>
-                            {type.requires_document && <Badge variant="outline" className="text-xs">Doc Required</Badge>}
-                            {type.max_days_per_year && <Badge variant="outline" className="text-xs">Max {type.max_days_per_year}d/year</Badge>}
+                            <Badge variant="outline" className="text-xs">{type.is_paid ? t("hr.paid") : t("hr.unpaid")}</Badge>
+                            {type.requires_document && <Badge variant="outline" className="text-xs">{t("hr.docRequired")}</Badge>}
+                            {type.max_days_per_year && <Badge variant="outline" className="text-xs">{t("hr.maxPerYear").replace("{n}", type.max_days_per_year.toString())}</Badge>}
                           </div>
                         </div>
                       </div>
@@ -904,14 +906,14 @@ export default function HRDashboardPage() {
         <TabsContent value="policies" className="space-y-4">
           <div className="flex justify-end">
             <Button onClick={() => openPolicyDialog()}>
-              <Plus className="h-4 w-4 mr-2" /> Add Policy
+              <Plus className="h-4 w-4 mr-2" /> {t("hr.addPolicy")}
             </Button>
           </div>
           <div className="grid gap-3">
             {policies.length === 0 ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
-                  No policies configured. Create a default leave policy to define entitlement rules.
+                  {t("hr.noPolicies")}
                 </CardContent>
               </Card>
             ) : (

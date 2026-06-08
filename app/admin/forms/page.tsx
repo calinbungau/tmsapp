@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import type { FormSubmission, FormTemplate, Driver, Vehicle } from "@/lib/types";
 import { FORM_FREQUENCY_LABELS } from "@/lib/types";
 
@@ -52,6 +53,7 @@ export default function AdminSubmissionsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { session: adminSession } = useAdminSession();
+  const { t } = useTranslation();
   
   const [submissions, setSubmissions] = useState<SubmissionWithDetails[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -425,14 +427,14 @@ export default function AdminSubmissionsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Forms</h1>
+          <h1 className="text-2xl font-bold">{t("forms.title")}</h1>
           <p className="text-muted-foreground">
-            View all form submissions from drivers
+            {t("forms.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-sm">
-            {filteredSubmissions.length} submission{filteredSubmissions.length !== 1 ? "s" : ""}
+            {filteredSubmissions.length} {filteredSubmissions.length !== 1 ? t("forms.submissionsCount") : t("forms.submissionCount")}
           </Badge>
           {(adminSession?.isOwner || !adminSession?.user_id || adminSession?.permissions?.["forms:types:manage"]) && (
             <Button 
@@ -441,7 +443,7 @@ export default function AdminSubmissionsPage() {
               onClick={() => router.push("/admin/form-types")}
             >
               <ClipboardList className="h-4 w-4 mr-2" />
-              Form Types
+              {t("forms.formTypes")}
             </Button>
           )}
           {(adminSession?.isOwner || !adminSession?.user_id || adminSession?.permissions?.["forms:export"]) && (
@@ -452,7 +454,7 @@ export default function AdminSubmissionsPage() {
               disabled={filteredSubmissions.length === 0}
             >
               <Download className="h-4 w-4 mr-2" />
-              Export
+              {t("forms.export")}
             </Button>
           )}
         </div>
@@ -464,7 +466,7 @@ export default function AdminSubmissionsPage() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by driver name or form..."
+              placeholder={t("forms.searchPlaceholder")}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -479,7 +481,7 @@ export default function AdminSubmissionsPage() {
             }}
           >
             <UserX className="h-4 w-4 mr-2" />
-            Missing
+            {t("forms.missing")}
             {missingSubmissions.length > 0 && (
               <Badge className="ml-2 bg-red-500/20 text-red-400">{missingSubmissions.length}</Badge>
             )}
@@ -493,9 +495,9 @@ export default function AdminSubmissionsPage() {
             }}
           >
             <Users className="h-4 w-4 mr-2" />
-            Shared Vehicles
+            {t("forms.sharedVehicles")}
             {showSharedVehiclesOnly && (
-              <Badge className="ml-2 bg-yellow-500/20 text-yellow-400">ON</Badge>
+              <Badge className="ml-2 bg-yellow-500/20 text-yellow-400">{t("forms.on")}</Badge>
             )}
           </Button>
           <Button 
@@ -504,15 +506,15 @@ export default function AdminSubmissionsPage() {
             onClick={() => setShowFilters(!showFilters)}
           >
             <Filter className="h-4 w-4 mr-2" />
-            Filters
+            {t("forms.filters")}
             {hasActiveFilters && (
-              <Badge className="ml-2 bg-primary text-primary-foreground">Active</Badge>
+              <Badge className="ml-2 bg-primary text-primary-foreground">{t("forms.active")}</Badge>
             )}
           </Button>
           {hasActiveFilters && (
             <Button variant="ghost" onClick={clearFilters}>
               <X className="h-4 w-4 mr-2" />
-              Clear
+              {t("forms.clear")}
             </Button>
           )}
         </div>
@@ -523,15 +525,15 @@ export default function AdminSubmissionsPage() {
             <CardContent className="p-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
                 <div className="space-y-2">
-                  <Label>Driver</Label>
+                  <Label>{t("forms.driver")}</Label>
                   <SearchableSelect
                     value={selectedDriver}
                     onValueChange={setSelectedDriver}
-                    placeholder="All Drivers"
-                    searchPlaceholder="Search drivers..."
-                    emptyText="No driver found."
+                    placeholder={t("forms.allDrivers")}
+                    searchPlaceholder={t("forms.searchDrivers")}
+                    emptyText={t("forms.noDriverFound")}
                     options={[
-                      { value: "all", label: "All Drivers" },
+                      { value: "all", label: t("forms.allDrivers") },
                       ...drivers.map((driver) => ({
                         value: driver.id,
                         label: driver.name,
@@ -542,13 +544,13 @@ export default function AdminSubmissionsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Form</Label>
+                  <Label>{t("forms.form")}</Label>
                   <Select value={selectedForm} onValueChange={setSelectedForm}>
                     <SelectTrigger>
-                      <SelectValue placeholder="All Forms" />
+                      <SelectValue placeholder={t("forms.allForms")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Forms</SelectItem>
+                      <SelectItem value="all">{t("forms.allForms")}</SelectItem>
                       {formTemplates.map((form) => (
                         <SelectItem key={form.id} value={form.id}>
                           {form.name}
@@ -559,45 +561,45 @@ export default function AdminSubmissionsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Status</Label>
+                  <Label>{t("forms.status")}</Label>
                   <Select value={selectedStatus} onValueChange={setSelectedStatus}>
                     <SelectTrigger>
-                      <SelectValue placeholder="All Statuses" />
+                      <SelectValue placeholder={t("forms.allStatuses")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="all">{t("forms.allStatuses")}</SelectItem>
+                      <SelectItem value="completed">{t("forms.completed")}</SelectItem>
+                      <SelectItem value="in_progress">{t("forms.inProgress")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Frequency</Label>
+                  <Label>{t("forms.frequency")}</Label>
                   <Select value={selectedFrequency} onValueChange={setSelectedFrequency}>
                     <SelectTrigger>
-                      <SelectValue placeholder="All Types" />
+                      <SelectValue placeholder={t("forms.allTypes")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Types</SelectItem>
-                      <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
-                      <SelectItem value="on_demand">On Demand</SelectItem>
+                      <SelectItem value="all">{t("forms.allTypes")}</SelectItem>
+                      <SelectItem value="daily">{t("forms.daily")}</SelectItem>
+                      <SelectItem value="weekly">{t("forms.weekly")}</SelectItem>
+                      <SelectItem value="monthly">{t("forms.monthly")}</SelectItem>
+                      <SelectItem value="on_demand">{t("forms.onDemand")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Vehicle</Label>
+                  <Label>{t("forms.vehicle")}</Label>
                   <SearchableSelect
                     value={selectedVehicle}
                     onValueChange={setSelectedVehicle}
-                    placeholder="All Vehicles"
-                    searchPlaceholder="Search vehicles..."
-                    emptyText="No vehicle found."
+                    placeholder={t("forms.allVehicles")}
+                    searchPlaceholder={t("forms.searchVehicles")}
+                    emptyText={t("forms.noVehicleFound")}
                     options={[
-                      { value: "all", label: "All Vehicles" },
+                      { value: "all", label: t("forms.allVehicles") },
                       ...vehicles.map((vehicle) => ({
                         value: vehicle.id,
                         label: vehicle.plate_number,
@@ -608,7 +610,7 @@ export default function AdminSubmissionsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>From Date</Label>
+                  <Label>{t("forms.fromDate")}</Label>
                   <Input 
                     type="date" 
                     value={dateFrom} 
@@ -617,7 +619,7 @@ export default function AdminSubmissionsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>To Date</Label>
+                  <Label>{t("forms.toDate")}</Label>
                   <Input 
                     type="date" 
                     value={dateTo} 
@@ -633,14 +635,14 @@ export default function AdminSubmissionsPage() {
       {/* Missing Submissions View */}
       {showMissingOnly ? (
         loading ? (
-          <div className="text-center py-8 text-muted-foreground">Loading...</div>
+          <div className="text-center py-8 text-muted-foreground">{t("forms.loading")}</div>
         ) : missingSubmissions.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
               <ClipboardList className="h-12 w-12 mx-auto text-green-500 mb-4" />
-              <p className="text-green-500 font-medium">All required forms are up to date!</p>
+              <p className="text-green-500 font-medium">{t("forms.allUpToDate")}</p>
               <p className="text-muted-foreground text-sm mt-1">
-                All active drivers have completed their daily, weekly, and monthly forms.
+                {t("forms.allUpToDateDesc")}
               </p>
             </CardContent>
           </Card>
@@ -664,7 +666,7 @@ export default function AdminSubmissionsPage() {
                         {FORM_FREQUENCY_LABELS[form.frequency as keyof typeof FORM_FREQUENCY_LABELS]}
                       </Badge>
                       <Badge variant="outline" className="bg-red-500/10 text-red-400 border-red-500/30">
-                        {formMissing.length} missing {periodLabel.toLowerCase()}
+                        {formMissing.length} {t("forms.missingLabel")} {periodLabel.toLowerCase()}
                       </Badge>
                     </h3>
                     <div className="grid gap-2">
@@ -678,11 +680,11 @@ export default function AdminSubmissionsPage() {
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium">{missing.driver.name}</p>
                                 <p className="text-sm text-muted-foreground">
-                                  Has not completed <span className="text-red-400">{missing.form.name}</span> {missing.periodLabel.toLowerCase()}
+                                  {t("forms.hasNotCompleted")} <span className="text-red-400">{missing.form.name}</span> {missing.periodLabel.toLowerCase()}
                                 </p>
                               </div>
                               <Badge variant="outline" className="text-red-400">
-                                Missing
+                                {t("forms.missing")}
                               </Badge>
                             </div>
                           </CardContent>
@@ -697,15 +699,15 @@ export default function AdminSubmissionsPage() {
       ) : (
       /* Regular Submissions List */
       loading ? (
-        <div className="text-center py-8 text-muted-foreground">Loading submissions...</div>
+        <div className="text-center py-8 text-muted-foreground">{t("forms.loadingSubmissions")}</div>
       ) : filteredSubmissions.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <ClipboardList className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-muted-foreground">
               {hasActiveFilters 
-                ? "No submissions match your filters."
-                : "No form submissions yet."}
+                ? t("forms.noMatchFilters")
+                : t("forms.noneYet")}
             </p>
           </CardContent>
         </Card>
@@ -722,7 +724,7 @@ export default function AdminSubmissionsPage() {
                 {sharedCount > 0 && (
                   <Badge className="bg-yellow-500/20 text-yellow-400 ml-1">
                     <Users className="h-3 w-3 mr-1" />
-                    {sharedCount} shared
+                    {sharedCount} {t("forms.shared")}
                   </Badge>
                 )}
               </h3>
@@ -754,11 +756,11 @@ export default function AdminSubmissionsPage() {
                                 {FORM_FREQUENCY_LABELS[submission.form_template?.frequency as keyof typeof FORM_FREQUENCY_LABELS] || submission.form_template?.frequency}
                               </Badge>
                               <Badge className={getStatusColor(submission.status)}>
-                                {submission.status === "completed" ? "Completed" : "In Progress"}
+                                {submission.status === "completed" ? t("forms.completed") : t("forms.inProgress")}
                               </Badge>
                               {submission.sharedVehicle && (
                                 <Badge className="bg-yellow-500/20 text-yellow-400">
-                                  Shared Vehicle
+                                  {t("forms.sharedVehicle")}
                                 </Badge>
                               )}
                             </div>
@@ -777,7 +779,7 @@ export default function AdminSubmissionsPage() {
                             </div>
                             {submission.sharedVehicle && submission.otherDriverUsages && submission.otherDriverUsages.length > 0 && (
                               <div className="text-xs text-yellow-400 mt-1">
-                                Also used by: {submission.otherDriverUsages.map((u, i) => (
+                                {t("forms.alsoUsedBy")} {submission.otherDriverUsages.map((u, i) => (
                                   <span key={i}>
                                     {i > 0 && ", "}
                                     <span className="font-medium">{u.driverName}</span>
