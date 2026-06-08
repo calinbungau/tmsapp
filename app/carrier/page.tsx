@@ -41,6 +41,17 @@ function CarrierAuth() {
     }
   }, [router]);
 
+  const handleAltLogin = (url: string) => {
+    const w = window as any;
+    if (w.webkit?.messageHandlers?.appInterface) {
+      w.webkit.messageHandlers.appInterface.postMessage(`server|${url}`);
+    } else if (w.appInterface) {
+      w.appInterface.postMessage(`server|${url}`);
+    } else {
+      window.location.replace(url);
+    }
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -198,6 +209,16 @@ function CarrierAuth() {
             </div>
           </CardContent>
         </Card>
+
+        <div className="mt-6 text-center">
+          <button
+            type="button"
+            onClick={() => handleAltLogin(`${window.location.origin}/admin`)}
+            className="text-sm text-muted-foreground hover:text-primary transition-colors"
+          >
+            Admin Panel
+          </button>
+        </div>
 
         <div className="mt-6">
           <AppPromo subtitle="Get the BNG Tracking app for the full carrier experience on the go." />
