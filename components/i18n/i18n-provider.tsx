@@ -11,7 +11,7 @@ import {
 import { useUserPreference } from "@/hooks/use-user-preference"
 import { dictionaries, resolvePath, type AppLocale } from "@/lib/i18n/dictionaries"
 
-type TranslateFn = (key: string, fallback?: string) => string
+export type TranslateFn = (key: string, fallback?: string) => string
 
 type I18nContextValue = {
   locale: AppLocale
