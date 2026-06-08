@@ -579,14 +579,16 @@ export default function AdminDashboard() {
       <div className="relative z-10 flex flex-col items-center gap-6 px-6">
         {/* Logo */}
         <div className="flex flex-col items-center">
-          <Image
-            src="/images/logo-full-bng.png"
-            alt="BNG Tracking"
-            width={120}
-            height={48}
-            className="opacity-90"
-            priority
-          />
+          <div className="rounded-2xl bg-[#0E101F] px-6 py-4 shadow-lg ring-1 ring-white/5">
+            <Image
+              src="/images/logo-full-bng.png"
+              alt="BNG Tracking"
+              width={120}
+              height={48}
+              className="opacity-90"
+              priority
+            />
+          </div>
         </div>
 
         {/* Action Buttons */}
