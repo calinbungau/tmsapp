@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { AdminNotificationsBell } from "@/components/admin-notifications-bell";
+import { ThemeSync } from "@/components/theme-sync";
 import { PERMISSION_KEYS } from "@/hooks/use-permissions";
 import { isModuleEnabled, isRouteAccessible } from "@/lib/modules";
 import {
@@ -523,6 +524,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="h-screen bg-background flex overflow-hidden">
+      <ThemeSync />
       {/* ─── Touch overlay backdrop ─── */}
       {isTouch && sidebarOpen && (
         <div

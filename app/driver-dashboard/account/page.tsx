@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { User, Globe, LogOut, Shield, Phone, Mail, CalendarDays, ChevronRight } from "lucide-react";
+import { AppearanceSettings } from "@/components/appearance-settings";
 import Link from "next/link";
 
 interface DriverSession {
@@ -107,6 +108,9 @@ export default function DriverAccountPage() {
 
   return (
     <div className="p-4 space-y-4">
+      {/* Appearance: app theme + language */}
+      <AppearanceSettings />
+
       {/* Profile Card */}
       <Card>
         <CardHeader className="pb-3">

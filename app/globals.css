@@ -38,24 +38,24 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #0E101F;
-  --foreground: #F5F5F5;
-  --card: #161829;
-  --card-foreground: #F5F5F5;
-  --popover: #161829;
-  --popover-foreground: #F5F5F5;
+  --background: #F6F7FA;
+  --foreground: #0E101F;
+  --card: #FFFFFF;
+  --card-foreground: #0E101F;
+  --popover: #FFFFFF;
+  --popover-foreground: #0E101F;
   --primary: #FCBF01;
   --primary-foreground: #0E101F;
-  --secondary: #1E2235;
-  --secondary-foreground: #F5F5F5;
-  --muted: #1E2235;
-  --muted-foreground: #9CA3AF;
+  --secondary: #EEF0F5;
+  --secondary-foreground: #0E101F;
+  --muted: #EEF0F5;
+  --muted-foreground: #5B6478;
   --accent: #FCBF01;
   --accent-foreground: #0E101F;
-  --destructive: #EF4444;
+  --destructive: #DC2626;
   --destructive-foreground: #FFFFFF;
-  --border: #2D3250;
-  --input: #2D3250;
+  --border: #E1E4EC;
+  --input: #E1E4EC;
   --ring: #FCBF01;
   --chart-1: #FCBF01;
   --chart-2: #3B82F6;
@@ -63,13 +63,13 @@
   --chart-4: #F59E0B;
   --chart-5: #8B5CF6;
   --radius: 0.625rem;
-  --sidebar: #0A0C18;
-  --sidebar-foreground: #F5F5F5;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #0E101F;
   --sidebar-primary: #FCBF01;
   --sidebar-primary-foreground: #0E101F;
-  --sidebar-accent: #1E2235;
-  --sidebar-accent-foreground: #F5F5F5;
-  --sidebar-border: #2D3250;
+  --sidebar-accent: #EEF0F5;
+  --sidebar-accent-foreground: #0E101F;
+  --sidebar-border: #E1E4EC;
   --sidebar-ring: #FCBF01;
 }
 
@@ -182,11 +182,11 @@
 /* Route tooltip styling */
 .route-tooltip .leaflet-tooltip-content,
 .route-tooltip {
-  background: #0f172aee !important;
+  background: color-mix(in oklab, var(--popover) 93%, transparent) !important;
   backdrop-filter: blur(12px);
-  border: 1px solid #2d325066 !important;
+  border: 1px solid color-mix(in oklab, var(--border) 80%, transparent) !important;
   border-radius: 6px !important;
-  color: #e2e8f0 !important;
+  color: var(--popover-foreground) !important;
   font-size: 11px !important;
   padding: 4px 8px !important;
   box-shadow: 0 2px 12px rgba(0,0,0,0.3) !important;
@@ -195,33 +195,33 @@
   line-height: 1.4;
 }
 .route-tooltip::before {
-  border-top-color: #0f172aee !important;
+  border-top-color: color-mix(in oklab, var(--popover) 93%, transparent) !important;
 }
 
 /* Route start tooltip */
 .route-start-tooltip {
-  background: #0f172aee !important;
+  background: color-mix(in oklab, var(--popover) 93%, transparent) !important;
   border: 1px solid #22c55e66 !important;
   border-radius: 6px !important;
-  color: #e2e8f0 !important;
+  color: var(--popover-foreground) !important;
   font-size: 11px !important;
   padding: 4px 8px !important;
 }
 .route-start-tooltip::before {
-  border-top-color: #0f172aee !important;
+  border-top-color: color-mix(in oklab, var(--popover) 93%, transparent) !important;
 }
 
 /* Route history arrow popups */
 .route-history-popup .leaflet-popup-content-wrapper {
-  background: #0f172aee !important;
+  background: color-mix(in oklab, var(--popover) 93%, transparent) !important;
   backdrop-filter: blur(12px);
-  border: 1px solid #2d325066 !important;
+  border: 1px solid color-mix(in oklab, var(--border) 80%, transparent) !important;
   border-radius: 8px !important;
-  color: #e2e8f0 !important;
+  color: var(--popover-foreground) !important;
   box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
 }
 .route-history-popup .leaflet-popup-tip {
-  background: #0f172aee !important;
+  background: color-mix(in oklab, var(--popover) 93%, transparent) !important;
 }
 
 /* Fleet map marker styles - ultra-optimized for GPU performance with 500+ markers */
@@ -319,4 +319,20 @@
   to {
     height: 0;
   }
+}
+
+/*
+ * Admin sidebar surface.
+ *
+ * Base styling uses the themed sidebar tokens so it adapts to light mode.
+ * In dark mode we layer the original deep navy gradient + blue inner glow
+ * on top for the richer look the app shipped with.
+ */
+.admin-sidebar {
+  background: var(--sidebar);
+  box-shadow: inset -1px 0 0 var(--sidebar-border);
+}
+.dark .admin-sidebar {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(10, 12, 24, 0.99) 40%, rgba(8, 10, 18, 1) 100%);
+  box-shadow: inset -1px 0 0 rgba(59, 130, 246, 0.08), inset 0 1px 0 rgba(59, 130, 246, 0.05);
 }

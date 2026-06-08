@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from 'sonner'
+import { ThemeProvider } from '@/components/theme-provider'
+import { I18nProvider } from '@/components/i18n/i18n-provider'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -31,24 +33,33 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark bg-background">
+    <html lang="en" className="bg-background" suppressHydrationWarning>
       <body className="font-sans antialiased">
-        {children}
-        <Toaster
-          position="bottom-right"
-          richColors
-          closeButton
-          toastOptions={{
-            style: {
-              background: "var(--card)",
-              border: "1px solid var(--border)",
-              color: "var(--card-foreground)",
-            },
-            classNames: {
-              toast: "!shadow-lg !rounded-lg",
-            },
-          }}
-        />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem={false}
+          disableTransitionOnChange
+        >
+          <I18nProvider>
+            {children}
+            <Toaster
+              position="bottom-right"
+              richColors
+              closeButton
+              toastOptions={{
+                style: {
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
+                  color: "var(--card-foreground)",
+                },
+                classNames: {
+                  toast: "!shadow-lg !rounded-lg",
+                },
+              }}
+            />
+          </I18nProvider>
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>

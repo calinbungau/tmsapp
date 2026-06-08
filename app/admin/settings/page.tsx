@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Shield, Check, HardDrive, Users, Car, FileText, Building, Building2, MapPin, Loader2, ChevronRight, UserCog, FolderTree, ArrowLeftRight, Mail, Link2, Bell } from "lucide-react";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { AppearanceSettings } from "@/components/appearance-settings";
 import Link from "next/link";
 
 export default function AdminSettingsPage() {
@@ -281,6 +282,9 @@ export default function AdminSettingsPage() {
         <h1 className="text-2xl font-semibold">Settings</h1>
         <p className="text-muted-foreground">Manage your account and view usage statistics</p>
       </div>
+
+      {/* Appearance: theme + language */}
+      <AppearanceSettings />
 
       {/* Management Links - Only show to owners */}
       {(adminSession?.isOwner || !adminSession?.user_id) && (
