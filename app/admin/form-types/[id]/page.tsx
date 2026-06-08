@@ -460,9 +460,9 @@ export default function FormEditorPage() {
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Type className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No questions yet</h3>
+              <h3 className="text-lg font-medium mb-2">{t("forms.noQuestionsYet")}</h3>
               <p className="text-muted-foreground text-center mb-4">
-                Add questions to build your form
+                {t("forms.addQuestionsHelp")}
               </p>
             </CardContent>
           </Card>
@@ -507,7 +507,7 @@ export default function FormEditorPage() {
                             </Badge>
                             {question.is_required && (
                               <Badge variant="secondary" className="text-xs">
-                                Required
+                                {t("forms.required")}
                               </Badge>
                             )}
                             {Object.keys((question as any).translations || {}).filter(k => ((question as any).translations?.[k] || "").trim()).length > 0 && (
