@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Truck, Loader2, MapPin } from "lucide-react";
+import { Truck, Loader2, MapPin, Shield } from "lucide-react";
 import {
   getStoredCarrierSession,
   setStoredCarrierSession,
@@ -222,7 +222,7 @@ function CarrierAuth() {
                 onClick={() => handleAltLogin(`${window.location.origin}/admin`)}
                 className="group flex items-center justify-center gap-2 h-11 rounded-xl border border-border/40 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-card/50 transition-all"
               >
-                <Truck className="h-4 w-4 group-hover:text-primary transition-colors" />
+                <Shield className="h-4 w-4 group-hover:text-primary transition-colors" />
                 Admin Panel
               </button>
             </div>
