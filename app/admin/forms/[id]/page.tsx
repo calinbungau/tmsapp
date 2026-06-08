@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { FormSubmission, FormTemplate, FormQuestion, FormAnswer, Driver, Vehicle } from "@/lib/types";
 import { FORM_FREQUENCY_LABELS, QUESTION_TYPE_LABELS } from "@/lib/types";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 
 interface SubmissionDetail extends FormSubmission {
   form_template: FormTemplate & { questions: FormQuestion[] };
@@ -29,6 +30,7 @@ export default function SubmissionDetailPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
+  const { t } = useTranslation();
   
   const [submission, setSubmission] = useState<SubmissionDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,7 +99,7 @@ export default function SubmissionDetailPage() {
 
   const renderAnswer = (question: FormQuestion, answer?: FormAnswer) => {
     if (!answer) {
-      return <span className="text-muted-foreground italic">No answer</span>;
+      return <span className="text-muted-foreground italic">{t("forms.noAnswer")}</span>;
     }
 
     switch (question.question_type) {
@@ -105,15 +107,15 @@ export default function SubmissionDetailPage() {
         return answer.answer_boolean !== null ? (
           <div className={`flex items-center gap-2 ${answer.answer_boolean ? "text-green-400" : "text-red-400"}`}>
             {answer.answer_boolean ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
-            <span className="font-medium">{answer.answer_boolean ? "Yes" : "No"}</span>
+            <span className="font-medium">{answer.answer_boolean ? t("forms.yes") : t("forms.no")}</span>
           </div>
         ) : (
-          <span className="text-muted-foreground italic">No answer</span>
+          <span className="text-muted-foreground italic">{t("forms.noAnswer")}</span>
         );
 
       case "photo":
         if (!answer.answer_photo_url) {
-          return <span className="text-muted-foreground italic">No photo</span>;
+          return <span className="text-muted-foreground italic">{t("forms.noPhoto")}</span>;
         }
         
         // Check if it's multiple photos (JSON array)
@@ -134,7 +136,7 @@ export default function SubmissionDetailPage() {
                       className="w-full h-full rounded-lg border object-cover"
                     />
                     <div className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-                      <span className="text-white text-sm">Click to enlarge</span>
+                      <span className="text-white text-sm">{t("forms.clickToEnlarge")}</span>
                     </div>
                     <div className="absolute bottom-1 left-1 bg-primary text-primary-foreground px-1.5 py-0.5 rounded text-xs">
                       {index + 1}
@@ -160,7 +162,7 @@ export default function SubmissionDetailPage() {
               className="w-full max-w-md rounded-lg border object-cover"
             />
             <div className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-              <span className="text-white text-sm">Click to enlarge</span>
+              <span className="text-white text-sm">{t("forms.clickToEnlarge")}</span>
             </div>
           </div>
         );
@@ -169,14 +171,14 @@ export default function SubmissionDetailPage() {
         return answer.answer_text ? (
           <p className="text-foreground">{answer.answer_text}</p>
         ) : (
-          <span className="text-muted-foreground italic">No text</span>
+          <span className="text-muted-foreground italic">{t("forms.noText")}</span>
         );
 
       case "number":
         return answer.answer_number !== null ? (
           <span className="font-medium text-foreground">{answer.answer_number}</span>
         ) : (
-          <span className="text-muted-foreground italic">No number</span>
+          <span className="text-muted-foreground italic">{t("forms.noNumber")}</span>
         );
 
       case "signature":
@@ -192,27 +194,27 @@ export default function SubmissionDetailPage() {
             />
           </div>
         ) : (
-          <span className="text-muted-foreground italic">No signature</span>
+          <span className="text-muted-foreground italic">{t("forms.noSignature")}</span>
         );
 
       default:
-        return <span className="text-muted-foreground italic">Unknown type</span>;
+        return <span className="text-muted-foreground italic">{t("forms.unknownType")}</span>;
     }
   };
 
   if (loading) {
     return (
-      <div className="text-center py-12 text-muted-foreground">Loading submission...</div>
+      <div className="text-center py-12 text-muted-foreground">{t("forms.loadingSubmission")}</div>
     );
   }
 
   if (!submission) {
     return (
       <div className="text-center py-12">
-        <p className="text-muted-foreground mb-4">Submission not found</p>
+        <p className="text-muted-foreground mb-4">{t("forms.submissionNotFound")}</p>
         <Button onClick={() => router.push("/admin/forms")}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Forms
+          {t("forms.backToForms")}
         </Button>
       </div>
     );
@@ -237,7 +239,7 @@ export default function SubmissionDetailPage() {
               {FORM_FREQUENCY_LABELS[submission.form_template?.frequency as keyof typeof FORM_FREQUENCY_LABELS]}
             </Badge>
             <Badge className={getStatusColor(submission.status)}>
-              {submission.status === "completed" ? "Completed" : "In Progress"}
+              {submission.status === "completed" ? t("forms.completed") : t("forms.inProgress")}
             </Badge>
           </div>
           <p className="text-muted-foreground">{submission.form_template?.description}</p>
@@ -252,7 +254,7 @@ export default function SubmissionDetailPage() {
               <User className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Driver</p>
+              <p className="text-sm text-muted-foreground">{t("forms.driver")}</p>
               <p className="font-medium">{submission.driver?.name}</p>
             </div>
           </CardContent>
@@ -264,7 +266,7 @@ export default function SubmissionDetailPage() {
               <Calendar className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Submitted</p>
+              <p className="text-sm text-muted-foreground">{t("forms.submitted")}</p>
               <p className="font-medium">{formatDate(submission.submitted_at || submission.created_at)}</p>
             </div>
           </CardContent>
@@ -277,7 +279,7 @@ export default function SubmissionDetailPage() {
                 <FileText className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Vehicle</p>
+                <p className="text-sm text-muted-foreground">{t("forms.vehicle")}</p>
                 <p className="font-medium">{submission.vehicle.plate_number}</p>
               </div>
             </CardContent>
@@ -291,14 +293,14 @@ export default function SubmissionDetailPage() {
                 <MapPin className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Location</p>
+                <p className="text-sm text-muted-foreground">{t("forms.location")}</p>
                 <a 
                   href={`https://www.google.com/maps?q=${submission.latitude},${submission.longitude}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-medium text-primary hover:underline"
                 >
-                  View on Map
+                  {t("forms.viewOnMap")}
                 </a>
               </div>
             </CardContent>
@@ -309,7 +311,7 @@ export default function SubmissionDetailPage() {
       {/* Answers */}
       <Card>
         <CardHeader>
-          <CardTitle>Responses</CardTitle>
+          <CardTitle>{t("forms.responses")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           {submission.form_template?.questions?.map((question, index) => {
@@ -327,7 +329,7 @@ export default function SubmissionDetailPage() {
                         {QUESTION_TYPE_LABELS[question.question_type as keyof typeof QUESTION_TYPE_LABELS]}
                       </Badge>
                       {question.is_required && (
-                        <Badge variant="secondary" className="text-xs">Required</Badge>
+                        <Badge variant="secondary" className="text-xs">{t("forms.required")}</Badge>
                       )}
                     </div>
                     <div className="mt-2">

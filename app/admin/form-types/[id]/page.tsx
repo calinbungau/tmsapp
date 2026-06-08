@@ -44,6 +44,7 @@ import {
   Globe,
 } from "lucide-react";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import type { FormTemplate, FormQuestion, QuestionType } from "@/lib/types";
 import { FORM_FREQUENCY_LABELS, QUESTION_TYPE_LABELS } from "@/lib/types";
 
@@ -73,6 +74,7 @@ export default function FormEditorPage() {
   const id = params.id as string;
   const router = useRouter();
   const { session: adminSession } = useAdminSession();
+  const { t } = useTranslation();
   const [form, setForm] = useState<FormTemplate | null>(null);
   const [questions, setQuestions] = useState<FormQuestion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -195,7 +197,7 @@ export default function FormEditorPage() {
   };
 
   const handleDeleteQuestion = async (questionId: string) => {
-    if (!confirm("Delete this question?")) return;
+    if (!confirm(t("forms.confirmDeleteQuestion"))) return;
 
     const supabase = createClient();
     await supabase.from("form_questions").delete().eq("id", questionId);
@@ -244,30 +246,30 @@ export default function FormEditorPage() {
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             className="text-xl font-bold border-none bg-transparent p-0 h-auto focus-visible:ring-0"
-            placeholder="Form name"
+            placeholder={t("forms.formNamePh")}
           />
           <div className="flex items-center gap-2 mt-1">
             <Badge variant="secondary">{FORM_FREQUENCY_LABELS[form.frequency]}</Badge>
             <span className="text-sm text-muted-foreground">
-              {questions.length} question{questions.length !== 1 ? "s" : ""}
+              {questions.length} {questions.length !== 1 ? t("forms.questionCountLabelPlural") : t("forms.questionCountLabel")}
             </span>
           </div>
         </div>
         <Button onClick={handleSaveForm} disabled={saving}>
           <Save className="mr-2 h-4 w-4" />
-          {saving ? "Saving..." : "Save"}
+          {saving ? t("forms.saving") : t("forms.save")}
         </Button>
       </div>
 
       {/* Description */}
       <Card>
         <CardContent className="pt-4">
-          <Label htmlFor="description">Description</Label>
+          <Label htmlFor="description">{t("forms.description")}</Label>
           <Textarea
             id="description"
             value={form.description || ""}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
-            placeholder="Describe what this form is for..."
+            placeholder={t("forms.descriptionPlaceholder")}
             className="mt-2"
           />
         </CardContent>
@@ -276,7 +278,7 @@ export default function FormEditorPage() {
       {/* Questions */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Questions</h2>
+          <h2 className="text-lg font-semibold">{t("forms.questionsHeading")}</h2>
           <Dialog open={dialogOpen} onOpenChange={(open) => {
             setDialogOpen(open);
             if (!open) {
@@ -289,19 +291,19 @@ export default function FormEditorPage() {
             <DialogTrigger asChild>
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
-                Add Question
+                {t("forms.addQuestion")}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>{editingQuestion ? "Edit Question" : "Add Question"}</DialogTitle>
+                <DialogTitle>{editingQuestion ? t("forms.editQuestion") : t("forms.addQuestion")}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 mt-4">
                 <div className="space-y-2">
-                  <Label htmlFor="question_text">Question</Label>
+                  <Label htmlFor="question_text">{t("forms.question")}</Label>
                   <Textarea
                     id="question_text"
-                    placeholder="e.g., Are the tires in good condition?"
+                    placeholder={t("forms.questionPlaceholder")}
                     value={questionData.question_text}
                     onChange={(e) =>
                       setQuestionData({ ...questionData, question_text: e.target.value })
@@ -309,7 +311,7 @@ export default function FormEditorPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Answer Type</Label>
+                  <Label>{t("forms.answerType")}</Label>
                   <Select
                     value={questionData.question_type}
                     onValueChange={(value: QuestionType) =>
@@ -323,31 +325,31 @@ export default function FormEditorPage() {
                       <SelectItem value="yes_no">
                         <div className="flex items-center gap-2">
                           <ToggleLeft className="h-4 w-4" />
-                          Yes/No - Simple toggle answer
+                          {t("forms.yesNoDesc")}
                         </div>
                       </SelectItem>
                       <SelectItem value="photo">
                         <div className="flex items-center gap-2">
                           <Camera className="h-4 w-4" />
-                          Photo - Requires a photo upload
+                          {t("forms.photoDesc")}
                         </div>
                       </SelectItem>
                       <SelectItem value="text">
                         <div className="flex items-center gap-2">
                           <Type className="h-4 w-4" />
-                          Text - Free text answer
+                          {t("forms.textDesc")}
                         </div>
                       </SelectItem>
                       <SelectItem value="number">
                         <div className="flex items-center gap-2">
                           <Hash className="h-4 w-4" />
-                          Number - Numeric value
+                          {t("forms.numberDesc")}
                         </div>
                       </SelectItem>
                       <SelectItem value="signature">
                         <div className="flex items-center gap-2">
                           <PenTool className="h-4 w-4" />
-                          Signature - Requires signature
+                          {t("forms.signatureDesc")}
                         </div>
                       </SelectItem>
                     </SelectContent>
@@ -355,7 +357,7 @@ export default function FormEditorPage() {
                 </div>
                 {questionData.question_type === "photo" && (
                   <div className="space-y-2">
-                    <Label>Number of Photos</Label>
+                    <Label>{t("forms.numberOfPhotos")}</Label>
                     <Select
                       value={questionData.max_photos.toString()}
                       onValueChange={(value) =>
@@ -366,18 +368,18 @@ export default function FormEditorPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="1">1 photo</SelectItem>
-                        <SelectItem value="2">2 photos</SelectItem>
-                        <SelectItem value="3">3 photos</SelectItem>
-                        <SelectItem value="4">4 photos</SelectItem>
-                        <SelectItem value="5">5 photos</SelectItem>
-                        <SelectItem value="10">Up to 10 photos</SelectItem>
+                        <SelectItem value="1">{t("forms.onePhoto")}</SelectItem>
+                        <SelectItem value="2">2 {t("forms.photosCount")}</SelectItem>
+                        <SelectItem value="3">3 {t("forms.photosCount")}</SelectItem>
+                        <SelectItem value="4">4 {t("forms.photosCount")}</SelectItem>
+                        <SelectItem value="5">5 {t("forms.photosCount")}</SelectItem>
+                        <SelectItem value="10">{t("forms.upTo10Photos")}</SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
                       {questionData.max_photos === 1 
-                        ? "Driver will take exactly 1 photo" 
-                        : `Driver can take up to ${questionData.max_photos} photos`}
+                        ? t("forms.exactlyOnePhoto") 
+                        : t("forms.upToNPhotos").replace("{n}", String(questionData.max_photos))}
                     </p>
                   </div>
                 )}
@@ -390,7 +392,7 @@ export default function FormEditorPage() {
                   >
                     <div className="flex items-center gap-2">
                       <Globe className="h-4 w-4 text-muted-foreground" />
-                      <span>Translations</span>
+                      <span>{t("forms.translations")}</span>
                       {Object.values(translations).filter(v => v.trim()).length > 0 && (
                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                           {Object.values(translations).filter(v => v.trim()).length}
@@ -406,7 +408,7 @@ export default function FormEditorPage() {
                   {showTranslations && (
                     <div className="border-t border-border/50 px-3 py-3 space-y-2.5 bg-muted/20">
                       <p className="text-[11px] text-muted-foreground">
-                        Translate the question for drivers using different languages. Leave blank to use the default question text.
+                        {t("forms.translationsHelp")}
                       </p>
                       {FORM_LANGUAGES.filter(l => l.code !== "en").map((lang) => (
                         <div key={lang.code} className="flex items-start gap-2">
@@ -433,7 +435,7 @@ export default function FormEditorPage() {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="is_required">Required</Label>
+                  <Label htmlFor="is_required">{t("forms.required")}</Label>
                   <Switch
                     id="is_required"
                     checked={questionData.is_required}
@@ -447,7 +449,7 @@ export default function FormEditorPage() {
                   className="w-full"
                   disabled={!questionData.question_text}
                 >
-                  {editingQuestion ? "Update Question" : "Add Question"}
+                  {editingQuestion ? t("forms.updateQuestion") : t("forms.addQuestion")}
                 </Button>
               </div>
             </DialogContent>

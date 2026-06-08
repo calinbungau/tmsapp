@@ -46,6 +46,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import type { FormTemplate, FormQuestion, FormFrequency, QuestionType } from "@/lib/types";
 import { FORM_FREQUENCY_LABELS, QUESTION_TYPE_LABELS } from "@/lib/types";
 
@@ -67,6 +68,7 @@ const QUESTION_TYPE_ICONS: Record<QuestionType, React.ReactNode> = {
 export default function AdminFormsPage() {
   const router = useRouter();
   const { session: adminSession } = useAdminSession();
+  const { t } = useTranslation();
   const [forms, setForms] = useState<(FormTemplate & { questions: FormQuestion[] })[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -135,7 +137,7 @@ export default function AdminFormsPage() {
   };
 
   const handleDeleteForm = async (formId: string) => {
-    if (!confirm("Are you sure you want to delete this form? This cannot be undone.")) return;
+    if (!confirm(t("forms.confirmDeleteForm"))) return;
 
     const supabase = createClient();
     await supabase.from("form_templates").delete().eq("id", formId);
@@ -171,49 +173,49 @@ export default function AdminFormsPage() {
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="mr-2 h-4 w-4" />
-        Back to Forms
+        {t("forms.backToForms")}
       </Link>
 
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Form Types</h1>
+          <h1 className="text-2xl font-bold">{t("forms.formTypesTitle")}</h1>
           <p className="text-muted-foreground">
-            Create and manage form templates for drivers
+            {t("forms.formTypesSubtitle")}
           </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
-              New Form
+              {t("forms.newForm")}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create New Form</DialogTitle>
+              <DialogTitle>{t("forms.createNewForm")}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 mt-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Form Name</Label>
+                <Label htmlFor="name">{t("forms.formName")}</Label>
                 <Input
                   id="name"
-                  placeholder="e.g., Daily Vehicle Inspection"
+                  placeholder={t("forms.formNamePlaceholder")}
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="description">Description (Optional)</Label>
+                <Label htmlFor="description">{t("forms.descriptionOptional")}</Label>
                 <Textarea
                   id="description"
-                  placeholder="Describe what this form is for..."
+                  placeholder={t("forms.descriptionPlaceholder")}
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <Label>Frequency</Label>
+                <Label>{t("forms.frequencyLabel")}</Label>
                 <Select
                   value={formData.frequency}
                   onValueChange={(value: FormFrequency) =>
@@ -227,32 +229,32 @@ export default function AdminFormsPage() {
                     <SelectItem value="daily">
                       <div className="flex items-center gap-2">
                         <Calendar className="h-4 w-4" />
-                        Daily - Required every day
+                        {t("forms.dailyDesc")}
                       </div>
                     </SelectItem>
                     <SelectItem value="weekly">
                       <div className="flex items-center gap-2">
                         <CalendarDays className="h-4 w-4" />
-                        Weekly - Required once per week
+                        {t("forms.weeklyDesc")}
                       </div>
                     </SelectItem>
                     <SelectItem value="monthly">
                       <div className="flex items-center gap-2">
                         <CalendarRange className="h-4 w-4" />
-                        Monthly - Required once per month
+                        {t("forms.monthlyDesc")}
                       </div>
                     </SelectItem>
                     <SelectItem value="on_demand">
                       <div className="flex items-center gap-2">
                         <Zap className="h-4 w-4" />
-                        On Demand - When needed (e.g., Accident Report)
+                        {t("forms.onDemandDesc")}
                       </div>
                     </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <Button onClick={handleCreateForm} className="w-full" disabled={!formData.name}>
-                Create Form
+                {t("forms.createForm")}
               </Button>
             </div>
           </DialogContent>
@@ -264,13 +266,13 @@ export default function AdminFormsPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <ClipboardList className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No forms yet</h3>
+            <h3 className="text-lg font-medium mb-2">{t("forms.noFormsYet")}</h3>
             <p className="text-muted-foreground text-center mb-4">
-              Create your first form to start collecting data from drivers
+              {t("forms.noFormsDesc")}
             </p>
             <Button onClick={() => setDialogOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
-              Create First Form
+              {t("forms.createFirstForm")}
             </Button>
           </CardContent>
         </Card>
@@ -311,7 +313,7 @@ export default function AdminFormsPage() {
                     </Badge>
                   </div>
                   <span className="text-sm text-muted-foreground">
-                    {form.questions?.length || 0} questions
+                    {form.questions?.length || 0} {t("forms.questions")}
                   </span>
                 </div>
                 <div className="flex gap-2 mt-4">
@@ -325,7 +327,7 @@ export default function AdminFormsPage() {
                     }}
                   >
                     <Edit className="mr-1 h-3 w-3" />
-                    Edit
+                    {t("forms.edit")}
                   </Button>
                   <Button
                     variant="outline"
