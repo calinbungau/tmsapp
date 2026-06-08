@@ -622,12 +622,11 @@ export default function AdminDashboard() {
             onClick={() => setModulesOpen(true)}
             className="group h-14 w-14 rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95"
             style={{
-              background: "linear-gradient(145deg, rgba(30, 32, 40, 0.95) 0%, rgba(20, 22, 28, 0.95) 100%)",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.3)",
-              border: "1px solid rgba(252, 191, 1, 0.2)",
+              background: "linear-gradient(145deg, #FCBF01 0%, #d9a601 100%)",
+              boxShadow: "0 8px 32px rgba(252, 191, 1, 0.35), 0 4px 12px rgba(0,0,0,0.2), inset 0 2px 0 rgba(255,255,255,0.2)",
             }}
           >
-            <ArrowRight className="h-5 w-5 text-[#FCBF01] transition-transform group-hover:translate-x-0.5" />
+            <ArrowRight className="h-5 w-5 text-black transition-transform group-hover:translate-x-0.5" />
           </button>
         </div>
 
