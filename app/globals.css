@@ -324,15 +324,24 @@
 /*
  * Admin sidebar surface.
  *
- * Base styling uses the themed sidebar tokens so it adapts to light mode.
- * In dark mode we layer the original deep navy gradient + blue inner glow
- * on top for the richer look the app shipped with.
+ * The sidebar is ALWAYS dark, in both light and dark themes. We force the
+ * deep navy gradient and re-scope the design tokens its children rely on
+ * (foreground, muted, border, accent...) to dark-palette values so that
+ * nav text/icons stay legible even when the rest of the app is in light mode.
  */
 .admin-sidebar {
-  background: var(--sidebar);
-  box-shadow: inset -1px 0 0 var(--sidebar-border);
-}
-.dark .admin-sidebar {
+  --background: #0A0C18;
+  --foreground: #F5F5F5;
+  --muted: #1E2235;
+  --muted-foreground: #9CA3AF;
+  --accent: #FCBF01;
+  --accent-foreground: #0E101F;
+  --border: #2D3250;
+  --card: #161829;
+  --card-foreground: #F5F5F5;
+  --popover: #161829;
+  --popover-foreground: #F5F5F5;
   background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(10, 12, 24, 0.99) 40%, rgba(8, 10, 18, 1) 100%);
   box-shadow: inset -1px 0 0 rgba(59, 130, 246, 0.08), inset 0 1px 0 rgba(59, 130, 246, 0.05);
+  color: var(--foreground);
 }
