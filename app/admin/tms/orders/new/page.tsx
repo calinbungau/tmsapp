@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import {
   ArrowLeft, ArrowRight, Plus, X, GripVertical, Trash2, MapPin, Clock,
   User, Building2, Truck, Package, DollarSign, FileText, Check,
@@ -379,6 +380,7 @@ function QuickCreatePartnerDialog({
   const [saving, setSaving] = useState(false);
   const [vatLoading, setVatLoading] = useState(false);
   const { toast } = useToast();
+  const { t: tr } = useTranslation();
 
   useEffect(() => { setName(suggestedName); }, [suggestedName]);
   
@@ -411,7 +413,7 @@ function QuickCreatePartnerDialog({
     const vatNumber = taxId.trim().toUpperCase();
     
     if (!vatNumber) {
-      toast({ title: "Error", description: "Please enter a Tax ID / VAT Number first", variant: "destructive" });
+      toast({ title: tr("tms.newOrder.common.error"), description: tr("tms.newOrder.vat.enterFirst"), variant: "destructive" });
       return;
     }
 
@@ -424,8 +426,8 @@ function QuickCreatePartnerDialog({
 
     if (!isRomanian && !isEU) {
       toast({ 
-        title: "VAT Lookup", 
-        description: "VAT lookup is only available for EU companies.\n\nSupported: " + EU_COUNTRY_CODES.slice(0, 10).join(", ") + "...",
+        title: tr("tms.newOrder.vat.lookupTitle"), 
+        description: tr("tms.newOrder.vat.euOnly") + "\n\nSupported: " + EU_COUNTRY_CODES.slice(0, 10).join(", ") + "...",
         variant: "destructive" 
       });
       return;
@@ -464,12 +466,12 @@ function QuickCreatePartnerDialog({
             setCountry(v.country || "Romania");
             setTaxId(v.vatNumber || taxId);
             toast({
-              title: "Company data loaded from VIES (ANAF fallback)",
+              title: tr("tms.newOrder.vat.loadedViesAnaf"),
               description: `VAT: ${v.vatNumber} | Status: Valid & Active`,
             });
           } else {
             toast({
-              title: "Lookup failed",
+              title: tr("tms.newOrder.vat.lookupFailed"),
               description: result.error
                 ? `ANAF: ${result.error}. VIES fallback also failed.`
                 : "ANAF unavailable and VIES fallback also failed. Enter details manually.",
@@ -498,7 +500,7 @@ function QuickCreatePartnerDialog({
         ].join(" | ");
         
         toast({ 
-          title: "Company data loaded from ANAF", 
+          title: tr("tms.newOrder.vat.loadedAnaf"), 
           description: `Status: ${statusMsg}`,
         });
       } else {
@@ -516,7 +518,7 @@ function QuickCreatePartnerDialog({
             setVatLoading(false);
             return lookupVAT();
           }
-          toast({ title: "VIES Error", description: result.error || "Failed to validate VAT", variant: "destructive" });
+          toast({ title: tr("tms.newOrder.vat.viesError"), description: result.error || tr("tms.newOrder.vat.validateFailed"), variant: "destructive" });
           return;
         }
 
@@ -530,19 +532,19 @@ function QuickCreatePartnerDialog({
 
         if (data.limitedData) {
           toast({ 
-            title: "VAT Number Valid", 
+            title: tr("tms.newOrder.vat.valid"), 
             description: `${data.vatNumber} is valid. ${data.limitedDataReason || "Enter details manually."}`,
           });
         } else {
           toast({ 
-            title: "Company data loaded from VIES", 
+            title: tr("tms.newOrder.vat.loadedVies"), 
             description: `VAT: ${data.vatNumber} | Status: Valid & Active`,
           });
         }
       }
     } catch (error) {
       console.error("VAT lookup error:", error);
-      toast({ title: "Error", description: "Failed to connect to VAT service", variant: "destructive" });
+      toast({ title: tr("tms.newOrder.common.error"), description: tr("tms.newOrder.vat.connectFailed"), variant: "destructive" });
     } finally {
       setVatLoading(false);
     }
@@ -581,16 +583,16 @@ function QuickCreatePartnerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><UserPlus className="h-5 w-5" /> Quick Create Partner</DialogTitle>
-          <DialogDescription>Create a new business partner to use in this order. You can edit full details later in Master Data.</DialogDescription>
+          <DialogTitle className="flex items-center gap-2"><UserPlus className="h-5 w-5" /> {tr("tms.newOrder.partner.quickCreate")}</DialogTitle>
+          <DialogDescription>{tr("tms.newOrder.partner.createDesc")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-2">
           <div className="space-y-2">
-            <Label>Company Name *</Label>
-            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Partner name..." autoFocus />
+            <Label>{tr("tms.newOrder.partner.companyNameReq")}</Label>
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder={tr("tms.newOrder.partner.namePlaceholder")} autoFocus />
           </div>
           <div className="space-y-2">
-            <Label>Type *</Label>
+            <Label>{tr("tms.newOrder.partner.typeReq")}</Label>
             <div className="flex flex-wrap gap-2">
               {(["shipper", "carrier", "forwarder"] as const).map(type => (
                 <button
@@ -608,7 +610,7 @@ function QuickCreatePartnerDialog({
           </div>
           {/* Tax ID with VAT Lookup */}
           <div className="space-y-1.5">
-            <Label className="text-xs">Tax ID / VAT Number</Label>
+            <Label className="text-xs">{tr("tms.newOrder.partner.taxId")}</Label>
             <div className="flex gap-2">
               <Input 
                 className="h-8 text-sm flex-1" 
@@ -622,7 +624,7 @@ function QuickCreatePartnerDialog({
                     lookupVAT();
                   }
                 }}
-                placeholder="RO12345678 or EU VAT number" 
+                placeholder={tr("tms.newOrder.partner.vatPlaceholder")} 
               />
               <Button
                 type="button"
@@ -630,7 +632,7 @@ function QuickCreatePartnerDialog({
                 size="sm"
                 onClick={lookupVAT}
                 disabled={vatLoading || !taxId.trim()}
-                title="Lookup company (ANAF for RO, VIES for EU)"
+                title={tr("tms.newOrder.partner.lookupTitle")}
                 className="h-8 px-2.5"
               >
                 {vatLoading ? (
@@ -640,44 +642,44 @@ function QuickCreatePartnerDialog({
                 )}
               </Button>
             </div>
-            <p className="text-[10px] text-muted-foreground">Enter VAT and click search to auto-fill company data</p>
+            <p className="text-[10px] text-muted-foreground">{tr("tms.newOrder.partner.lookupHint")}</p>
           </div>
           
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Registration No.</Label>
+              <Label className="text-xs">{tr("tms.newOrder.partner.registrationNo")}</Label>
               <Input className="h-8 text-sm" value={registrationNumber} onChange={e => setRegistrationNumber(e.target.value)} placeholder="J40/123/2020" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Email</Label>
+              <Label className="text-xs">{tr("tms.newOrder.partner.email")}</Label>
               <Input className="h-8 text-sm" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="contact@..." />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Phone</Label>
+              <Label className="text-xs">{tr("tms.newOrder.partner.phone")}</Label>
               <Input className="h-8 text-sm" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+40..." />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">IBAN</Label>
+              <Label className="text-xs">{tr("tms.newOrder.partner.iban")}</Label>
               <Input className="h-8 text-sm" value={bankIban} onChange={e => setBankIban(e.target.value)} placeholder="RO49AAAA..." />
             </div>
             <div className="space-y-1.5 col-span-2">
-              <Label className="text-xs">Address</Label>
-              <Input className="h-8 text-sm" value={address} onChange={e => setAddress(e.target.value)} placeholder="Street address..." />
+              <Label className="text-xs">{tr("tms.newOrder.partner.address")}</Label>
+              <Input className="h-8 text-sm" value={address} onChange={e => setAddress(e.target.value)} placeholder={tr("tms.newOrder.partner.addressPlaceholder")} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">City</Label>
+              <Label className="text-xs">{tr("tms.newOrder.partner.city")}</Label>
               <Input className="h-8 text-sm" value={city} onChange={e => setCity(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Country</Label>
-              <Input className="h-8 text-sm" value={country} onChange={e => setCountry(e.target.value)} placeholder="Romania" />
+              <Label className="text-xs">{tr("tms.newOrder.partner.country")}</Label>
+              <Input className="h-8 text-sm" value={country} onChange={e => setCountry(e.target.value)} placeholder={tr("tms.newOrder.partner.countryPlaceholder")} />
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>{tr("tms.newOrder.common.cancel")}</Button>
             <Button size="sm" onClick={handleCreate} disabled={saving || !name.trim() || types.length === 0}>
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Plus className="h-3.5 w-3.5 mr-1" />}
-              Create Partner
+              {tr("tms.newOrder.partner.createPartner")}
             </Button>
           </div>
         </div>
@@ -706,11 +708,12 @@ function SectionHeader({ icon: Icon, title, description }: { icon: any; title: s
 
 // ═══════════════════════════════════════════════════════════
 // Main Page
-// ═══════════════════════════════════════════════════════════
+// ═════════════════════════���═════════════════════════════════
 export default function NewOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const { t: tr } = useTranslation();
   const emailAutoLoadRef = useRef(false);
   const [adminSession, setAdminSession] = useState<any>(null);
   const [tabs, setTabs] = useState<DraftTab[]>([emptyDraft()]);
@@ -1243,10 +1246,10 @@ customer_price: draft.customer_price?.toString() || "",
       if (signed) {
         updateForm({ status: "fwd_unassigned" });
         setTabs(prev => prev.map((t, i) => i === activeTabIndex ? { ...t, createdFrom: "email_signed", pdfUrl: signedDocumentUrl || null, sourceEmailId: emailId || null } : t));
-        toast({ title: "Signed order loaded", description: `"${fileName}" already confirmed with customer. Status: Unassigned to Carrier.` });
+        toast({ title: tr("tms.newOrder.ai.signedLoaded"), description: `"${fileName}" already confirmed with customer. Status: Unassigned to Carrier.` });
       } else {
         setTabs(prev => prev.map((t, i) => i === activeTabIndex ? { ...t, sourceEmailId: emailId || null } : t));
-        toast({ title: "Email attachment loaded", description: `Processing "${fileName}" with AI extraction...` });
+        toast({ title: tr("tms.newOrder.ai.emailLoaded"), description: `Processing "${fileName}" with AI extraction...` });
       }
 
       // Trigger AI extraction
