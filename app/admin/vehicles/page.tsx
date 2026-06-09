@@ -76,6 +76,7 @@ import {
 import Link from "next/link";
 import type { Vehicle } from "@/lib/types";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import { Building2, ChevronsUpDown, Users, Fuel } from "lucide-react";
 
 interface BusinessPartner {
@@ -1241,11 +1242,11 @@ export default function AdminVehiclesPage() {
                             <TableCell className="text-muted-foreground text-sm">{device.uniqueId}</TableCell>
                             <TableCell>
                               {existing ? (
-                                <Badge variant="secondary" className="text-xs">Already Linked</Badge>
+                                <Badge variant="secondary" className="text-xs">{t("vehicles.alreadyLinked")}</Badge>
                               ) : imported ? (
-                                <Badge className="text-xs bg-green-500">Imported</Badge>
+                                <Badge className="text-xs bg-green-500">{t("vehicles.imported")}</Badge>
                               ) : (
-                                <Badge variant="outline" className="text-xs">{device.status || "Unknown"}</Badge>
+                                <Badge variant="outline" className="text-xs">{device.status || t("vehicles.unknown")}</Badge>
                               )}
                             </TableCell>
                           </TableRow>
@@ -1257,9 +1258,9 @@ export default function AdminVehiclesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setImportDialogOpen(false)} className="bg-transparent">Close</Button>
+            <Button variant="outline" onClick={() => setImportDialogOpen(false)} className="bg-transparent">{t("vehicles.close")}</Button>
             <Button onClick={handleImportSelected} disabled={selectedImportIds.size === 0}>
-              Import {selectedImportIds.size > 0 ? `(${selectedImportIds.size})` : "Selected"}
+              {t("vehicles.importBtn")} {selectedImportIds.size > 0 ? `(${selectedImportIds.size})` : t("vehicles.selected")}
             </Button>
           </DialogFooter>
         </DialogContent>
