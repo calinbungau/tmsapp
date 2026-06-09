@@ -706,7 +706,7 @@ function SectionHeader({ icon: Icon, title, description }: { icon: any; title: s
   );
 }
 
-// ═════════════════════════════════════════════��═════════════
+// ═════════════════════════════════════════════���═════════════
 // Main Page
 // ═════════════════════════���═════════════════════════════════
 export default function NewOrderPage() {
@@ -2651,11 +2651,11 @@ created_from: tab.createdFrom,
 
         <div className="grid grid-cols-4 gap-3">
           <div className="space-y-1.5">
-            <Label className="text-xs">{tr("tms.newOrder.cargo.weight")}</Label>
+            <Label className="text-xs">{tr("tms.newOrder.cargo.weightKg")}</Label>
             <Input className="h-8 text-sm" type="number" value={activeTab.form.weight_kg} onChange={e => updateForm({ weight_kg: e.target.value })} placeholder="0" />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">{tr("tms.newOrder.cargo.volume")}</Label>
+            <Label className="text-xs">{tr("tms.newOrder.cargo.volumeM3")}</Label>
             <Input className="h-8 text-sm" type="number" value={activeTab.form.volume_m3} onChange={e => updateForm({ volume_m3: e.target.value })} placeholder="0" />
           </div>
           <div className="space-y-1.5">
@@ -2716,17 +2716,17 @@ created_from: tab.createdFrom,
                 {stop.country && getCountryFlagUrl(stop.country) && (
                   <img src={getCountryFlagUrl(stop.country)} alt={stop.country} className="w-4 h-3 rounded-[2px] object-cover shrink-0" crossOrigin="anonymous" />
                 )}
-                <span className="text-xs text-muted-foreground">{tr("tms.newOrder.stops.stop")} {displayIdx + 1}{stop.city ? ` \u2013 ${stop.city}` : ""}</span>
+                <span className="text-xs text-muted-foreground">{tr("tms.newOrder.stops.stopWord")} {displayIdx + 1}{stop.city ? ` \u2013 ${stop.city}` : ""}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Select value={stop.stop_type} onValueChange={v => updateStop(realIdx, { stop_type: v as any })}>
                   <SelectTrigger className="w-auto h-6 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="pickup">{tr("tms.newOrder.stops.pickup")}</SelectItem>
-                    <SelectItem value="delivery">{tr("tms.newOrder.stops.delivery")}</SelectItem>
-                    <SelectItem value="transit">{tr("tms.newOrder.stops.transit")}</SelectItem>
-                    <SelectItem value="customs">{tr("tms.newOrder.stops.customs")}</SelectItem>
-                    <SelectItem value="swap">{tr("tms.newOrder.stops.swap")}</SelectItem>
+                    <SelectItem value="pickup">{tr("tms.newOrder.stops.typePickup")}</SelectItem>
+                    <SelectItem value="delivery">{tr("tms.newOrder.stops.typeDelivery")}</SelectItem>
+                    <SelectItem value="transit">{tr("tms.newOrder.stops.typeTransit")}</SelectItem>
+                    <SelectItem value="customs">{tr("tms.newOrder.stops.typeCustoms")}</SelectItem>
+                    <SelectItem value="swap">{tr("tms.newOrder.stops.typeSwap")}</SelectItem>
                   </SelectContent>
                 </Select>
                 {(step === "execution" ? executionStops : activeTab.form.stops).filter(s => s.origin !== "execution").length > 1 && (
@@ -2742,7 +2742,7 @@ created_from: tab.createdFrom,
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">{tr("tms.newOrder.stops.companyName")}</Label>
-                <Input className="h-8 text-sm" value={stop.company_name} onChange={e => updateStop(realIdx, { company_name: e.target.value })} placeholder={tr("tms.newOrder.stops.companyPlaceholder")} />
+                <Input className="h-8 text-sm" value={stop.company_name} onChange={e => updateStop(realIdx, { company_name: e.target.value })} placeholder={tr("tms.newOrder.stops.companyNamePlaceholder")} />
               </div>
               <div className="space-y-1.5 relative">
                 <Label className="text-xs">{tr("tms.newOrder.stops.address")}</Label>
@@ -2817,7 +2817,7 @@ created_from: tab.createdFrom,
 
             <div className="space-y-1.5">
               <Label className="text-xs">{tr("tms.newOrder.stops.reference")}</Label>
-              <Textarea className="min-h-[60px] text-sm resize-none" value={stop.reference_number} onChange={e => updateStop(realIdx, { reference_number: e.target.value })} placeholder={tr("tms.newOrder.stops.referencePlaceholder")} rows={2} />
+              <Textarea className="min-h-[60px] text-sm resize-none" value={stop.reference_number} onChange={e => updateStop(realIdx, { reference_number: e.target.value })} placeholder={tr("tms.newOrder.stops.refPlaceholder")} rows={2} />
             </div>
           </Card>
           ));
@@ -2948,21 +2948,21 @@ created_from: tab.createdFrom,
               <div className="text-[10px] text-amber-500 flex items-center gap-1 mt-1">
                 <span className="font-medium">
                   {activeTab.form.customer_vat_type === "exempt" 
-                    ? "VAT exempt - intra-EU transport with valid VAT numbers" 
-                    : "Reverse charge - VAT paid by recipient (B2B intra-EU)"}
+                    ? tr("tms.newOrder.pricing.exemptNote") 
+                    : tr("tms.newOrder.pricing.reverseNote")}
                 </span>
               </div>
             )}
             {activeTab.form.customer_vat_type === "non_taxable" && (
               <div className="text-[10px] text-blue-500 flex items-center gap-1 mt-1">
-                <span className="font-medium">Non-taxable - export outside EU</span>
+                <span className="font-medium">{tr("tms.newOrder.pricing.nonTaxableNote")}</span>
               </div>
             )}
           </div>
         )}
 
         <div className="space-y-1.5">
-          <Label className="text-xs">Payment Terms (days)</Label>
+          <Label className="text-xs">{tr("tms.newOrder.pricing.paymentTerms")}</Label>
           <Input className="h-8 text-sm w-32" type="number" value={activeTab.form.payment_terms_customer_days} onChange={e => updateForm({ payment_terms_customer_days: e.target.value })} />
         </div>
       </div>
@@ -3005,8 +3005,8 @@ created_from: tab.createdFrom,
 
       {/* ── SECTION 6: Internal Notes ── */}
       <div className="space-y-4">
-        <SectionHeader icon={FileText} title="Internal Notes" description="Notes visible only to your team" />
-        <Textarea value={activeTab.form.internal_notes} onChange={e => updateForm({ internal_notes: e.target.value })} placeholder="Notes for internal use only..." rows={2} />
+        <SectionHeader icon={FileText} title={tr("tms.newOrder.notes.section")} description={tr("tms.newOrder.notes.sectionDesc")} />
+        <Textarea value={activeTab.form.internal_notes} onChange={e => updateForm({ internal_notes: e.target.value })} placeholder={tr("tms.newOrder.notes.placeholder")} rows={2} />
       </div>
     </div>
   );
@@ -3018,7 +3018,7 @@ created_from: tab.createdFrom,
   const summaryLastStop = summaryStopsSource[summaryStopsSource.length - 1];
   const summaryRoute = summaryFirstStop?.city && summaryLastStop?.city
     ? `${summaryFirstStop.city} \u2192 ${summaryLastStop.city}`
-    : "No route";
+    : tr("tms.newOrder.summary.noRoute");
   const summaryPallets = activeTab.form.pallet_count || "0";
   const summaryWeight = activeTab.form.weight_kg || "0";
   const summaryPrice = activeTab.form.customer_price
@@ -3136,7 +3136,7 @@ created_from: tab.createdFrom,
       {/* Margin for forwarding */}
       {activeTab.form.order_type === "forwarding" && activeTab.form.customer_price && activeTab.form.carrier_cost && (
         <div className="flex items-center justify-between px-2 py-1.5 rounded-md bg-muted/40 text-[10px]">
-          <span className="text-muted-foreground">Margin</span>
+          <span className="text-muted-foreground">{tr("tms.newOrder.summary.margin")}</span>
           <span className={`font-bold ${
             parseFloat(activeTab.form.customer_price) - parseFloat(activeTab.form.carrier_cost) > 0
               ? "text-emerald-400" : "text-destructive"
@@ -3682,10 +3682,10 @@ created_from: tab.createdFrom,
                         {selectedStop.city || selectedStop.company_name || `Stop ${selectedStopIndex + 1}`}
                       </span>
                       {selectedStop.origin === "execution" && (
-                        <span className="text-[8px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/20 leading-none uppercase tracking-wider">Execution</span>
+                        <span className="text-[8px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/20 leading-none uppercase tracking-wider">{tr("tms.newOrder.stops.execution")}</span>
                       )}
                       {selectedStop.origin !== "execution" && (
-                        <span className="text-[8px] font-semibold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/20 leading-none uppercase tracking-wider">Order</span>
+                        <span className="text-[8px] font-semibold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/20 leading-none uppercase tracking-wider">{tr("tms.newOrder.stops.order")}</span>
                       )}
                       <Select value={selectedStop.stop_type} onValueChange={(v: any) => {
                         updateStop(selectedStopIndex, {
@@ -3704,11 +3704,11 @@ created_from: tab.createdFrom,
                       }}>
                         <SelectTrigger className="h-5 text-[10px] w-auto min-w-[70px] bg-transparent border-dashed"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="pickup">Pickup</SelectItem>
-                          <SelectItem value="delivery">Delivery</SelectItem>
-                          <SelectItem value="customs">Customs</SelectItem>
-                          <SelectItem value="transit">Transit</SelectItem>
-                          <SelectItem value="swap">Swap</SelectItem>
+                          <SelectItem value="pickup">{tr("tms.newOrder.stops.typePickup")}</SelectItem>
+                          <SelectItem value="delivery">{tr("tms.newOrder.stops.typeDelivery")}</SelectItem>
+                          <SelectItem value="customs">{tr("tms.newOrder.stops.typeCustoms")}</SelectItem>
+                          <SelectItem value="transit">{tr("tms.newOrder.stops.typeTransit")}</SelectItem>
+                          <SelectItem value="swap">{tr("tms.newOrder.stops.typeSwap")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -3720,25 +3720,25 @@ created_from: tab.createdFrom,
                   <div className="flex-1 overflow-y-auto p-3 space-y-3" style={{ scrollbarWidth: "thin" }}>
                     {/* Company / Stop Name */}
                     <div className="space-y-1">
-                      <Label className="text-[10px] text-muted-foreground/70">Company / Stop Name</Label>
+                      <Label className="text-[10px] text-muted-foreground/70">{tr("tms.newOrder.stops.stopName")}</Label>
                       <Input
                         value={selectedStop.company_name}
                         onChange={(e) => updateStop(selectedStopIndex, { company_name: e.target.value })}
-                        placeholder={`Stop ${selectedStopIndex + 1}`}
+                        placeholder={`${tr("tms.newOrder.stops.stopWord")} ${selectedStopIndex + 1}`}
                         className="h-8 text-xs font-medium bg-background/60"
                       />
                     </div>
 
                     {/* Address with autocomplete */}
                     <div className="space-y-1 relative">
-                      <Label className="text-[10px] text-muted-foreground/70">Address</Label>
+                      <Label className="text-[10px] text-muted-foreground/70">{tr("tms.newOrder.stops.address")}</Label>
                       <div className="relative">
                         <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                         <Input
                           className="h-8 text-xs pl-7 bg-background/60"
                           value={selectedStop.address}
                           onChange={(e) => { updateStop(selectedStopIndex, { address: e.target.value }); setSearchingStop(selectedStopIndex); searchAddress(e.target.value); }}
-                          placeholder="Search address..."
+                          placeholder={tr("tms.newOrder.stops.searchAddress")}
                         />
                         {searchingStop === selectedStopIndex && searchResults.length > 0 && (
                           <div className="absolute top-full mt-1 left-0 right-0 z-[600] bg-popover border rounded-lg shadow-xl max-h-48 overflow-y-auto">
@@ -3774,33 +3774,33 @@ created_from: tab.createdFrom,
                     {/* City / Country / Postal */}
                     <div className="grid grid-cols-3 gap-2">
                       <div className="space-y-1">
-                        <Label className="text-[10px] text-muted-foreground/70">City</Label>
+                        <Label className="text-[10px] text-muted-foreground/70">{tr("tms.newOrder.stops.city")}</Label>
                         <Input className="h-7 text-[11px] bg-background/60" value={selectedStop.city} onChange={e => updateStop(selectedStopIndex, { city: e.target.value })} />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[10px] text-muted-foreground/70">Country</Label>
+                        <Label className="text-[10px] text-muted-foreground/70">{tr("tms.newOrder.stops.country")}</Label>
                         <Input className="h-7 text-[11px] bg-background/60" value={selectedStop.country} onChange={e => updateStop(selectedStopIndex, { country: e.target.value })} />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[10px] text-muted-foreground/70">Postal</Label>
+                        <Label className="text-[10px] text-muted-foreground/70">{tr("tms.newOrder.stops.postal")}</Label>
                         <Input className="h-7 text-[11px] bg-background/60" value={selectedStop.postal_code} onChange={e => updateStop(selectedStopIndex, { postal_code: e.target.value })} />
                       </div>
                     </div>
 
                     {/* Time Window */}
                     <div className="space-y-1.5">
-                      <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1"><Clock className="h-3 w-3" />Time Window</Label>
+                      <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1"><Clock className="h-3 w-3" />{tr("tms.newOrder.stops.timeWindow")}</Label>
                       <div className="grid grid-cols-3 gap-1">
                         <div className="space-y-0.5">
-                          <span className="text-[9px] text-muted-foreground/50 uppercase">Date</span>
+                          <span className="text-[9px] text-muted-foreground/50 uppercase">{tr("tms.newOrder.stops.date")}</span>
                           <Input type="date" value={selectedStop.planned_date} onChange={e => updateStop(selectedStopIndex, { planned_date: e.target.value })} className="h-7 text-[11px] bg-background/60" />
                         </div>
                         <div className="space-y-0.5">
-                          <span className="text-[9px] text-muted-foreground/50 uppercase">From</span>
+                          <span className="text-[9px] text-muted-foreground/50 uppercase">{tr("tms.newOrder.stops.from")}</span>
                           <Input type="time" value={selectedStop.planned_time_from} onChange={e => updateStop(selectedStopIndex, { planned_time_from: e.target.value })} className="h-7 text-[11px] bg-background/60" />
                         </div>
                         <div className="space-y-0.5">
-                          <span className="text-[9px] text-muted-foreground/50 uppercase">To</span>
+                          <span className="text-[9px] text-muted-foreground/50 uppercase">{tr("tms.newOrder.stops.to")}</span>
                           <Input type="time" value={selectedStop.planned_time_to} onChange={e => updateStop(selectedStopIndex, { planned_time_to: e.target.value })} className="h-7 text-[11px] bg-background/60" />
                         </div>
                       </div>
@@ -3811,7 +3811,7 @@ created_from: tab.createdFrom,
                       <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/20">
                         <ArrowLeftRight className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                         <p className="text-[10px] text-amber-500">
-                          Fleet swap configuration is managed in the trip panel on the left sidebar.
+                          {tr("tms.newOrder.stops.swapHint")}
                         </p>
                       </div>
                     )}
@@ -3819,31 +3819,31 @@ created_from: tab.createdFrom,
                     {/* Contact */}
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1"><User className="h-2.5 w-2.5" />Contact</Label>
-                        <Input value={selectedStop.contact_name} onChange={e => updateStop(selectedStopIndex, { contact_name: e.target.value })} className="h-7 text-[11px] bg-background/60" placeholder="Name" />
+                        <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1"><User className="h-2.5 w-2.5" />{tr("tms.newOrder.stops.contact")}</Label>
+                        <Input value={selectedStop.contact_name} onChange={e => updateStop(selectedStopIndex, { contact_name: e.target.value })} className="h-7 text-[11px] bg-background/60" placeholder={tr("tms.newOrder.stops.namePlaceholder")} />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1"><Phone className="h-2.5 w-2.5" />Phone</Label>
-                        <Input value={selectedStop.contact_phone} onChange={e => updateStop(selectedStopIndex, { contact_phone: e.target.value })} className="h-7 text-[11px] bg-background/60" placeholder="+1..." />
+                        <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1"><Phone className="h-2.5 w-2.5" />{tr("tms.newOrder.stops.contactPhone")}</Label>
+                        <Input value={selectedStop.contact_phone} onChange={e => updateStop(selectedStopIndex, { contact_phone: e.target.value })} className="h-7 text-[11px] bg-background/60" placeholder={tr("tms.newOrder.stops.phonePlaceholder")} />
                       </div>
                     </div>
 
                     {/* Reference */}
                     <div className="space-y-1">
-                      <Label className="text-[10px] text-muted-foreground/70">Reference Number</Label>
-                      <Textarea value={selectedStop.reference_number} onChange={e => updateStop(selectedStopIndex, { reference_number: e.target.value })} className="min-h-[60px] text-[11px] bg-background/60 resize-none" placeholder="Order references (one per line)" rows={3} />
+                      <Label className="text-[10px] text-muted-foreground/70">{tr("tms.newOrder.stops.referenceNumber")}</Label>
+                      <Textarea value={selectedStop.reference_number} onChange={e => updateStop(selectedStopIndex, { reference_number: e.target.value })} className="min-h-[60px] text-[11px] bg-background/60 resize-none" placeholder={tr("tms.newOrder.stops.refPlaceholder")} rows={3} />
                     </div>
 
                     {/* Driver Form */}
                     {forms.length > 0 && (
                       <div className="space-y-1">
-                        <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1"><FileCheck className="h-2.5 w-2.5" />Driver Form</Label>
+                        <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1"><FileCheck className="h-2.5 w-2.5" />{tr("tms.newOrder.stops.driverForm")}</Label>
                         <Select value={selectedStop.form_id || "_none"} onValueChange={v => updateStop(selectedStopIndex, { form_id: v === "_none" ? "" : v })}>
                           <SelectTrigger className="h-7 text-[11px] bg-background/60">
-                            <SelectValue placeholder="No form" />
+                            <SelectValue placeholder={tr("tms.newOrder.stops.noForm")} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="_none">No form assigned</SelectItem>
+                            <SelectItem value="_none">{tr("tms.newOrder.stops.noFormAssigned")}</SelectItem>
                             {forms.map(f => (
                               <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
                             ))}
@@ -3854,11 +3854,11 @@ created_from: tab.createdFrom,
 
                     {/* Notes */}
                     <div className="space-y-1">
-                      <Label className="text-[10px] text-muted-foreground/70">Notes</Label>
+                      <Label className="text-[10px] text-muted-foreground/70">{tr("tms.newOrder.stops.notes")}</Label>
                       <Textarea
                         value={selectedStop.notes || ""}
                         onChange={e => updateStop(selectedStopIndex, { notes: e.target.value })}
-                        placeholder="Stop instructions..."
+                        placeholder={tr("tms.newOrder.stops.notesPlaceholder")}
                         rows={2}
                         className="text-[11px] resize-none bg-background/60"
                       />
@@ -3932,25 +3932,25 @@ created_from: tab.createdFrom,
                   <div className="px-3 pb-2.5 grid grid-cols-4 gap-1">
                     {distKm > 0 && (
                       <div className="rounded-lg bg-primary/8 px-2 py-1.5 text-center">
-                        <div className="text-[9px] text-primary/60 uppercase tracking-wider">Dist</div>
+                        <div className="text-[9px] text-primary/60 uppercase tracking-wider">{tr("tms.newOrder.summary.dist")}</div>
                         <div className="text-[11px] font-bold text-primary tabular-nums">{distKm.toFixed(0)}<span className="text-[8px] font-normal ml-0.5">km</span></div>
                       </div>
                     )}
                     {durH > 0 && (
                       <div className="rounded-lg bg-muted/50 px-2 py-1.5 text-center">
-                        <div className="text-[9px] text-muted-foreground/60 uppercase tracking-wider">Time</div>
+                        <div className="text-[9px] text-muted-foreground/60 uppercase tracking-wider">{tr("tms.newOrder.summary.time")}</div>
                         <div className="text-[11px] font-bold text-foreground tabular-nums">{Math.floor(durH)}h{Math.round((durH % 1) * 60) > 0 ? Math.round((durH % 1) * 60) + "m" : ""}</div>
                       </div>
                     )}
                     {summaryPallets !== "0" && (
                       <div className="rounded-lg bg-muted/50 px-2 py-1.5 text-center">
-                        <div className="text-[9px] text-muted-foreground/60 uppercase tracking-wider">Load</div>
+                        <div className="text-[9px] text-muted-foreground/60 uppercase tracking-wider">{tr("tms.newOrder.summary.load")}</div>
                         <div className="text-[11px] font-bold text-foreground tabular-nums">{summaryPallets}<span className="text-[8px] font-normal ml-0.5">plt</span></div>
                       </div>
                     )}
                     {fuelCost > 0 && (
                       <div className="rounded-lg bg-amber-500/8 px-2 py-1.5 text-center">
-                        <div className="text-[9px] text-amber-500/60 uppercase tracking-wider">Fuel</div>
+                        <div className="text-[9px] text-amber-500/60 uppercase tracking-wider">{tr("tms.newOrder.summary.fuel")}</div>
                         <div className="text-[11px] font-bold text-amber-500 tabular-nums">{"\u20AC"}{fuelCost.toFixed(0)}</div>
                       </div>
                     )}
@@ -3962,7 +3962,7 @@ created_from: tab.createdFrom,
                     const marginPct = (margin / parseFloat(activeTab.form.customer_price) * 100);
                     return (
                       <div className="mx-3 mb-2.5 flex items-center justify-between px-2 py-1.5 rounded-lg bg-muted/30 border border-border/30">
-                        <span className="text-[10px] text-muted-foreground">Margin</span>
+                        <span className="text-[10px] text-muted-foreground">{tr("tms.newOrder.summary.margin")}</span>
                         <span className={`text-[11px] font-bold tabular-nums ${margin > 0 ? "text-emerald-400" : "text-destructive"}`}>
                           {margin.toFixed(2)} {activeTab.form.customer_currency} ({marginPct.toFixed(0)}%)
                         </span>
