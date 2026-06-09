@@ -36,6 +36,7 @@ import {
   FolderTree,
 } from "lucide-react";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 
 interface Employee {
   id: string;
@@ -59,6 +60,7 @@ interface Department {
 
 export default function DepartmentsPage() {
   const { session: adminSession, loading: sessionLoading } = useAdminSession();
+  const { t } = useTranslation();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -183,10 +185,10 @@ export default function DepartmentsPage() {
 
   const handleDelete = async (dept: Department) => {
     if (dept.employee_count && dept.employee_count > 0) {
-      alert("Cannot delete a department that has employees. Please reassign employees first.");
+      alert(t("departments.cannotDelete"));
       return;
     }
-    if (!confirm(`Are you sure you want to delete "${dept.name}"?`)) return;
+    if (!confirm(t("departments.confirmDelete").replace("{name}", dept.name))) return;
     
     const supabase = createClient();
     await supabase.from("departments").delete().eq("id", dept.id);
@@ -232,16 +234,16 @@ export default function DepartmentsPage() {
             <div className="font-medium flex items-center gap-2">
               {dept.name}
               {!dept.is_active && (
-                <Badge variant="secondary" className="text-xs">Inactive</Badge>
+                <Badge variant="secondary" className="text-xs">{t("departments.inactive")}</Badge>
               )}
             </div>
             <div className="text-sm text-muted-foreground flex items-center gap-3">
               {dept.manager && (
-                <span>Manager: {dept.manager.first_name} {dept.manager.last_name}</span>
+                <span>{t("departments.manager")} {dept.manager.first_name} {dept.manager.last_name}</span>
               )}
               <span className="flex items-center gap-1">
                 <Users className="h-3 w-3" />
-                {dept.employee_count || 0} employees
+                {t("departments.employeesCount").replace("{n}", String(dept.employee_count || 0))}
               </span>
             </div>
           </div>
