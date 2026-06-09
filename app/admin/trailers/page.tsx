@@ -883,22 +883,22 @@ export default function TrailersPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => router.push(`/admin/trailers/${trailer.id}`)}>
                           <Eye className="h-4 w-4 mr-2" />
-                          View Details
+                          {t("trailers.viewDetails")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleOpenDialog(trailer)}>
                           <Edit className="h-4 w-4 mr-2" />
-                          Edit
+                          {t("trailers.edit")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => toggleActive(trailer)}>
                           {trailer.is_active ? (
                             <>
                               <XCircle className="h-4 w-4 mr-2" />
-                              Deactivate
+                              {t("trailers.deactivate")}
                             </>
                           ) : (
                             <>
                               <CheckCircle className="h-4 w-4 mr-2" />
-                              Activate
+                              {t("trailers.activate")}
                             </>
                           )}
                         </DropdownMenuItem>
@@ -908,7 +908,7 @@ export default function TrailersPage() {
                           className="text-destructive focus:text-destructive"
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
+                          {t("trailers.delete")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -923,8 +923,8 @@ export default function TrailersPage() {
         <div className="flex items-center justify-between px-6 py-3 border-t">
           <p className="text-sm text-muted-foreground">
             {totalCount > 0
-              ? `${startIndex + 1}-${endIndex} of ${totalCount} trailers`
-              : "No trailers"
+              ? `${startIndex + 1}-${endIndex} ${t("trailers.countOf")} ${totalCount} ${t("trailers.trailersLabel")}`
+              : t("trailers.none")
             }
           </p>
           <div className="flex items-center gap-4">
@@ -978,7 +978,7 @@ export default function TrailersPage() {
               </SelectTrigger>
               <SelectContent>
                 {PAGE_SIZE_OPTIONS.map((size) => (
-                  <SelectItem key={size} value={String(size)}>{size} / page</SelectItem>
+                  <SelectItem key={size} value={String(size)}>{size} {t("trailers.perPage")}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -990,60 +990,60 @@ export default function TrailersPage() {
       <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
         <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
           <DialogHeader className="flex-shrink-0">
-            <DialogTitle>{editingTrailer ? "Edit Trailer" : "Add New Trailer"}</DialogTitle>
+            <DialogTitle>{editingTrailer ? t("trailers.editTrailer") : t("trailers.addNewTrailer")}</DialogTitle>
             <DialogDescription>
-              {editingTrailer ? "Update trailer information" : "Add a new trailer to your fleet"}
+              {editingTrailer ? t("trailers.updateInfo") : t("trailers.addToFleet")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-2 overflow-y-auto flex-1 pr-2">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Plate Number *</Label>
+                <Label>{t("trailers.plateNumber")}</Label>
                 <Input value={formData.plate_number} onChange={(e) => setFormData((p) => ({ ...p, plate_number: e.target.value }))} placeholder="AB-12-CDE" />
               </div>
               <div className="space-y-2">
-                <Label>Type</Label>
+                <Label>{t("trailers.type")}</Label>
                 <Select value={formData.type} onValueChange={(v) => setFormData((p) => ({ ...p, type: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {TRAILER_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                    {TRAILER_TYPES.map((t2) => <SelectItem key={t2.value} value={t2.value}>{typeLabel(t2.value)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>Make</Label>
+                <Label>{t("trailers.make")}</Label>
                 <Input value={formData.make} onChange={(e) => setFormData((p) => ({ ...p, make: e.target.value }))} placeholder="Schmitz" />
               </div>
               <div className="space-y-2">
-                <Label>Model</Label>
+                <Label>{t("trailers.model")}</Label>
                 <Input value={formData.model} onChange={(e) => setFormData((p) => ({ ...p, model: e.target.value }))} placeholder="S.CS" />
               </div>
               <div className="space-y-2">
-                <Label>Year</Label>
+                <Label>{t("trailers.year")}</Label>
                 <Input type="number" value={formData.year} onChange={(e) => setFormData((p) => ({ ...p, year: e.target.value }))} placeholder="2023" />
               </div>
             </div>
 
             {/* Capacity */}
             <div className="pt-2 border-t">
-              <p className="text-sm font-medium mb-3">Capacity</p>
+              <p className="text-sm font-medium mb-3">{t("trailers.capacity")}</p>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Max Weight (kg)</Label>
+                  <Label>{t("trailers.maxWeight")}</Label>
                   <Input type="number" value={formData.max_weight_kg} onChange={(e) => setFormData((p) => ({ ...p, max_weight_kg: e.target.value }))} placeholder="24000" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Max Pallets</Label>
+                  <Label>{t("trailers.maxPallets")}</Label>
                   <Input type="number" value={formData.max_pallets} onChange={(e) => setFormData((p) => ({ ...p, max_pallets: e.target.value }))} placeholder="33" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Loading Meters</Label>
+                  <Label>{t("trailers.loadingMeters")}</Label>
                   <Input type="number" step="0.1" value={formData.loading_meters} onChange={(e) => setFormData((p) => ({ ...p, loading_meters: e.target.value }))} placeholder="13.6" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Volume (m3)</Label>
+                  <Label>{t("trailers.volume")}</Label>
                   <Input type="number" step="0.1" value={formData.volume_m3} onChange={(e) => setFormData((p) => ({ ...p, volume_m3: e.target.value }))} placeholder="90" />
                 </div>
               </div>
@@ -1052,18 +1052,18 @@ export default function TrailersPage() {
             {/* GPS Device */}
             {traccarConfigured && (
               <div className="pt-2 border-t">
-                <p className="text-sm font-medium mb-3">GPS Tracking</p>
+                <p className="text-sm font-medium mb-3">{t("trailers.gpsTracking")}</p>
                 <div className="space-y-2">
-                  <Label>GPS Device (Traccar)</Label>
+                  <Label>{t("trailers.gpsDevice")}</Label>
                   <Select
                     value={formData.traccar_device_id}
                     onValueChange={(v) => setFormData((p) => ({ ...p, traccar_device_id: v === "none" ? "" : v }))}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select GPS device (optional)" />
+                      <SelectValue placeholder={t("trailers.selectGpsDevice")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No device</SelectItem>
+                      <SelectItem value="none">{t("trailers.noDevice")}</SelectItem>
                       {traccarDevices.map((device) => (
                         <SelectItem key={device.id} value={device.id.toString()}>
                           {device.name} ({device.uniqueId})
@@ -1072,7 +1072,7 @@ export default function TrailersPage() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Link to a GPS device to track location and mileage
+                    {t("trailers.gpsDeviceHelp")}
                   </p>
                 </div>
               </div>
@@ -1080,14 +1080,14 @@ export default function TrailersPage() {
 
             {/* Registration */}
             <div className="pt-2 border-t">
-              <p className="text-sm font-medium mb-3">Registration</p>
+              <p className="text-sm font-medium mb-3">{t("trailers.registration")}</p>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>VIN Number</Label>
+                  <Label>{t("trailers.vinNumber")}</Label>
                   <Input value={formData.vin_number} onChange={(e) => setFormData((p) => ({ ...p, vin_number: e.target.value }))} placeholder="WKESDZ271LB123456" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Registration Country</Label>
+                  <Label>{t("trailers.registrationCountry")}</Label>
                   <Input value={formData.registration_country} onChange={(e) => setFormData((p) => ({ ...p, registration_country: e.target.value }))} placeholder="RO" />
                 </div>
               </div>
@@ -1095,18 +1095,18 @@ export default function TrailersPage() {
 
             {/* Compliance */}
             <div className="pt-2 border-t">
-              <p className="text-sm font-medium mb-3">Compliance & Dates</p>
+              <p className="text-sm font-medium mb-3">{t("trailers.complianceDates")}</p>
               <div className="flex items-center gap-3 mb-4">
                 <Switch checked={formData.adr_certified} onCheckedChange={(v) => setFormData((p) => ({ ...p, adr_certified: v }))} id="adr" />
-                <Label htmlFor="adr" className="cursor-pointer">ADR Certified (Dangerous Goods)</Label>
+                <Label htmlFor="adr" className="cursor-pointer">{t("trailers.adrCertifiedDanger")}</Label>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Next Inspection</Label>
+                  <Label>{t("trailers.nextInspection")}</Label>
                   <Input type="date" value={formData.next_inspection_date} onChange={(e) => setFormData((p) => ({ ...p, next_inspection_date: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Insurance Expiry</Label>
+                  <Label>{t("trailers.insuranceExpiry")}</Label>
                   <Input type="date" value={formData.insurance_expiry} onChange={(e) => setFormData((p) => ({ ...p, insurance_expiry: e.target.value }))} />
                 </div>
               </div>
@@ -1118,9 +1118,9 @@ export default function TrailersPage() {
                 <div className="space-y-0.5">
                   <Label className="text-sm font-medium flex items-center gap-2">
                     <Building2 className="h-4 w-4" />
-                    Subcontractor Trailer
+                    {t("trailers.subcontractorTrailer")}
                   </Label>
-                  <p className="text-xs text-muted-foreground">This trailer belongs to an external partner</p>
+                  <p className="text-xs text-muted-foreground">{t("trailers.subcontractorHelp")}</p>
                 </div>
                 <Switch
                   checked={formData.isSubcontractor}
@@ -1130,7 +1130,7 @@ export default function TrailersPage() {
               
               {formData.isSubcontractor && (
                 <div className="space-y-2 pl-6 border-l-2 border-orange-500/30">
-                  <Label>Business Partner</Label>
+                  <Label>{t("trailers.businessPartner")}</Label>
                   <Popover open={partnerPopoverOpen} onOpenChange={setPartnerPopoverOpen}>
                     <PopoverTrigger asChild>
                       <Button
@@ -1141,15 +1141,15 @@ export default function TrailersPage() {
                       >
                         {formData.business_partner_id
                           ? businessPartners.find((p) => p.id === formData.business_partner_id)?.name
-                          : "Select business partner..."}
+                          : t("trailers.selectBusinessPartner")}
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-[300px] p-0" align="start">
                       <Command>
-                        <CommandInput placeholder="Search partners..." />
+                        <CommandInput placeholder={t("trailers.searchPartners")} />
                         <CommandList>
-                          <CommandEmpty>No partner found.</CommandEmpty>
+                          <CommandEmpty>{t("trailers.noPartnerFound")}</CommandEmpty>
                           <CommandGroup>
                             <CommandItem
                               value="none"
@@ -1159,7 +1159,7 @@ export default function TrailersPage() {
                               }}
                             >
                               <Check className={`mr-2 h-4 w-4 ${!formData.business_partner_id ? "opacity-100" : "opacity-0"}`} />
-                              No partner selected
+                              {t("trailers.noPartnerSelected")}
                             </CommandItem>
                             {businessPartners.map((partner) => (
                               <CommandItem
@@ -1191,7 +1191,7 @@ export default function TrailersPage() {
 {/* Fleet Group */}
   {fleetGroups.length > 0 && (
   <div className="space-y-2 border-t pt-4">
-  <Label>Fleet Group</Label>
+  <Label>{t("trailers.fleetGroup")}</Label>
   <Popover open={groupPopoverOpen} onOpenChange={setGroupPopoverOpen}>
     <PopoverTrigger asChild>
       <Button
@@ -1202,15 +1202,15 @@ export default function TrailersPage() {
       >
         {formData.fleet_group_id
           ? fleetGroups.find((g) => g.id === formData.fleet_group_id)?.name
-          : "Select fleet group (optional)"}
+          : t("trailers.selectFleetGroup")}
         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
       </Button>
     </PopoverTrigger>
     <PopoverContent className="w-[300px] p-0" align="start">
       <Command>
-        <CommandInput placeholder="Search groups..." />
+        <CommandInput placeholder={t("trailers.searchGroups")} />
         <CommandList>
-          <CommandEmpty>No group found.</CommandEmpty>
+          <CommandEmpty>{t("trailers.noGroupFound")}</CommandEmpty>
           <CommandGroup>
             <CommandItem
               value="none"
@@ -1220,7 +1220,7 @@ export default function TrailersPage() {
               }}
             >
               <Check className={`mr-2 h-4 w-4 ${!formData.fleet_group_id ? "opacity-100" : "opacity-0"}`} />
-              No group
+              {t("trailers.noGroup")}
             </CommandItem>
             {fleetGroups.map((group) => (
               <CommandItem
@@ -1246,21 +1246,21 @@ export default function TrailersPage() {
       </Command>
     </PopoverContent>
   </Popover>
-  <p className="text-xs text-muted-foreground">Organize trailers into groups for easier management</p>
+  <p className="text-xs text-muted-foreground">{t("trailers.fleetGroupHelp")}</p>
   </div>
   )}
 
             {/* Notes */}
             <div className="space-y-2">
-              <Label>Notes</Label>
-              <Input value={formData.notes} onChange={(e) => setFormData((p) => ({ ...p, notes: e.target.value }))} placeholder="Additional notes..." />
+              <Label>{t("trailers.notes")}</Label>
+              <Input value={formData.notes} onChange={(e) => setFormData((p) => ({ ...p, notes: e.target.value }))} placeholder={t("trailers.notesPlaceholder")} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }} className="bg-transparent">Cancel</Button>
+            <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }} className="bg-transparent">{t("trailers.cancel")}</Button>
             <Button onClick={handleSave} disabled={saving || !formData.plate_number.trim()}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {editingTrailer ? "Save Changes" : "Add Trailer"}
+              {editingTrailer ? t("trailers.saveChanges") : t("trailers.addTrailer")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1270,9 +1270,9 @@ export default function TrailersPage() {
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Import Trailers from GPS</DialogTitle>
+            <DialogTitle>{t("trailers.importTitle")}</DialogTitle>
             <DialogDescription>
-              Select GPS devices to import as trailers. Already linked devices are marked.
+              {t("trailers.importDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
@@ -1280,7 +1280,7 @@ export default function TrailersPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search devices..."
+                  placeholder={t("trailers.searchDevices")}
                   value={importSearch}
                   onChange={(e) => setImportSearch(e.target.value)}
                   className="pl-9"
@@ -1288,13 +1288,13 @@ export default function TrailersPage() {
               </div>
               <Select value={importFilter} onValueChange={(v) => setImportFilter(v as typeof importFilter)}>
                 <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Filter" />
+                  <SelectValue placeholder={t("trailers.type")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Devices</SelectItem>
-                  <SelectItem value="not_imported">Not Imported</SelectItem>
-                  <SelectItem value="in_vehicles">In Vehicles</SelectItem>
-                  <SelectItem value="in_trailers">In Trailers</SelectItem>
+                  <SelectItem value="all">{t("trailers.allDevices")}</SelectItem>
+                  <SelectItem value="not_imported">{t("trailers.notImported")}</SelectItem>
+                  <SelectItem value="in_vehicles">{t("trailers.inVehicles")}</SelectItem>
+                  <SelectItem value="in_trailers">{t("trailers.inTrailers")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1317,9 +1317,9 @@ export default function TrailersPage() {
                           onCheckedChange={toggleSelectAllImportable}
                         />
                       </TableHead>
-                      <TableHead>Device Name</TableHead>
-                      <TableHead>Unique ID</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>{t("trailers.deviceName")}</TableHead>
+                      <TableHead>{t("trailers.uniqueId")}</TableHead>
+                      <TableHead>{t("trailers.status")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1360,13 +1360,13 @@ export default function TrailersPage() {
                             <TableCell className="text-muted-foreground text-sm">{device.uniqueId}</TableCell>
                             <TableCell>
                               {imported ? (
-                                <Badge className="text-xs bg-green-500">Imported</Badge>
+                                <Badge className="text-xs bg-green-500">{t("trailers.imported")}</Badge>
                               ) : location === "vehicle" ? (
-                                <Badge variant="secondary" className="text-xs bg-blue-500/20 text-blue-400 border-blue-500/30">In Vehicles</Badge>
+                                <Badge variant="secondary" className="text-xs bg-blue-500/20 text-blue-400 border-blue-500/30">{t("trailers.inVehicles")}</Badge>
                               ) : location === "trailer" ? (
-                                <Badge variant="secondary" className="text-xs bg-amber-500/20 text-amber-400 border-amber-500/30">In Trailers</Badge>
+                                <Badge variant="secondary" className="text-xs bg-amber-500/20 text-amber-400 border-amber-500/30">{t("trailers.inTrailers")}</Badge>
                               ) : (
-                                <Badge variant="outline" className="text-xs">{device.status || "Available"}</Badge>
+                                <Badge variant="outline" className="text-xs">{device.status || t("trailers.available")}</Badge>
                               )}
                             </TableCell>
                           </TableRow>
@@ -1378,9 +1378,9 @@ export default function TrailersPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setImportDialogOpen(false)} className="bg-transparent">Close</Button>
+            <Button variant="outline" onClick={() => setImportDialogOpen(false)} className="bg-transparent">{t("trailers.close")}</Button>
             <Button onClick={handleImportSelected} disabled={selectedImportIds.size === 0}>
-              Import {selectedImportIds.size > 0 ? `(${selectedImportIds.size})` : "Selected"}
+              {t("trailers.importBtn")} {selectedImportIds.size > 0 ? `(${selectedImportIds.size})` : t("trailers.selected")}
             </Button>
           </DialogFooter>
         </DialogContent>
