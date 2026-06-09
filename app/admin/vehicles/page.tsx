@@ -1171,16 +1171,16 @@ export default function AdminVehiclesPage() {
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Import Vehicles from GPS</DialogTitle>
+            <DialogTitle>{t("vehicles.importTitle")}</DialogTitle>
             <DialogDescription>
-              Select GPS devices to import as vehicles. Already linked devices are marked.
+              {t("vehicles.importDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search devices..."
+                placeholder={t("vehicles.searchDevices")}
                 value={importSearch}
                 onChange={(e) => setImportSearch(e.target.value)}
                 className="pl-9"
@@ -1205,9 +1205,9 @@ export default function AdminVehiclesPage() {
                           onCheckedChange={toggleSelectAllImportable}
                         />
                       </TableHead>
-                      <TableHead>Device Name</TableHead>
-                      <TableHead>Unique ID</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>{t("vehicles.deviceName")}</TableHead>
+                      <TableHead>{t("vehicles.uniqueId")}</TableHead>
+                      <TableHead>{t("vehicles.status")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
