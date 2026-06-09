@@ -664,8 +664,8 @@ export default function TrailerDetailsPage() {
                     <AlertTriangle className={`h-5 w-5 ${trailer.adr_certified ? "text-amber-500" : "text-muted-foreground"}`} />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">ADR Certified</p>
-                    <p className="font-medium">{trailer.adr_certified ? "Yes" : "No"}</p>
+                    <p className="text-sm text-muted-foreground">{t("trailers.adrCertified")}</p>
+                    <p className="font-medium">{trailer.adr_certified ? t("trailers.yes") : t("trailers.no")}</p>
                   </div>
                 </div>
                 <div className={`flex items-center gap-3 p-3 rounded-lg ${isExpired(trailer.next_inspection_date) ? "bg-destructive/10" : isExpiringSoon(trailer.next_inspection_date) ? "bg-amber-500/10" : "bg-muted/50"}`}>
@@ -673,7 +673,7 @@ export default function TrailerDetailsPage() {
                     <Calendar className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Next Inspection</p>
+                    <p className="text-sm text-muted-foreground">{t("trailers.nextInspection")}</p>
                     <p className={`font-medium ${isExpired(trailer.next_inspection_date) ? "text-destructive" : isExpiringSoon(trailer.next_inspection_date) ? "text-amber-500" : ""}`}>
                       {formatDate(trailer.next_inspection_date)}
                     </p>
@@ -684,7 +684,7 @@ export default function TrailerDetailsPage() {
                     <Shield className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Insurance Expiry</p>
+                    <p className="text-sm text-muted-foreground">{t("trailers.insuranceExpiry")}</p>
                     <p className={`font-medium ${isExpired(trailer.insurance_expiry) ? "text-destructive" : isExpiringSoon(trailer.insurance_expiry) ? "text-amber-500" : ""}`}>
                       {formatDate(trailer.insurance_expiry)}
                     </p>
@@ -695,14 +695,14 @@ export default function TrailerDetailsPage() {
                     <Calendar className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Created</p>
+                    <p className="text-sm text-muted-foreground">{t("trailers.created")}</p>
                     <p className="font-medium">{formatDate(trailer.created_at)}</p>
                   </div>
                 </div>
               </div>
               {trailer.notes && (
                 <div className="mt-4 p-3 rounded-lg bg-muted/50">
-                  <p className="text-sm text-muted-foreground mb-1">Notes</p>
+                  <p className="text-sm text-muted-foreground mb-1">{t("trailers.notes")}</p>
                   <p className="text-sm">{trailer.notes}</p>
                 </div>
               )}
@@ -712,13 +712,13 @@ export default function TrailerDetailsPage() {
           {/* Danger Zone */}
           <Card className="border-destructive/50">
             <CardHeader>
-              <CardTitle className="text-lg text-destructive">Danger Zone</CardTitle>
-              <CardDescription>Irreversible actions</CardDescription>
+              <CardTitle className="text-lg text-destructive">{t("trailers.dangerZone")}</CardTitle>
+              <CardDescription>{t("trailers.irreversibleActions")}</CardDescription>
             </CardHeader>
             <CardContent>
               <Button variant="destructive" onClick={handleDelete}>
                 <Trash2 className="h-4 w-4 mr-2" />
-                Delete Trailer
+                {t("trailers.deleteTrailer")}
               </Button>
             </CardContent>
           </Card>
@@ -730,23 +730,23 @@ export default function TrailerDetailsPage() {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
-                  Documents
+                  {t("trailers.documentsTab")}
                 </CardTitle>
-                <CardDescription>Trailer documents and certificates</CardDescription>
+                <CardDescription>{t("trailers.trailerDocuments")}</CardDescription>
               </div>
               <Button onClick={() => setUploadDialogOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Upload Document
+                {t("trailers.uploadDocument")}
               </Button>
             </CardHeader>
             <CardContent>
               {documents.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8">
                   <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground mb-4">No documents uploaded yet</p>
+                  <p className="text-muted-foreground mb-4">{t("trailers.noDocsYet")}</p>
                   <Button onClick={() => setUploadDialogOpen(true)}>
                     <Upload className="h-4 w-4 mr-2" />
-                    Upload First Document
+                    {t("trailers.uploadFirstDoc")}
                   </Button>
                 </div>
               ) : (
@@ -761,7 +761,7 @@ export default function TrailerDetailsPage() {
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-medium">{doc.document_type?.name || "Unknown Type"}</span>
+                              <span className="font-medium">{doc.document_type?.name || t("trailers.unknownType")}</span>
                               <Badge className={docStatus.color}>{docStatus.label}</Badge>
                             </div>
                             <div className="text-sm text-muted-foreground">
@@ -770,7 +770,7 @@ export default function TrailerDetailsPage() {
                             {doc.expiry_date && (
                               <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                                 <Calendar className="h-3 w-3" />
-                                Expires: {new Date(doc.expiry_date).toLocaleDateString()}
+                                {t("trailers.expires")} {new Date(doc.expiry_date).toLocaleDateString()}
                               </div>
                             )}
                           </div>
@@ -808,13 +808,13 @@ export default function TrailerDetailsPage() {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <Wrench className="h-5 w-5" />
-                  Maintenance
+                  {t("trailers.maintenanceTab")}
                 </CardTitle>
-                <CardDescription>Maintenance records and service history</CardDescription>
+                <CardDescription>{t("trailers.maintenanceRecords")}</CardDescription>
               </div>
               <Link href={`/admin/maintenance?trailer=${trailer.id}`}>
                 <Button variant="outline" className="bg-transparent">
-                  View All Maintenance
+                  {t("trailers.viewAllMaintenance")}
                 </Button>
               </Link>
             </CardHeader>
@@ -822,11 +822,11 @@ export default function TrailerDetailsPage() {
               <div className="flex flex-col items-center justify-center py-8">
                 <Wrench className="h-12 w-12 text-muted-foreground mb-4" />
                 <div className="text-3xl font-bold mb-2">{maintenanceCount}</div>
-                <p className="text-muted-foreground mb-4">Total maintenance records</p>
+                <p className="text-muted-foreground mb-4">{t("trailers.totalMaintenanceRecords")}</p>
                 <Link href={`/admin/maintenance?trailer=${trailer.id}`}>
                   <Button>
                     <Plus className="h-4 w-4 mr-2" />
-                    Add Maintenance Record
+                    {t("trailers.addMaintenanceRecord")}
                   </Button>
                 </Link>
               </div>
@@ -839,58 +839,58 @@ export default function TrailerDetailsPage() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit Trailer</DialogTitle>
-            <DialogDescription>Update trailer information</DialogDescription>
+            <DialogTitle>{t("trailers.editTrailer")}</DialogTitle>
+            <DialogDescription>{t("trailers.updateInfo")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Plate Number *</Label>
+                <Label>{t("trailers.plateNumber")}</Label>
                 <Input value={formData.plate_number} onChange={(e) => setFormData((p) => ({ ...p, plate_number: e.target.value }))} />
               </div>
               <div className="space-y-2">
-                <Label>Type</Label>
+                <Label>{t("trailers.type")}</Label>
                 <Select value={formData.type} onValueChange={(v) => setFormData((p) => ({ ...p, type: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {TRAILER_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                    {TRAILER_TYPES.map((tp) => <SelectItem key={tp.value} value={tp.value}>{typeLabel(tp.value)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>Make</Label>
+                <Label>{t("trailers.make")}</Label>
                 <Input value={formData.make} onChange={(e) => setFormData((p) => ({ ...p, make: e.target.value }))} />
               </div>
               <div className="space-y-2">
-                <Label>Model</Label>
+                <Label>{t("trailers.model")}</Label>
                 <Input value={formData.model} onChange={(e) => setFormData((p) => ({ ...p, model: e.target.value }))} />
               </div>
               <div className="space-y-2">
-                <Label>Year</Label>
+                <Label>{t("trailers.year")}</Label>
                 <Input type="number" value={formData.year} onChange={(e) => setFormData((p) => ({ ...p, year: e.target.value }))} />
               </div>
             </div>
 
             {/* Capacity */}
             <div className="pt-2 border-t">
-              <p className="text-sm font-medium mb-3">Capacity</p>
+              <p className="text-sm font-medium mb-3">{t("trailers.capacity")}</p>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Max Weight (kg)</Label>
+                  <Label>{t("trailers.maxWeight")}</Label>
                   <Input type="number" value={formData.max_weight_kg} onChange={(e) => setFormData((p) => ({ ...p, max_weight_kg: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Max Pallets</Label>
+                  <Label>{t("trailers.maxPallets")}</Label>
                   <Input type="number" value={formData.max_pallets} onChange={(e) => setFormData((p) => ({ ...p, max_pallets: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Loading Meters</Label>
+                  <Label>{t("trailers.loadingMeters")}</Label>
                   <Input type="number" step="0.1" value={formData.loading_meters} onChange={(e) => setFormData((p) => ({ ...p, loading_meters: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Volume (m³)</Label>
+                  <Label>{t("trailers.volume")}</Label>
                   <Input type="number" step="0.1" value={formData.volume_m3} onChange={(e) => setFormData((p) => ({ ...p, volume_m3: e.target.value }))} />
                 </div>
               </div>
@@ -899,18 +899,18 @@ export default function TrailerDetailsPage() {
             {/* GPS Device */}
             {traccarConfigured && (
               <div className="pt-2 border-t">
-                <p className="text-sm font-medium mb-3">GPS Tracking</p>
+                <p className="text-sm font-medium mb-3">{t("trailers.gpsTracking")}</p>
                 <div className="space-y-2">
-                  <Label>GPS Device (Traccar)</Label>
+                  <Label>{t("trailers.gpsDevice")}</Label>
                   <Select
                     value={formData.traccar_device_id}
                     onValueChange={(v) => setFormData((p) => ({ ...p, traccar_device_id: v === "none" ? "" : v }))}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select GPS device (optional)" />
+                      <SelectValue placeholder={t("trailers.selectGpsDevice")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No device</SelectItem>
+                      <SelectItem value="none">{t("trailers.noDevice")}</SelectItem>
                       {traccarDevices.map((device) => (
                         <SelectItem key={device.id} value={device.id.toString()}>
                           {device.name} ({device.uniqueId})
