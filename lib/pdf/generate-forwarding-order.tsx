@@ -878,7 +878,7 @@ export function renderOrderHtml(
       //     a typical short clause like "8. Pentru întârzieri ... 300
       //     EUR/zi." is 110 chars and DOES render on a single line, but
       //     the old math counted it as 2 lines).
-      //   • each rendered line takes ~17.6 px vertical room.
+      //   ��� each rendered line takes ~17.6 px vertical room.
       //   • explicit newlines in the source add a hard line break.
       //   • 6 px paragraph gap between consecutive clauses (was 8).
       //   • 24 px title only on the first clause (which carries the
@@ -1186,6 +1186,334 @@ export function openPrintWindow(html: string, title?: string) {
     styleTag.textContent = PRINT_OVERRIDE_CSS;
     w.document.head.appendChild(styleTag);
   } catch { /* if appending fails the print will still work, just with the on-screen CSS */ }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// WORD (.doc) RENDERER
+// ════════════════════════════════════════════════════════════════════
+// Produces a table-based, MS-Word-faithful rendering of the SAME order
+// the PDF path renders, so operators can download a .doc, open it in
+// Word, and edit every field manually before re-sending.
+//
+// Why a separate renderer instead of reusing the PDF HTML?
+//   Word's HTML import engine does NOT support flexbox, CSS grid, or
+//   gradients — the PDF layout leans on all three. Feeding the PDF HTML
+//   to Word produces an *approximation* that drifts on longer orders.
+//   To get a reliable 1-1 layout that stays editable we rebuild each
+//   section with HTML <table> markup (which Word renders pixel-stably)
+//   and flatten gradients/rounded cards to solid fills + clean borders.
+//
+// It reuses every shared primitive (LANG_LABELS, STATUS_LABELS, fmtCur,
+// toDDMMYYYY, buildSubstitutionContext, substituteVars, DEFAULT_TEMPLATE)
+// so the wording, fields, language, and {{placeholder}} substitution stay
+// identical to the PDF/preview.
+
+// A single info cell as a <td> (label over value), used inside the
+// equal-width "grid" tables below. bgcolor is set both via attribute and
+// inline style because some Word versions honor one but not the other.
+function wordInfoCell(label: string, value: string | number, width: string): string {
+  return `<td valign="top" width="${width}" bgcolor="#f9fafb" style="width:${width};padding:5px 7px;border:1px solid #e5e7eb;background:#f9fafb;">
+    <div style="font-size:7.5pt;color:#6b7280;">${label}</div>
+    <div style="font-size:9pt;font-weight:bold;color:#111827;">${value}</div>
+  </td>`;
+}
+
+// Wrap N cells in one full-width, border-collapsed table row so they sit
+// side-by-side reliably (Word's substitute for a flex/grid row).
+function wordGrid(cells: string[]): string {
+  if (!cells.length) return "";
+  return `<table cellspacing="0" cellpadding="0" width="100%" style="border-collapse:collapse;width:100%;margin:3px 0 6px 0;"><tr>${cells.join("")}</tr></table>`;
+}
+
+function wordSectionTitle(text: string): string {
+  return `<div style="font-size:9pt;font-weight:bold;color:#111827;margin:9px 0 4px 0;">${text}</div>`;
+}
+
+function renderWordBlock(block: TemplateBlock, data: any, pc: string, fs: number, lang: string): string {
+  const L = LANG_LABELS[lang] || LANG_LABELS.en;
+  const o = data.order;
+  const company = data.company;
+  const stops = data.stops as any[];
+  const customer = o.customer || {};
+  const carrier = o.carrier || {};
+  const ctx = buildSubstitutionContext(data);
+  const sub = (s: string | undefined) => substituteVars(s ?? "", ctx);
+  const stopTypeLabel = (type: string) => (L as any)[type] || type;
+
+  switch (block.type) {
+    case "company_header": {
+      const headerTitle = sub(block.props.title) || "TRANSPORT ORDER";
+      const headerSubtitle = sub(block.props.subtitle) || "";
+      const logoImg = block.props.showLogo && company.logo_url
+        ? `<img src="${company.logo_url}" width="64" height="64" style="width:64px;height:64px;" /> `
+        : "";
+      const contactBits = [
+        block.props.showAddress && [company.address_line1, company.city, company.country, company.postal_code].filter(Boolean).join(", "),
+        block.props.showVat && company.vat_number && `VAT ${company.vat_number}`,
+        block.props.showPhone && company.phone && `Tel ${company.phone}`,
+        block.props.showEmail && company.email,
+      ].filter(Boolean) as string[];
+      return `
+        <table cellspacing="0" cellpadding="0" width="100%" style="border-collapse:collapse;width:100%;border:1px solid ${pc};">
+          <tr>
+            <td valign="middle" style="padding:10px 12px;">
+              ${logoImg}<span style="font-size:13pt;font-weight:bold;color:${pc};">${company.company_name || "Company"}</span>
+              ${contactBits.length ? `<div style="font-size:8pt;color:#6b7280;margin-top:3px;">${contactBits.join(" &nbsp;·&nbsp; ")}</div>` : ""}
+            </td>
+            <td valign="middle" align="right" style="padding:10px 12px;text-align:right;">
+              <div style="font-size:8pt;font-weight:bold;color:${pc};letter-spacing:1px;text-transform:uppercase;">${headerTitle}</div>
+              ${headerSubtitle ? `<div style="font-size:7.5pt;color:#9ca3af;">${headerSubtitle}</div>` : ""}
+              <div style="font-size:13pt;font-weight:bold;color:#111827;margin-top:3px;">${o.reference_number || ""}</div>
+              <div style="font-size:8pt;color:#6b7280;">${toDDMMYYYY(o.created_at)}</div>
+            </td>
+          </tr>
+        </table>
+        <div style="border-top:3px solid ${pc};font-size:1pt;line-height:1pt;margin:3px 0 2px 0;">&nbsp;</div>`;
+    }
+
+    case "order_info": {
+      const cells: string[] = [];
+      cells.push(`<td valign="top" style="padding:2px 14px 2px 0;"><div style="font-size:7.5pt;color:#6b7280;text-transform:uppercase;font-weight:bold;">${L.reference}</div><div style="font-size:11pt;font-weight:bold;color:#111827;">${o.reference_number}</div></td>`);
+      if (block.props.showDate) cells.push(`<td valign="top" style="padding:2px 14px 2px 0;"><div style="font-size:7.5pt;color:#6b7280;text-transform:uppercase;font-weight:bold;">${L.date}</div><div style="font-size:9.5pt;color:#374151;">${toDDMMYYYY(o.created_at) || "-"}</div></td>`);
+      if (block.props.showStatus) cells.push(`<td valign="top" style="padding:2px 14px 2px 0;"><div style="font-size:7.5pt;color:#6b7280;text-transform:uppercase;font-weight:bold;">${L.status}</div><div style="font-size:9pt;font-weight:bold;color:${pc};">${STATUS_LABELS[o.status] || o.status}</div></td>`);
+      if (block.props.showType) cells.push(`<td valign="top" style="padding:2px 14px 2px 0;"><div style="font-size:7.5pt;color:#6b7280;text-transform:uppercase;font-weight:bold;">${L.type}</div><div style="font-size:9pt;color:#374151;">${L.forwarding}</div></td>`);
+      return `<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:6px 0;"><tr>${cells.join("")}</tr></table>`;
+    }
+
+    case "route_summary": {
+      const pickups = stops.filter((s: any) => s.stop_type === "pickup");
+      const deliveries = stops.filter((s: any) => s.stop_type === "delivery");
+      const origin = pickups[0] ? `${pickups[0].city || "?"}, ${pickups[0].country || ""}` : "-";
+      const dest = deliveries[deliveries.length - 1] ? `${deliveries[deliveries.length - 1].city || "?"}, ${deliveries[deliveries.length - 1].country || ""}` : "-";
+      const meta = [
+        block.props.showDistance && (o.estimated_distance_km ? `${Math.round(o.estimated_distance_km)} km` : null),
+        block.props.showDuration && (o.estimated_duration_hours ? `${o.estimated_duration_hours.toFixed(1)}h` : null),
+      ].filter(Boolean).join(" &nbsp;·&nbsp; ");
+      return `
+        <table cellspacing="0" cellpadding="0" width="100%" bgcolor="#f3f5fb" style="border-collapse:collapse;width:100%;border:1px solid ${pc}40;background:#f3f5fb;margin:4px 0;">
+          <tr>
+            <td valign="middle" style="padding:8px 10px;font-size:9.5pt;font-weight:bold;color:#111827;">${origin} &nbsp;&rarr;&nbsp; ${dest}</td>
+            <td valign="middle" align="right" style="padding:8px 10px;text-align:right;font-size:8pt;color:#6b7280;">${meta}</td>
+          </tr>
+        </table>`;
+    }
+
+    case "stops_table": {
+      const cols = 5 + (block.props.showTimeWindow ? 1 : 0) + (block.props.showReference ? 1 : 0);
+      const th = (label: string) => `<td bgcolor="#eef1fb" style="padding:5px 7px;font-size:7.5pt;font-weight:bold;color:${pc};border:1px solid ${pc}30;background:#eef1fb;">${label}</td>`;
+      const rows = stops.map((stop: any, i: number) => {
+        const typeLabel = stopTypeLabel(stop.stop_type);
+        const typeClr = stop.stop_type === "pickup" ? "#1d4ed8" : stop.stop_type === "delivery" ? "#15803d" : "#6b7280";
+        const cityPart = stop.postal_code ? `${stop.city || ""} (${stop.postal_code})`.trim() : (stop.city || "");
+        const head = [cityPart, stop.country].filter(Boolean).join(", ");
+        const tail = block.props.showAddress && stop.address ? ` - ${stop.address}` : "";
+        return `<tr>
+          <td style="padding:5px 7px;font-size:8.5pt;color:#6b7280;border:1px solid #e5e7eb;">${i + 1}</td>
+          <td style="padding:5px 7px;font-size:8.5pt;font-weight:bold;color:${typeClr};border:1px solid #e5e7eb;">${typeLabel}</td>
+          <td style="padding:5px 7px;font-size:8.5pt;color:#111827;border:1px solid #e5e7eb;">${stop.company_name || "-"}</td>
+          <td style="padding:5px 7px;font-size:8.5pt;color:#374151;border:1px solid #e5e7eb;">${head + tail}</td>
+          <td style="padding:5px 7px;font-size:8.5pt;color:#374151;border:1px solid #e5e7eb;">${toDDMMYYYY(stop.planned_date) || "-"}</td>
+          ${block.props.showTimeWindow ? `<td style="padding:5px 7px;font-size:8.5pt;color:#6b7280;border:1px solid #e5e7eb;">${[stop.planned_time_from, stop.planned_time_to].filter(Boolean).join(" - ") || "-"}</td>` : ""}
+          ${block.props.showReference ? `<td style="padding:5px 7px;font-size:8.5pt;color:#6b7280;border:1px solid #e5e7eb;">${stop.reference_number || "-"}</td>` : ""}
+        </tr>`;
+      }).join("");
+      return `
+        <table cellspacing="0" cellpadding="0" width="100%" style="border-collapse:collapse;width:100%;margin:6px 0;">
+          <tr>${th(L.nr)}${th(L.stopType)}${th(L.company)}${th(L.location)}${th(L.date)}${block.props.showTimeWindow ? th(L.time) : ""}${block.props.showReference ? th(L.ref) : ""}</tr>
+          ${rows}
+        </table>`;
+    }
+
+    case "cargo_details": {
+      const cells: string[] = [];
+      if (block.props.showWeight) cells.push(wordInfoCell(L.weight, o.weight_kg ? `${o.weight_kg} kg` : "-", "25%"));
+      if (block.props.showPallets) cells.push(wordInfoCell(L.pallets, o.pallet_count || "-", "25%"));
+      if (block.props.showVolume) cells.push(wordInfoCell(L.loadingMeters, o.loading_meters || "-", "25%"));
+      if (block.props.showGoodsType) cells.push(wordInfoCell(L.goodsType, o.goods_type || "-", "25%"));
+      return wordSectionTitle(L.cargoDetails) + wordGrid(cells);
+    }
+
+    case "vehicle_info": {
+      const hasAny = (o.vehicle_plate || o.trailer_plate || o.driver_name || o.driver_phone);
+      if (!hasAny && !block.props.alwaysShow) return "";
+      const drvName = o.driver_name || "-";
+      const drvPhone = o.driver_phone || "";
+      const driverDisplay = drvPhone && drvName !== "-" ? `${drvName} · ${drvPhone}` : drvName;
+      const cells: string[] = [];
+      if (block.props.showVehicle !== false) cells.push(wordInfoCell(L.vehicle, o.vehicle_plate || "-", "33%"));
+      if (block.props.showTrailer !== false) cells.push(wordInfoCell(L.trailer, o.trailer_plate || "-", "33%"));
+      if (block.props.showDriver !== false) cells.push(wordInfoCell(L.driver, driverDisplay, "34%"));
+      return wordSectionTitle(L.vehicleInfo) + wordGrid(cells);
+    }
+
+    case "financial_summary": {
+      const cVatType: string = o.carrier_vat_type || "excluding";
+      const cVatRate: number = o.carrier_vat_rate ?? 19;
+      const cVatNonTaxable = ["exempt", "reverse_charge", "non_taxable"].includes(cVatType);
+      const cVat = o.carrier_vat_amount ?? 0;
+      const cNet = o.carrier_cost_without_vat ?? o.carrier_cost;
+      const cGross = o.carrier_cost_with_vat ?? o.carrier_cost;
+      const cVatBadge = cVatType === "exempt" ? "Scutit de TVA" : cVatType === "reverse_charge" ? "Taxare inversă" : cVatType === "non_taxable" ? "Non-taxable" : "";
+      const cells: string[] = [];
+      if (block.props.showCustomerPrice) {
+        cells.push(`<td valign="top" width="33%" bgcolor="#f0fdf4" style="width:33%;padding:7px 8px;border:1px solid #bbf7d0;background:#f0fdf4;"><div style="font-size:7.5pt;color:#6b7280;">${L.customerPrice}</div><div style="font-size:11pt;font-weight:bold;color:#15803d;">${fmtCur(o.customer_price, o.customer_currency || "EUR")}</div></td>`);
+      }
+      if (block.props.showCarrierCost) {
+        const extra = cVatNonTaxable
+          ? `<div style="font-size:7.5pt;color:#b45309;margin-top:3px;">${cVatBadge}</div>`
+          : `<div style="font-size:7.5pt;color:#6b7280;margin-top:3px;">VAT (${cVatRate}%): ${fmtCur(cVat, o.carrier_currency || "EUR")}</div><div style="font-size:8pt;color:#111827;font-weight:bold;">${cVatType === "including" ? "Net" : "Total"}: ${fmtCur(cVatType === "including" ? cNet : cGross, o.carrier_currency || "EUR")}</div>`;
+        cells.push(`<td valign="top" width="33%" bgcolor="#fef2f2" style="width:33%;padding:7px 8px;border:1px solid #fecaca;background:#fef2f2;"><div style="font-size:7.5pt;color:#6b7280;">${L.carrierCost}${cVatType === "including" ? " (incl. VAT)" : cVatType === "excluding" ? " (excl. VAT)" : ""}</div><div style="font-size:11pt;font-weight:bold;color:#dc2626;">${fmtCur(o.carrier_cost, o.carrier_currency || "EUR")}</div>${extra}</td>`);
+      }
+      if (block.props.showMargin) {
+        const margin = (o.customer_price && o.carrier_cost) ? o.customer_price - o.carrier_cost : null;
+        const pct = (o.customer_price && o.carrier_cost && o.customer_price > 0) ? ((margin! / o.customer_price) * 100).toFixed(1) + "%" : "-";
+        cells.push(`<td valign="top" width="34%" bgcolor="#f3f5fb" style="width:34%;padding:7px 8px;border:1px solid ${pc}30;background:#f3f5fb;"><div style="font-size:7.5pt;color:#6b7280;">${L.margin}</div><div style="font-size:11pt;font-weight:bold;color:${pc};">${margin != null ? fmtCur(margin, o.customer_currency || "EUR") : "-"} (${pct})</div></td>`);
+      }
+      const terms = block.props.showPaymentTerms
+        ? `<div style="font-size:8.5pt;color:#6b7280;margin-top:5px;">${L.paymentTerms}: ${o.payment_terms_carrier_days ?? o.payment_terms ?? 30} ${(L as any).daysUnit || "days"}</div>`
+        : "";
+      return wordSectionTitle(L.financialSummary) + wordGrid(cells) + terms;
+    }
+
+    case "carrier_info":
+      return wordSectionTitle(L.carrier) + `
+        <table cellspacing="0" cellpadding="0" width="100%" bgcolor="#f9fafb" style="border-collapse:collapse;width:100%;border:1px solid #e5e7eb;background:#f9fafb;margin:2px 0;">
+          <tr><td style="padding:8px 10px;">
+            <div style="font-size:9.5pt;font-weight:bold;color:#111827;">${carrier.name || "Not assigned"}</div>
+            ${block.props.showContact ? `<div style="font-size:8pt;color:#6b7280;margin-top:3px;">${[carrier.contact_person, carrier.phone, carrier.email].filter(Boolean).join(" | ") || "-"}</div>` : ""}
+            ${block.props.showVat ? `<div style="font-size:7.5pt;color:#6b7280;margin-top:2px;">VAT: ${carrier.vat_number || carrier.tax_id || "-"}</div>` : ""}
+          </td></tr>
+        </table>`;
+
+    case "customer_info":
+      return wordSectionTitle(L.customer) + `
+        <table cellspacing="0" cellpadding="0" width="100%" bgcolor="#f9fafb" style="border-collapse:collapse;width:100%;border:1px solid #e5e7eb;background:#f9fafb;margin:2px 0;">
+          <tr><td style="padding:8px 10px;">
+            <div style="font-size:9.5pt;font-weight:bold;color:#111827;">${customer.name || "-"}</div>
+            ${block.props.showContact ? `<div style="font-size:8pt;color:#6b7280;margin-top:3px;">${[customer.contact_person, customer.phone, customer.email].filter(Boolean).join(" | ") || "-"}</div>` : ""}
+            ${block.props.showVat ? `<div style="font-size:7.5pt;color:#6b7280;margin-top:2px;">VAT: ${customer.vat_number || customer.tax_id || "-"}</div>` : ""}
+          </td></tr>
+        </table>`;
+
+    case "notes":
+      return wordSectionTitle(block.props.title || L.notes) + `
+        <table cellspacing="0" cellpadding="0" width="100%" bgcolor="#fffbeb" style="border-collapse:collapse;width:100%;border:1px solid #fde68a;background:#fffbeb;margin:2px 0;">
+          <tr><td style="padding:8px 10px;font-size:8.5pt;color:#92400e;line-height:1.5;">${o.special_instructions || o.internal_notes || L.noInstructions}</td></tr>
+        </table>`;
+
+    case "terms": {
+      const termsText = sub(block.props.text || "").replace(/\n/g, "<br>");
+      const termsTitle = sub(block.props.title) || L.terms;
+      return `<div style="margin:8px 0;">
+        <div style="font-size:8pt;font-weight:bold;color:#111827;margin-bottom:4px;">${termsTitle}</div>
+        <div style="font-size:${Math.max(7, (block.props.fontSize || 11) * 0.75)}pt;color:#374151;line-height:1.5;">${termsText}</div>
+      </div>`;
+    }
+
+    case "signature_area": {
+      const leftLabel = sub(block.props.leftLabel) || L.sender;
+      const rightLabel = sub(block.props.rightLabel) || L.carrier;
+      const stampUrl: string | undefined = (data.company as any)?.stamp_url;
+      const renderStamp = (side: "left" | "right") => {
+        if (!block.props.showStamp) return "";
+        if (side === "left" && stampUrl) {
+          return `<div style="margin-top:8px;"><img src="${stampUrl}" width="150" height="150" style="width:150px;height:150px;" /></div>`;
+        }
+        return `<div style="margin-top:8px;width:150px;height:90px;border:1px dashed #d1d5db;text-align:center;font-size:8pt;color:#9ca3af;padding-top:38px;">${L.stamp}</div>`;
+      };
+      const todayStr = toDDMMYYYY(new Date());
+      const renderDate = (side: "left" | "right") => {
+        if (!block.props.showDate) return "";
+        if (block.props.autoFillDate && side === "left") return `<div style="font-size:8.5pt;color:#111827;font-weight:bold;margin-top:5px;">${L.date}: ${todayStr}</div>`;
+        return `<div style="font-size:8.5pt;color:#6b7280;margin-top:5px;">${L.date}: ____.____.________</div>`;
+      };
+      const cell = (side: "left" | "right", label: string) => `
+        <td valign="top" width="50%" style="width:50%;padding:8px 14px 8px 0;">
+          <div style="font-size:8.5pt;font-weight:bold;color:#111827;text-transform:uppercase;border-bottom:1px solid #9ca3af;padding-bottom:5px;">${label}</div>
+          ${renderDate(side)}
+          ${renderStamp(side)}
+        </td>`;
+      return `<table cellspacing="0" cellpadding="0" width="100%" style="border-collapse:collapse;width:100%;margin:10px 0;"><tr>${cell("left", leftLabel)}${cell("right", rightLabel)}</tr></table>`;
+    }
+
+    case "custom_text": {
+      const customText = sub(block.props.text || "").replace(/\n/g, "<br>").trim();
+      const customTitle = sub(block.props.title);
+      if (!customText && !block.props.alwaysShow) return "";
+      return `<div style="margin:6px 0;font-size:${Math.max(7, (block.props.fontSize || 12) * 0.75)}pt;text-align:${block.props.alignment || "left"};">
+        ${customTitle ? `<div style="font-weight:bold;color:#111827;margin-bottom:2px;">${customTitle}</div>` : ""}
+        ${customText ? `<table cellspacing="0" cellpadding="0" width="100%" bgcolor="#fffbeb" style="border-collapse:collapse;width:100%;border-left:3px solid #f59e0b;background:#fffbeb;"><tr><td style="padding:6px 8px;color:#4b5563;line-height:1.5;">${customText}</td></tr></table>` : ""}
+      </div>`;
+    }
+
+    case "divider":
+      return `<div style="border-top:${block.props.thickness || 1}px ${block.props.style || "solid"} ${block.props.color || "#e5e7eb"};font-size:1pt;line-height:1pt;margin:6px 0;">&nbsp;</div>`;
+
+    case "footer": {
+      const leftText = block.props.customText ? sub(block.props.customText) : "";
+      const centerText = block.props.showContact ? `${company.company_name || ""} | ${company.phone || ""} | ${company.email || ""}` : "";
+      return `<table cellspacing="0" cellpadding="0" width="100%" style="border-collapse:collapse;width:100%;border-top:1px solid #e5e7eb;margin-top:8px;">
+        <tr>
+          <td width="40%" style="width:40%;padding:5px 0;font-size:7.5pt;color:#6b7280;">${leftText}</td>
+          <td width="40%" align="center" style="width:40%;padding:5px 0;text-align:center;font-size:7.5pt;color:#6b7280;">${centerText}</td>
+          <td width="20%" align="right" style="width:20%;padding:5px 0;text-align:right;font-size:7pt;color:#9ca3af;font-style:italic;">generat de bngtracking.ro</td>
+        </tr>
+      </table>`;
+    }
+
+    default:
+      return "";
+  }
+}
+
+// Build the complete MS-Word HTML document. Word opens HTML-based .doc
+// files natively; the Office namespaces + <xml><w:WordDocument> block tell
+// it to treat the body as an editable Word document and the @page rule
+// lays it out on A4 with the template's margins. Every field is plain
+// editable text/table content.
+export function renderOrderWordHtml(
+  orderData: { order: any; stops: any[]; company: any },
+  template: TemplateData | null,
+  lang: string = "ro"
+): string {
+  const t = template || DEFAULT_TEMPLATE;
+  const ps = t.pageSettings;
+  const pc = ps.primaryColor;
+  const visibleBlocks = t.blocks.filter(b => b.visible);
+  const body = visibleBlocks.map(b => renderWordBlock(b, orderData, pc, ps.fontSize, lang)).join("");
+
+  const docCarrierName = (orderData.order.carrier?.name || "")
+    .replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+  const docTitle = docCarrierName
+    ? `${orderData.order.reference_number} - ${docCarrierName}`
+    : `${orderData.order.reference_number} - Forwarding Order`;
+
+  // Convert px margins to pt for the @page rule (1px ≈ 0.75pt).
+  const mt = (ps.marginTop * 0.75).toFixed(0);
+  const mr = (ps.marginRight * 0.75).toFixed(0);
+  const mb = (ps.marginBottom * 0.75).toFixed(0);
+  const ml = (ps.marginLeft * 0.75).toFixed(0);
+
+  return `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8" />
+<title>${docTitle}</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]-->
+<style>
+@page WordSection1 { size: ${ps.orientation === "portrait" ? "595.3pt 841.9pt" : "841.9pt 595.3pt"}; margin: ${mt}pt ${mr}pt ${mb}pt ${ml}pt; }
+div.WordSection1 { page: WordSection1; }
+body { font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: ${(fs => Math.max(8, fs * 0.75))(ps.fontSize)}pt; color: #111827; }
+table { border-collapse: collapse; }
+img { max-width: 100%; }
+</style>
+</head>
+<body>
+<div class="WordSection1">
+${body}
+</div>
+</body>
+</html>`;
 }
 
 // Quick one-shot: fetch + render + open (legacy)

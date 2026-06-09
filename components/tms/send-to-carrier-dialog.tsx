@@ -15,7 +15,7 @@ import { buildEmailAuthHeaders } from "@/lib/client-email-headers";
 import { PreviousSendsList } from "@/components/tms/previous-sends-list";
 import {
   fetchOrderData, fetchCompanyProfile, fetchOrderTemplates,
-  renderOrderHtml, parseTemplate, openPrintWindow,
+  renderOrderHtml, renderOrderWordHtml, parseTemplate, openPrintWindow,
   PRINT_OVERRIDE_CSS,
   SUPPORTED_LANGUAGES, type OrderTemplate,
 } from "@/lib/pdf/generate-forwarding-order";
@@ -409,14 +409,15 @@ export function SendToCarrierDialog({ open, onOpenChange, orderId, adminId, admi
   };
 
   // Download the SAME rendered order HTML as an MS Word (.doc) file.
-  // Word opens HTML-based .doc documents natively, so we keep the exact
-  // layout/markup the operator already sees in the preview (no separate
-  // template to maintain) and just wrap it in the Office HTML envelope
-  // that tells Word to treat the body as a Word document and to lay it
-  // out on A4 portrait pages. This sits next to the existing PDF path —
-  // nothing else in the dialog changes.
+  // Word export. Instead of re-wrapping the PDF preview HTML (which leans
+  // on flexbox / grid / gradients that Word's HTML engine can't render),
+  // we generate a dedicated table-based document via renderOrderWordHtml.
+  // It reuses the exact same order data, template, and language as the
+  // preview, so the wording and fields are identical — but the layout is
+  // built from <table> markup Word reproduces faithfully and keeps fully
+  // editable for manual tweaks before re-sending.
   const handleDownloadWord = () => {
-    if (!previewHtml) return;
+    if (!orderData?.order || !company) return;
     const ref = orderData?.order?.reference_number || "Order";
     const cName = (orderData?.order?.carrier?.name || "")
       .replace(/[\\/:*?"<>|]+/g, " ")
@@ -424,36 +425,11 @@ export function SendToCarrierDialog({ open, onOpenChange, orderId, adminId, admi
       .trim();
     const fileBase = (cName ? `${ref} - ${cName}` : ref).replace(/[\\/:*?"<>|]+/g, " ").trim();
 
-    // Pull the <body>…</body> (and any <style> from <head>) out of the
-    // rendered preview so we can re-wrap it in the Word envelope. The
-    // preview HTML is a full document, so we extract its inner content.
-    const bodyMatch = previewHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-    const bodyInner = bodyMatch ? bodyMatch[1] : previewHtml;
-    const headStyles = Array.from(previewHtml.matchAll(/<style[\s\S]*?<\/style>/gi))
-      .map((m) => m[0])
-      .join("\n");
-
-    // Strip the on-screen-only toolbar (.no-print) so it doesn't end up
-    // in the Word file, mirroring what the preview/PDF paths do.
-    const cleanBody = bodyInner.replace(/<div class="no-print"[\s\S]*?<\/div>\s*<\/div>/, "");
-
-    const wordHtml = `<!DOCTYPE html>
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-<meta charset="utf-8" />
-<title>${fileBase}</title>
-<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
-<style>
-@page { size: A4 portrait; margin: 1.5cm; }
-body { font-family: Arial, sans-serif; }
-.page { box-shadow: none !important; margin: 0 auto !important; width: 100% !important; max-width: 100% !important; page-break-after: always; }
-.page:last-child { page-break-after: auto; }
-img { max-width: 100%; }
-</style>
-${headStyles}
-</head>
-<body>${cleanBody}</body>
-</html>`;
+    const wordHtml = renderOrderWordHtml(
+      { order: orderData.order, stops: orderData.stops, company },
+      currentTemplate,
+      lang,
+    );
 
     // application/msword + .doc extension is the most broadly compatible
     // way to hand HTML content to Word across versions / OSes.
