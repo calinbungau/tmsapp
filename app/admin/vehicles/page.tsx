@@ -115,6 +115,7 @@ interface VehicleWithOdometer extends Vehicle {
 export default function AdminVehiclesPage() {
   const router = useRouter();
   const { session: adminSession, loading: sessionLoading } = useAdminSession();
+  const { t } = useTranslation();
   const [vehicles, setVehicles] = useState<VehicleWithOdometer[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -333,7 +334,7 @@ export default function AdminVehiclesPage() {
         .eq("id", editingVehicle.id);
 
       if (error) {
-        alert("Failed to update vehicle: " + error.message);
+        alert(t("vehicles.failUpdate") + error.message);
         setSaving(false);
         return;
       }
@@ -344,7 +345,7 @@ export default function AdminVehiclesPage() {
       });
 
       if (error) {
-        alert("Failed to create vehicle: " + error.message);
+        alert(t("vehicles.failCreate") + error.message);
         setSaving(false);
         return;
       }
@@ -357,11 +358,11 @@ export default function AdminVehiclesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this vehicle?")) return;
+    if (!confirm(t("vehicles.confirmDelete"))) return;
     const supabase = createClient();
     const { error } = await supabase.from("vehicles").delete().eq("id", id);
     if (error) {
-      alert("Failed to delete vehicle: " + error.message);
+      alert(t("vehicles.failDelete") + error.message);
       return;
     }
     fetchVehicles();
@@ -533,9 +534,9 @@ export default function AdminVehiclesPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Vehicles</h1>
+          <h1 className="text-2xl font-bold">{t("vehicles.title")}</h1>
           <p className="text-muted-foreground">
-            Manage your fleet of vehicles with GPS tracking support
+            {t("vehicles.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -543,20 +544,20 @@ export default function AdminVehiclesPage() {
             <Link href="/admin/vehicle-usage">
               <Button variant="outline" className="bg-transparent">
                 <Clock className="h-4 w-4 mr-2" />
-                Vehicle Usage
+                {t("vehicles.vehicleUsage")}
               </Button>
             </Link>
           )}
           {traccarConfigured && (adminSession?.isOwner || !adminSession?.user_id || adminSession?.permissions?.["vehicles:create"]) && (
             <Button variant="outline" onClick={openImportDialog} className="bg-transparent">
               <Download className="h-4 w-4 mr-2" />
-              Import from GPS
+              {t("vehicles.importFromGps")}
             </Button>
           )}
           {(adminSession?.isOwner || !adminSession?.user_id || adminSession?.permissions?.["vehicles:create"]) && (
             <Button onClick={() => handleOpenDialog()}>
               <Plus className="h-4 w-4 mr-2" />
-              Add Vehicle
+              {t("vehicles.addVehicle")}
             </Button>
           )}
         </div>
@@ -572,7 +573,7 @@ export default function AdminVehiclesPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.total}</p>
-                <p className="text-xs text-muted-foreground">Total</p>
+                <p className="text-xs text-muted-foreground">{t("vehicles.total")}</p>
               </div>
             </div>
           </CardContent>
@@ -585,7 +586,7 @@ export default function AdminVehiclesPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.active}</p>
-                <p className="text-xs text-muted-foreground">Active</p>
+                <p className="text-xs text-muted-foreground">{t("vehicles.active")}</p>
               </div>
             </div>
           </CardContent>
@@ -598,7 +599,7 @@ export default function AdminVehiclesPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.gpsTracked}</p>
-                <p className="text-xs text-muted-foreground">GPS Tracked</p>
+                <p className="text-xs text-muted-foreground">{t("vehicles.gpsTracked")}</p>
               </div>
             </div>
           </CardContent>
@@ -611,7 +612,7 @@ export default function AdminVehiclesPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.inactive}</p>
-                <p className="text-xs text-muted-foreground">Inactive</p>
+                <p className="text-xs text-muted-foreground">{t("vehicles.inactive")}</p>
               </div>
             </div>
           </CardContent>
@@ -625,7 +626,7 @@ export default function AdminVehiclesPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by plate, make, model..."
+                placeholder={t("vehicles.searchPlaceholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -633,22 +634,22 @@ export default function AdminVehiclesPage() {
             </div>
             <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as typeof filterStatus)}>
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder={t("vehicles.status")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="all">{t("vehicles.allStatus")}</SelectItem>
+                <SelectItem value="active">{t("vehicles.active")}</SelectItem>
+                <SelectItem value="inactive">{t("vehicles.inactive")}</SelectItem>
               </SelectContent>
             </Select>
             <Select value={filterGPS} onValueChange={(v) => setFilterGPS(v as typeof filterGPS)}>
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="GPS" />
+                <SelectValue placeholder={t("vehicles.gps")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="gps">GPS Tracked</SelectItem>
-                <SelectItem value="no-gps">No GPS</SelectItem>
+                <SelectItem value="all">{t("vehicles.all")}</SelectItem>
+                <SelectItem value="gps">{t("vehicles.gpsTracked")}</SelectItem>
+                <SelectItem value="no-gps">{t("vehicles.noGps")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -660,13 +661,13 @@ export default function AdminVehiclesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Vehicle</TableHead>
-              <TableHead>Make / Model</TableHead>
-              <TableHead>Business Partner</TableHead>
-              <TableHead>Fleet Group</TableHead>
-              <TableHead className="text-center">GPS</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>{t("vehicles.vehicle")}</TableHead>
+              <TableHead>{t("vehicles.makeModel")}</TableHead>
+              <TableHead>{t("vehicles.businessPartner")}</TableHead>
+              <TableHead>{t("vehicles.fleetGroup")}</TableHead>
+              <TableHead className="text-center">{t("vehicles.gps")}</TableHead>
+              <TableHead>{t("vehicles.status")}</TableHead>
+              <TableHead className="text-right">{t("vehicles.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -674,8 +675,8 @@ export default function AdminVehiclesPage() {
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   {searchQuery || filterStatus !== "all" || filterGPS !== "all"
-                    ? "No vehicles match your filters"
-                    : "No vehicles yet. Add your first vehicle."}
+                    ? t("vehicles.noMatch")
+                    : t("vehicles.noVehicles")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -756,7 +757,7 @@ export default function AdminVehiclesPage() {
                   </TableCell>
                   <TableCell>
                     <Badge variant={vehicle.is_active ? "default" : "secondary"}>
-                      {vehicle.is_active ? "Active" : "Inactive"}
+                      {vehicle.is_active ? t("vehicles.active") : t("vehicles.inactive")}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
@@ -769,22 +770,22 @@ export default function AdminVehiclesPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => router.push(`/admin/vehicles/${vehicle.id}`)}>
                           <Eye className="h-4 w-4 mr-2" />
-                          View Details
+                          {t("vehicles.viewDetails")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleOpenDialog(vehicle)}>
                           <Edit className="h-4 w-4 mr-2" />
-                          Edit
+                          {t("vehicles.edit")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => toggleActive(vehicle)}>
                           {vehicle.is_active ? (
                             <>
                               <XCircle className="h-4 w-4 mr-2" />
-                              Deactivate
+                              {t("vehicles.deactivate")}
                             </>
                           ) : (
                             <>
                               <CheckCircle className="h-4 w-4 mr-2" />
-                              Activate
+                              {t("vehicles.activate")}
                             </>
                           )}
                         </DropdownMenuItem>
@@ -794,7 +795,7 @@ export default function AdminVehiclesPage() {
                           className="text-destructive focus:text-destructive"
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
+                          {t("vehicles.delete")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -808,7 +809,7 @@ export default function AdminVehiclesPage() {
         {/* Pagination */}
         <div className="flex items-center justify-between px-6 py-3 border-t">
           <p className="text-sm text-muted-foreground">
-            {totalCount > 0 ? `${startIndex + 1}-${endIndex} of ${totalCount} vehicles` : "No vehicles"}
+            {totalCount > 0 ? `${startIndex + 1}-${endIndex} ${t("vehicles.countOf")} ${totalCount} ${t("vehicles.vehiclesLabel")}` : t("vehicles.none")}
           </p>
           <div className="flex items-center gap-4">
             {totalPages > 1 && (
@@ -841,7 +842,7 @@ export default function AdminVehiclesPage() {
               </SelectTrigger>
               <SelectContent>
                 {PAGE_SIZE_OPTIONS.map((size) => (
-                  <SelectItem key={size} value={String(size)}>{size} / page</SelectItem>
+                  <SelectItem key={size} value={String(size)}>{size} {t("vehicles.perPage")}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -853,14 +854,14 @@ export default function AdminVehiclesPage() {
 <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
   <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
   <DialogHeader className="flex-shrink-0">
-  <DialogTitle>{editingVehicle ? "Edit Vehicle" : "Add New Vehicle"}</DialogTitle>
+  <DialogTitle>{editingVehicle ? t("vehicles.editVehicle") : t("vehicles.addNewVehicle")}</DialogTitle>
   <DialogDescription>
-  {editingVehicle ? "Update vehicle information" : "Add a new vehicle to your fleet"}
+  {editingVehicle ? t("vehicles.updateInfo") : t("vehicles.addToFleet")}
   </DialogDescription>
   </DialogHeader>
   <div className="space-y-4 overflow-y-auto flex-1 pr-2">
             <div className="space-y-2">
-              <Label htmlFor="plate">Plate Number *</Label>
+              <Label htmlFor="plate">{t("vehicles.plateNumber")}</Label>
               <Input
                 id="plate"
                 value={formData.plate_number}
@@ -870,7 +871,7 @@ export default function AdminVehiclesPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="make">Make</Label>
+                <Label htmlFor="make">{t("vehicles.make")}</Label>
                 <Input
                   id="make"
                   value={formData.make}
@@ -879,7 +880,7 @@ export default function AdminVehiclesPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="model">Model</Label>
+                <Label htmlFor="model">{t("vehicles.model")}</Label>
                 <Input
                   id="model"
                   value={formData.model}
@@ -890,7 +891,7 @@ export default function AdminVehiclesPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="year">Year</Label>
+                <Label htmlFor="year">{t("vehicles.year")}</Label>
                 <Input
                   id="year"
                   type="number"
@@ -900,7 +901,7 @@ export default function AdminVehiclesPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="color">Color</Label>
+                <Label htmlFor="color">{t("vehicles.color")}</Label>
                 <Input
                   id="color"
                   value={formData.color}
@@ -912,16 +913,16 @@ export default function AdminVehiclesPage() {
 
             {traccarConfigured && (
               <div className="space-y-2">
-                <Label htmlFor="traccar">GPS Device (Traccar)</Label>
+                <Label htmlFor="traccar">{t("vehicles.gpsDevice")}</Label>
                 <Select
                   value={formData.traccar_device_id}
                   onValueChange={(value) => setFormData((p) => ({ ...p, traccar_device_id: value === "none" ? "" : value }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select GPS device (optional)" />
+                    <SelectValue placeholder={t("vehicles.selectGpsDevice")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No device</SelectItem>
+                    <SelectItem value="none">{t("vehicles.noDevice")}</SelectItem>
                     {traccarDevices.map((device) => (
                       <SelectItem key={device.id} value={device.id.toString()}>
                         {device.name} ({device.uniqueId})
@@ -930,7 +931,7 @@ export default function AdminVehiclesPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Link to a GPS device to track mileage and engine hours
+                  {t("vehicles.gpsDeviceHelp")}
                 </p>
               </div>
             )}
@@ -940,16 +941,16 @@ export default function AdminVehiclesPage() {
               <div className="space-y-0.5">
                 <Label className="text-sm font-medium flex items-center gap-2">
                   <Fuel className="h-4 w-4" />
-                  Fuel &amp; Tank
+                  {t("vehicles.fuelAndTank")}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Used to compute Actual L/100km vs Normative and tank-capacity warnings on each trip.
+                  {t("vehicles.fuelTankHelp")}
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="fuel_type">Fuel Type</Label>
+                  <Label htmlFor="fuel_type">{t("vehicles.fuelType")}</Label>
                   <Select
                     value={formData.fuel_type || "none"}
                     onValueChange={(value) =>
@@ -957,21 +958,21 @@ export default function AdminVehiclesPage() {
                     }
                   >
                     <SelectTrigger id="fuel_type">
-                      <SelectValue placeholder="Select fuel" />
+                      <SelectValue placeholder={t("vehicles.selectFuel")} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">—</SelectItem>
-                      <SelectItem value="diesel">Diesel</SelectItem>
-                      <SelectItem value="petrol">Petrol</SelectItem>
+                      <SelectItem value="diesel">{t("vehicles.diesel")}</SelectItem>
+                      <SelectItem value="petrol">{t("vehicles.petrol")}</SelectItem>
                       <SelectItem value="lng">LNG</SelectItem>
                       <SelectItem value="cng">CNG</SelectItem>
-                      <SelectItem value="electric">Electric</SelectItem>
-                      <SelectItem value="hybrid">Hybrid</SelectItem>
+                      <SelectItem value="electric">{t("vehicles.electric")}</SelectItem>
+                      <SelectItem value="hybrid">{t("vehicles.hybrid")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="fuel_normative">Normative (L/100km)</Label>
+                  <Label htmlFor="fuel_normative">{t("vehicles.normative")}</Label>
                   <Input
                     id="fuel_normative"
                     type="number"
@@ -988,7 +989,7 @@ export default function AdminVehiclesPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="tank_capacity">Tank Capacity (L)</Label>
+                  <Label htmlFor="tank_capacity">{t("vehicles.tankCapacity")}</Label>
                   <Input
                     id="tank_capacity"
                     type="number"
@@ -1002,7 +1003,7 @@ export default function AdminVehiclesPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="adblue_capacity">AdBlue Tank (L)</Label>
+                  <Label htmlFor="adblue_capacity">{t("vehicles.adblueTank")}</Label>
                   <Input
                     id="adblue_capacity"
                     type="number"
@@ -1024,9 +1025,9 @@ export default function AdminVehiclesPage() {
                 <div className="space-y-0.5">
                   <Label className="text-sm font-medium flex items-center gap-2">
                     <Building2 className="h-4 w-4" />
-                    Subcontractor Vehicle
+                    {t("vehicles.subcontractorVehicle")}
                   </Label>
-                  <p className="text-xs text-muted-foreground">This vehicle belongs to an external partner</p>
+                  <p className="text-xs text-muted-foreground">{t("vehicles.subcontractorHelp")}</p>
                 </div>
                 <Switch
                   checked={formData.isSubcontractor}
@@ -1036,7 +1037,7 @@ export default function AdminVehiclesPage() {
               
               {formData.isSubcontractor && (
                 <div className="space-y-2 pl-6 border-l-2 border-orange-500/30">
-                  <Label>Business Partner</Label>
+                  <Label>{t("vehicles.businessPartner")}</Label>
                   <Popover open={partnerPopoverOpen} onOpenChange={setPartnerPopoverOpen}>
                     <PopoverTrigger asChild>
                       <Button
@@ -1047,15 +1048,15 @@ export default function AdminVehiclesPage() {
                       >
                         {formData.business_partner_id
                           ? businessPartners.find((p) => p.id === formData.business_partner_id)?.name
-                          : "Select business partner..."}
+                          : t("vehicles.selectBusinessPartner")}
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-[300px] p-0" align="start">
                       <Command>
-                        <CommandInput placeholder="Search partners..." />
+                        <CommandInput placeholder={t("vehicles.searchPartners")} />
                         <CommandList>
-                          <CommandEmpty>No partner found.</CommandEmpty>
+                          <CommandEmpty>{t("vehicles.noPartnerFound")}</CommandEmpty>
                           <CommandGroup>
                             <CommandItem
                               value="none"
@@ -1065,7 +1066,7 @@ export default function AdminVehiclesPage() {
                               }}
                             >
                               <Check className={`mr-2 h-4 w-4 ${!formData.business_partner_id ? "opacity-100" : "opacity-0"}`} />
-                              No partner selected
+                              {t("vehicles.noPartnerSelected")}
                             </CommandItem>
                             {businessPartners.map((partner) => (
                               <CommandItem
@@ -1097,7 +1098,7 @@ export default function AdminVehiclesPage() {
             {/* Fleet Group */}
             {fleetGroups.length > 0 && (
               <div className="space-y-2 border-t pt-4">
-                <Label>Fleet Group</Label>
+                <Label>{t("vehicles.fleetGroup")}</Label>
                 <Popover open={groupPopoverOpen} onOpenChange={setGroupPopoverOpen}>
                   <PopoverTrigger asChild>
                     <Button
@@ -1108,15 +1109,15 @@ export default function AdminVehiclesPage() {
                     >
                       {formData.fleet_group_id
                         ? fleetGroups.find((g) => g.id === formData.fleet_group_id)?.name
-                        : "Select fleet group (optional)"}
+                        : t("vehicles.selectFleetGroup")}
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-[300px] p-0" align="start">
                     <Command>
-                      <CommandInput placeholder="Search groups..." />
+                      <CommandInput placeholder={t("vehicles.searchGroups")} />
                       <CommandList>
-                        <CommandEmpty>No group found.</CommandEmpty>
+                        <CommandEmpty>{t("vehicles.noGroupFound")}</CommandEmpty>
                         <CommandGroup>
                           <CommandItem
                             value="none"
@@ -1126,7 +1127,7 @@ export default function AdminVehiclesPage() {
                             }}
                           >
                             <Check className={`mr-2 h-4 w-4 ${!formData.fleet_group_id ? "opacity-100" : "opacity-0"}`} />
-                            No group
+                            {t("vehicles.noGroup")}
                           </CommandItem>
                           {fleetGroups.map((group) => (
                             <CommandItem
@@ -1152,17 +1153,17 @@ export default function AdminVehiclesPage() {
                     </Command>
                   </PopoverContent>
                 </Popover>
-                <p className="text-xs text-muted-foreground">Organize vehicles into groups for easier management</p>
+                <p className="text-xs text-muted-foreground">{t("vehicles.fleetGroupHelp")}</p>
               </div>
             )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }} className="bg-transparent">
-              Cancel
+              {t("vehicles.cancel")}
             </Button>
             <Button onClick={handleSave} disabled={saving || !formData.plate_number.trim()}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {editingVehicle ? "Save Changes" : "Add Vehicle"}
+              {editingVehicle ? t("vehicles.saveChanges") : t("vehicles.addVehicle")}
             </Button>
           </DialogFooter>
         </DialogContent>
