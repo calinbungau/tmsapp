@@ -452,8 +452,8 @@ export default function TripsIndexPage() {
           <Link href="/admin/tms/carriers/consolidation">
             <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs">
               <Building2 className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Carrier Consolidation</span>
-              <span className="sm:hidden">Carriers</span>
+              <span className="hidden sm:inline">{t("tms.tripsList.carrierConsolidation")}</span>
+              <span className="sm:hidden">{t("tms.tripsList.carriers")}</span>
             </Button>
           </Link>
         </div>
