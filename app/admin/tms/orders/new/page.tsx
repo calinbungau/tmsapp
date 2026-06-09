@@ -706,7 +706,7 @@ function SectionHeader({ icon: Icon, title, description }: { icon: any; title: s
   );
 }
 
-// ═══════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════��═════════════
 // Main Page
 // ═════════════════════════���═════════════════════════════════
 export default function NewOrderPage() {
@@ -2520,8 +2520,8 @@ created_from: tab.createdFrom,
         <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/30">
           <ShieldCheck className="h-4 w-4 text-green-500 shrink-0" />
           <div className="min-w-0">
-            <span className="text-sm text-green-400 font-medium">Client Confirmed</span>
-            <span className="text-xs text-muted-foreground ml-2">Document signed and sent to customer. Status: Unassigned to Carrier.</span>
+            <span className="text-sm text-green-400 font-medium">{tr("tms.newOrder.banner.clientConfirmed")}</span>
+            <span className="text-xs text-muted-foreground ml-2">{tr("tms.newOrder.banner.signedDesc")}</span>
           </div>
         </div>
       )}
@@ -2530,20 +2530,20 @@ created_from: tab.createdFrom,
       {activeTab.aiConfidence !== null && activeTab.createdFrom === "ai_upload" && (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-violet-500/5 border border-violet-500/20">
           <Sparkles className="h-4 w-4 text-violet-500 shrink-0" />
-          <span className="text-sm text-violet-500 font-medium">AI Extracted</span>
-          <span className="text-xs text-muted-foreground">Confidence: {activeTab.aiConfidence}%</span>
+          <span className="text-sm text-violet-500 font-medium">{tr("tms.newOrder.banner.aiExtracted")}</span>
+          <span className="text-xs text-muted-foreground">{tr("tms.newOrder.banner.confidence")} {activeTab.aiConfidence}%</span>
           <span className="text-xs text-muted-foreground ml-auto">
-            {activeTab.aiTokensUsed?.toLocaleString()} tokens / ${activeTab.aiCostUsd?.toFixed(4)}
+            {activeTab.aiTokensUsed?.toLocaleString()} {tr("tms.newOrder.ai.tokens")} / ${activeTab.aiCostUsd?.toFixed(4)}
           </span>
         </div>
       )}
 
       {/* ── SECTION 1: Customer ── */}
       <div className="space-y-4">
-        <SectionHeader icon={Building2} title="Customer" description="Select the shipper for this order" />
+        <SectionHeader icon={Building2} title={tr("tms.newOrder.customer.section")} description={tr("tms.newOrder.customer.sectionDesc")} />
 
         <div className="space-y-2">
-          <Label>Customer (Shipper)</Label>
+          <Label>{tr("tms.newOrder.customer.label")}</Label>
           <div className="flex gap-2">
             <Popover open={customerPopoverOpen} onOpenChange={setCustomerPopoverOpen}>
               <PopoverTrigger asChild>
@@ -2555,22 +2555,22 @@ created_from: tab.createdFrom,
                 >
                   {activeTab.form.customer_id ? (
                     <span className="flex items-center gap-2 truncate">
-                      {customers.find(c => c.id === activeTab.form.customer_id)?.name || "Select customer..."}
+                      {customers.find(c => c.id === activeTab.form.customer_id)?.name || tr("tms.newOrder.customer.selectCustomer")}
                       <span className="text-[10px] text-muted-foreground capitalize">
                         ({customers.find(c => c.id === activeTab.form.customer_id)?.types?.join(", ")})
                       </span>
                     </span>
                   ) : (
-                    "Select customer..."
+                    tr("tms.newOrder.customer.selectCustomer")
                   )}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[350px] p-0" align="start">
                 <Command>
-                  <CommandInput placeholder="Search customers..." />
+                  <CommandInput placeholder={tr("tms.newOrder.customer.searchPlaceholder")} />
                   <CommandList className="max-h-[250px]">
-                    <CommandEmpty>No customer found.</CommandEmpty>
+                    <CommandEmpty>{tr("tms.newOrder.customer.notFound")}</CommandEmpty>
                     <CommandGroup>
                       {customers.map(c => (
                         <CommandItem
@@ -2594,7 +2594,7 @@ created_from: tab.createdFrom,
             <Button
               variant="outline" size="icon" className="shrink-0 bg-transparent"
               onClick={() => { setSuggestedPartnerName(activeTab.aiCustomerName || ""); setShowCreatePartner(true); }}
-              title="Create new partner"
+              title={tr("tms.newOrder.customer.createNewPartner")}
             >
               <UserPlus className="h-4 w-4" />
             </Button>
@@ -2604,26 +2604,26 @@ created_from: tab.createdFrom,
             <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/5 border border-amber-500/20">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
               <span className="text-xs text-amber-600">
-                AI detected customer: <strong>{activeTab.aiCustomerName}</strong> - not found in your partners.
+                {tr("tms.newOrder.customer.aiDetected")} <strong>{activeTab.aiCustomerName}</strong> {tr("tms.newOrder.customer.notInPartners")}
               </span>
               <Button
                 variant="outline" size="sm" className="h-6 text-[10px] ml-auto bg-transparent"
                 onClick={() => { setSuggestedPartnerName(activeTab.aiCustomerName || ""); setShowCreatePartner(true); }}
               >
-                <Plus className="h-3 w-3 mr-0.5" /> Create
+                <Plus className="h-3 w-3 mr-0.5" /> {tr("tms.newOrder.customer.create")}
               </Button>
             </div>
           )}
         </div>
 
         <div className="space-y-2">
-          <Label>Customer Reference</Label>
-          <Input value={activeTab.form.customer_reference} onChange={e => updateForm({ customer_reference: e.target.value })} placeholder="Customer's order number..." />
+          <Label>{tr("tms.newOrder.customer.reference")}</Label>
+          <Input value={activeTab.form.customer_reference} onChange={e => updateForm({ customer_reference: e.target.value })} placeholder={tr("tms.newOrder.customer.referencePlaceholder")} />
         </div>
 
         <div className="space-y-2">
-          <Label>Special Instructions</Label>
-          <Textarea value={activeTab.form.special_instructions} onChange={e => updateForm({ special_instructions: e.target.value })} placeholder="Loading requirements, timing, etc..." rows={2} />
+          <Label>{tr("tms.newOrder.customer.specialInstructions")}</Label>
+          <Textarea value={activeTab.form.special_instructions} onChange={e => updateForm({ special_instructions: e.target.value })} placeholder={tr("tms.newOrder.customer.specialPlaceholder")} rows={2} />
         </div>
       </div>
 
@@ -2631,57 +2631,57 @@ created_from: tab.createdFrom,
 
       {/* ── SECTION 2: Cargo ── */}
       <div className="space-y-4">
-        <SectionHeader icon={Package} title="Cargo Details" description="Describe the goods being transported" />
+        <SectionHeader icon={Package} title={tr("tms.newOrder.cargo.section")} description={tr("tms.newOrder.cargo.sectionDesc")} />
 
         <div className="space-y-2">
-          <Label>Cargo Description</Label>
-          <Textarea value={activeTab.form.cargo_description} onChange={e => updateForm({ cargo_description: e.target.value })} placeholder="What is being transported..." rows={2} />
+          <Label>{tr("tms.newOrder.cargo.description")}</Label>
+          <Textarea value={activeTab.form.cargo_description} onChange={e => updateForm({ cargo_description: e.target.value })} placeholder={tr("tms.newOrder.cargo.descriptionPlaceholder")} rows={2} />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label className="text-xs">Goods Type</Label>
-            <Input className="h-8 text-sm" value={activeTab.form.goods_type} onChange={e => updateForm({ goods_type: e.target.value })} placeholder="e.g. Electronics, Food..." />
+            <Label className="text-xs">{tr("tms.newOrder.cargo.goodsType")}</Label>
+            <Input className="h-8 text-sm" value={activeTab.form.goods_type} onChange={e => updateForm({ goods_type: e.target.value })} placeholder={tr("tms.newOrder.cargo.goodsTypePlaceholder")} />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">ADR Class</Label>
-            <Input className="h-8 text-sm" value={activeTab.form.adr_class} onChange={e => updateForm({ adr_class: e.target.value })} placeholder="Dangerous goods class..." />
+            <Label className="text-xs">{tr("tms.newOrder.cargo.adrClass")}</Label>
+            <Input className="h-8 text-sm" value={activeTab.form.adr_class} onChange={e => updateForm({ adr_class: e.target.value })} placeholder={tr("tms.newOrder.cargo.adrPlaceholder")} />
           </div>
         </div>
 
         <div className="grid grid-cols-4 gap-3">
           <div className="space-y-1.5">
-            <Label className="text-xs">Weight (kg)</Label>
+            <Label className="text-xs">{tr("tms.newOrder.cargo.weight")}</Label>
             <Input className="h-8 text-sm" type="number" value={activeTab.form.weight_kg} onChange={e => updateForm({ weight_kg: e.target.value })} placeholder="0" />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Volume (m3)</Label>
+            <Label className="text-xs">{tr("tms.newOrder.cargo.volume")}</Label>
             <Input className="h-8 text-sm" type="number" value={activeTab.form.volume_m3} onChange={e => updateForm({ volume_m3: e.target.value })} placeholder="0" />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Pallets</Label>
+            <Label className="text-xs">{tr("tms.newOrder.cargo.pallets")}</Label>
             <Input className="h-8 text-sm" type="number" value={activeTab.form.pallet_count} onChange={e => updateForm({ pallet_count: e.target.value })} placeholder="0" />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Loading Meters</Label>
+            <Label className="text-xs">{tr("tms.newOrder.cargo.loadingMeters")}</Label>
             <Input className="h-8 text-sm" type="number" value={activeTab.form.loading_meters} onChange={e => updateForm({ loading_meters: e.target.value })} placeholder="0" />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label className="text-xs">Temp Min (C)</Label>
+            <Label className="text-xs">{tr("tms.newOrder.cargo.tempMin")}</Label>
             <Input className="h-8 text-sm" type="number" value={activeTab.form.temperature_min} onChange={e => updateForm({ temperature_min: e.target.value })} />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Temp Max (C)</Label>
+            <Label className="text-xs">{tr("tms.newOrder.cargo.tempMax")}</Label>
             <Input className="h-8 text-sm" type="number" value={activeTab.form.temperature_max} onChange={e => updateForm({ temperature_max: e.target.value })} />
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           <Switch checked={activeTab.form.stackable} onCheckedChange={v => updateForm({ stackable: v })} />
-          <Label className="text-sm">Cargo is stackable</Label>
+          <Label className="text-sm">{tr("tms.newOrder.cargo.stackable")}</Label>
         </div>
       </div>
 
@@ -2690,9 +2690,9 @@ created_from: tab.createdFrom,
       {/* ── SECTION 3: Stops ── */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <SectionHeader icon={MapPin} title="Stops" description="Add pickup and delivery locations" />
+          <SectionHeader icon={MapPin} title={tr("tms.newOrder.stops.section")} description={tr("tms.newOrder.stops.sectionDesc")} />
           <Button size="sm" variant="outline" className="bg-transparent" onClick={() => updateForm({ stops: [...activeTab.form.stops, emptyStop(activeTab.form.stops.length === 0 ? "pickup" : "delivery")] })}>
-            <Plus className="h-3.5 w-3.5 mr-1" /> Add Stop
+            <Plus className="h-3.5 w-3.5 mr-1" /> {tr("tms.newOrder.stops.addStop")}
           </Button>
         </div>
 
@@ -2716,17 +2716,17 @@ created_from: tab.createdFrom,
                 {stop.country && getCountryFlagUrl(stop.country) && (
                   <img src={getCountryFlagUrl(stop.country)} alt={stop.country} className="w-4 h-3 rounded-[2px] object-cover shrink-0" crossOrigin="anonymous" />
                 )}
-                <span className="text-xs text-muted-foreground">Stop {displayIdx + 1}{stop.city ? ` \u2013 ${stop.city}` : ""}</span>
+                <span className="text-xs text-muted-foreground">{tr("tms.newOrder.stops.stop")} {displayIdx + 1}{stop.city ? ` \u2013 ${stop.city}` : ""}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Select value={stop.stop_type} onValueChange={v => updateStop(realIdx, { stop_type: v as any })}>
                   <SelectTrigger className="w-auto h-6 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="pickup">Pickup</SelectItem>
-                    <SelectItem value="delivery">Delivery</SelectItem>
-                    <SelectItem value="transit">Transit</SelectItem>
-                    <SelectItem value="customs">Customs</SelectItem>
-                    <SelectItem value="swap">Swap</SelectItem>
+                    <SelectItem value="pickup">{tr("tms.newOrder.stops.pickup")}</SelectItem>
+                    <SelectItem value="delivery">{tr("tms.newOrder.stops.delivery")}</SelectItem>
+                    <SelectItem value="transit">{tr("tms.newOrder.stops.transit")}</SelectItem>
+                    <SelectItem value="customs">{tr("tms.newOrder.stops.customs")}</SelectItem>
+                    <SelectItem value="swap">{tr("tms.newOrder.stops.swap")}</SelectItem>
                   </SelectContent>
                 </Select>
                 {(step === "execution" ? executionStops : activeTab.form.stops).filter(s => s.origin !== "execution").length > 1 && (
@@ -2741,13 +2741,13 @@ created_from: tab.createdFrom,
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Company Name</Label>
-                <Input className="h-8 text-sm" value={stop.company_name} onChange={e => updateStop(realIdx, { company_name: e.target.value })} placeholder="Warehouse name..." />
+                <Label className="text-xs">{tr("tms.newOrder.stops.companyName")}</Label>
+                <Input className="h-8 text-sm" value={stop.company_name} onChange={e => updateStop(realIdx, { company_name: e.target.value })} placeholder={tr("tms.newOrder.stops.companyPlaceholder")} />
               </div>
               <div className="space-y-1.5 relative">
-                <Label className="text-xs">Address</Label>
+                <Label className="text-xs">{tr("tms.newOrder.stops.address")}</Label>
                 <div className="relative">
-                  <Input className="h-8 text-sm" value={stop.address} onChange={e => { updateStop(realIdx, { address: e.target.value }); setSearchingStop(realIdx); searchAddress(e.target.value); }} placeholder="Search address..." />
+                  <Input className="h-8 text-sm" value={stop.address} onChange={e => { updateStop(realIdx, { address: e.target.value }); setSearchingStop(realIdx); searchAddress(e.target.value); }} placeholder={tr("tms.newOrder.stops.searchAddress")} />
                   {searchingStop === realIdx && searchResults.length > 0 && (
                     <div className="absolute top-full mt-1 left-0 right-0 z-50 bg-popover border rounded-lg shadow-xl max-h-48 overflow-y-auto">
                       {searchResults.map((r, ri) => (
@@ -2776,48 +2776,48 @@ created_from: tab.createdFrom,
 
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">City</Label>
+                <Label className="text-xs">{tr("tms.newOrder.stops.city")}</Label>
                 <Input className="h-8 text-sm" value={stop.city} onChange={e => updateStop(realIdx, { city: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Country</Label>
+                <Label className="text-xs">{tr("tms.newOrder.stops.country")}</Label>
                 <Input className="h-8 text-sm" value={stop.country} onChange={e => updateStop(realIdx, { country: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Postal Code</Label>
+                <Label className="text-xs">{tr("tms.newOrder.stops.postalCode")}</Label>
                 <Input className="h-8 text-sm" value={stop.postal_code} onChange={e => updateStop(realIdx, { postal_code: e.target.value })} />
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Planned Date</Label>
+                <Label className="text-xs">{tr("tms.newOrder.stops.plannedDate")}</Label>
                 <Input className="h-8 text-sm" type="date" value={stop.planned_date} onChange={e => updateStop(realIdx, { planned_date: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Time From</Label>
+                <Label className="text-xs">{tr("tms.newOrder.stops.timeFrom")}</Label>
                 <Input className="h-8 text-sm" type="time" value={stop.planned_time_from} onChange={e => updateStop(realIdx, { planned_time_from: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Time To</Label>
+                <Label className="text-xs">{tr("tms.newOrder.stops.timeTo")}</Label>
                 <Input className="h-8 text-sm" type="time" value={stop.planned_time_to} onChange={e => updateStop(realIdx, { planned_time_to: e.target.value })} />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Contact Name</Label>
+                <Label className="text-xs">{tr("tms.newOrder.stops.contactName")}</Label>
                 <Input className="h-8 text-sm" value={stop.contact_name} onChange={e => updateStop(realIdx, { contact_name: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Contact Phone</Label>
+                <Label className="text-xs">{tr("tms.newOrder.stops.contactPhone")}</Label>
                 <Input className="h-8 text-sm" value={stop.contact_phone} onChange={e => updateStop(realIdx, { contact_phone: e.target.value })} />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs">Reference</Label>
-              <Textarea className="min-h-[60px] text-sm resize-none" value={stop.reference_number} onChange={e => updateStop(realIdx, { reference_number: e.target.value })} placeholder="Order references (one per line)" rows={2} />
+              <Label className="text-xs">{tr("tms.newOrder.stops.reference")}</Label>
+              <Textarea className="min-h-[60px] text-sm resize-none" value={stop.reference_number} onChange={e => updateStop(realIdx, { reference_number: e.target.value })} placeholder={tr("tms.newOrder.stops.referencePlaceholder")} rows={2} />
             </div>
           </Card>
           ));
@@ -2851,17 +2851,17 @@ created_from: tab.createdFrom,
 
       <Separator />
 
-      {/* ── SECTION 4: Pricing ── */}
+      {/* ── SECTION 4: Pricing ─��� */}
       <div className="space-y-4">
-        <SectionHeader icon={DollarSign} title="Pricing" description="Set customer pricing with VAT options" />
+        <SectionHeader icon={DollarSign} title={tr("tms.newOrder.pricing.section")} description={tr("tms.newOrder.pricing.sectionDesc")} />
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="space-y-1.5">
-            <Label className="text-xs">Price</Label>
+            <Label className="text-xs">{tr("tms.newOrder.pricing.price")}</Label>
             <Input className="h-8 text-sm" type="number" value={activeTab.form.customer_price} onChange={e => updateForm({ customer_price: e.target.value })} placeholder="0.00" />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Currency</Label>
+            <Label className="text-xs">{tr("tms.newOrder.pricing.currency")}</Label>
             <Select value={activeTab.form.customer_currency} onValueChange={v => updateForm({ customer_currency: v })}>
               <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -2872,20 +2872,20 @@ created_from: tab.createdFrom,
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">VAT Type</Label>
+            <Label className="text-xs">{tr("tms.newOrder.pricing.vatType")}</Label>
             <Select value={activeTab.form.customer_vat_type} onValueChange={v => updateForm({ customer_vat_type: v as OrderFormData["customer_vat_type"] })}>
               <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="excluding">Without VAT (fără TVA)</SelectItem>
-                <SelectItem value="including">VAT Included (cu TVA)</SelectItem>
-                <SelectItem value="exempt">VAT Exempt (scutit)</SelectItem>
-                <SelectItem value="reverse_charge">Reverse Charge (taxare inversă)</SelectItem>
-                <SelectItem value="non_taxable">Non-taxable (export)</SelectItem>
+                <SelectItem value="excluding">{tr("tms.newOrder.pricing.vatWithout")}</SelectItem>
+                <SelectItem value="including">{tr("tms.newOrder.pricing.vatIncluded")}</SelectItem>
+                <SelectItem value="exempt">{tr("tms.newOrder.pricing.vatExempt")}</SelectItem>
+                <SelectItem value="reverse_charge">{tr("tms.newOrder.pricing.reverseCharge")}</SelectItem>
+                <SelectItem value="non_taxable">{tr("tms.newOrder.pricing.nonTaxable")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">VAT Rate %</Label>
+            <Label className="text-xs">{tr("tms.newOrder.pricing.vatRate")}</Label>
             <Select 
               value={activeTab.form.customer_vat_rate} 
               onValueChange={v => updateForm({ customer_vat_rate: v })}
@@ -2893,10 +2893,10 @@ created_from: tab.createdFrom,
             >
               <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
-<SelectItem value="21">21% (standard)</SelectItem>
-  <SelectItem value="9">9% (reduced)</SelectItem>
-  <SelectItem value="5">5% (reduced)</SelectItem>
-  <SelectItem value="0">0%</SelectItem>
+<SelectItem value="21">{tr("tms.newOrder.pricing.rateStandard")}</SelectItem>
+  <SelectItem value="9">{tr("tms.newOrder.pricing.rateReduced9")}</SelectItem>
+  <SelectItem value="5">{tr("tms.newOrder.pricing.rateReduced5")}</SelectItem>
+  <SelectItem value="0">{tr("tms.newOrder.pricing.rate0")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -2907,7 +2907,7 @@ created_from: tab.createdFrom,
           <div className="rounded-lg bg-muted/30 border border-border/50 p-3 space-y-1.5">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">
-                {activeTab.form.customer_vat_type === "including" ? "Price (VAT included)" : "Net Price"}
+                {activeTab.form.customer_vat_type === "including" ? tr("tms.newOrder.pricing.priceVatIncluded") : tr("tms.newOrder.pricing.netPrice")}
               </span>
               <span className="font-medium">
                 {parseFloat(activeTab.form.customer_price).toLocaleString("ro-RO", { minimumFractionDigits: 2 })} {activeTab.form.customer_currency}
@@ -2916,7 +2916,7 @@ created_from: tab.createdFrom,
             {!["exempt", "reverse_charge", "non_taxable"].includes(activeTab.form.customer_vat_type) && (
               <>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">VAT ({activeTab.form.customer_vat_rate}%)</span>
+                  <span className="text-muted-foreground">{tr("tms.newOrder.pricing.vat")} ({activeTab.form.customer_vat_rate}%)</span>
                   <span className="font-medium">
                     {(() => {
                       const price = parseFloat(activeTab.form.customer_price) || 0;
@@ -2930,7 +2930,7 @@ created_from: tab.createdFrom,
                 </div>
                 <Separator className="my-1" />
                 <div className="flex items-center justify-between text-xs font-semibold">
-                  <span>{activeTab.form.customer_vat_type === "including" ? "Net Price" : "Total (with VAT)"}</span>
+                  <span>{activeTab.form.customer_vat_type === "including" ? tr("tms.newOrder.pricing.netPrice") : tr("tms.newOrder.pricing.totalWithVat")}</span>
                   <span className="text-primary">
                     {(() => {
                       const price = parseFloat(activeTab.form.customer_price) || 0;
@@ -3220,12 +3220,12 @@ created_from: tab.createdFrom,
             {activeTab.aiTokensUsed && (
               <Badge variant="outline" className="text-[10px] gap-1 h-6">
                 <Sparkles className="h-2.5 w-2.5 text-violet-400" />
-                {activeTab.aiTokensUsed.toLocaleString()} tokens
+                {activeTab.aiTokensUsed.toLocaleString()} {tr("tms.newOrder.ai.tokens")}
               </Badge>
             )}
             {activeTab.lastSavedAt && (
               <span className="text-[10px] text-muted-foreground px-2 py-1 rounded-md bg-muted/50">
-                Saved {activeTab.lastSavedAt}
+                {tr("tms.newOrder.ai.savedPrefix")} {activeTab.lastSavedAt}
               </span>
             )}
             <Button
@@ -3233,7 +3233,7 @@ created_from: tab.createdFrom,
               onClick={() => handleSubmit("confirmed", { goToExecution: true })} disabled={submitting}
             >
               <ArrowRight className="h-3 w-3" />
-              {submitting ? "Creating..." : "Create & Proceed to Execution"}
+              {submitting ? tr("tms.newOrder.submit.creating") : tr("tms.newOrder.submit.createProceed")}
             </Button>
           </div>
         )}
@@ -3256,7 +3256,7 @@ created_from: tab.createdFrom,
                   }`}
                 >
                   {type === "internal" ? <Truck className="h-2.5 w-2.5" /> : <Building2 className="h-2.5 w-2.5" />}
-                  {type === "internal" ? "Own Fleet" : "Forwarding"}
+                  {type === "internal" ? tr("tms.newOrder.execution.ownFleet") : tr("tms.newOrder.execution.forwarding")}
                 </button>
               ))}
             </div>
@@ -3265,14 +3265,14 @@ created_from: tab.createdFrom,
             {availableSeries.length > 0 && (
               <Select value={selectedSeriesId} onValueChange={setSelectedSeriesId}>
                 <SelectTrigger className="h-8 w-[120px] text-xs bg-background/90 border-border/50">
-                  <SelectValue placeholder="Series..." />
+                  <SelectValue placeholder={tr("tms.newOrder.execution.seriesPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {availableSeries.map(s => (
                     <SelectItem key={s.id} value={s.id}>
                       <span className="flex items-center gap-1.5">
                         {s.prefix}
-                        {s.is_default && <span className="text-[9px] text-muted-foreground">(default)</span>}
+                        {s.is_default && <span className="text-[9px] text-muted-foreground">({tr("tms.newOrder.execution.default")})</span>}
                       </span>
                     </SelectItem>
                   ))}
@@ -3286,7 +3286,7 @@ created_from: tab.createdFrom,
               onClick={() => handleSubmit("confirmed")} disabled={submitting}
             >
               <Send className="h-3 w-3" />
-              {submitting ? "Creating..." : "Create Order"}
+              {submitting ? tr("tms.newOrder.submit.creating") : tr("tms.newOrder.submit.createOrder")}
             </Button>
           </div>
         )}
@@ -3303,17 +3303,17 @@ created_from: tab.createdFrom,
                   {/* AI Instruction Selector */}
                   {aiInstructions.length > 0 && (
                     <div className="mb-3">
-                      <label className="text-xs font-medium text-muted-foreground mb-1.5 block">AI Extraction Profile</label>
+                      <label className="text-xs font-medium text-muted-foreground mb-1.5 block">{tr("tms.newOrder.ai.profile")}</label>
                       <Select value={selectedInstructionId} onValueChange={setSelectedInstructionId}>
                         <SelectTrigger className="h-9 text-sm">
-                          <SelectValue placeholder="Select extraction profile..." />
+                          <SelectValue placeholder={tr("tms.newOrder.ai.selectProfile")} />
                         </SelectTrigger>
                         <SelectContent>
                           {aiInstructions.map((inst) => (
                             <SelectItem key={inst.id} value={inst.id}>
                               <div className="flex items-center gap-2">
                                 <span>{inst.name}</span>
-                                {inst.is_default && <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">Default</span>}
+                                {inst.is_default && <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{tr("tms.newOrder.ai.default")}</span>}
                               </div>
                             </SelectItem>
                           ))}
@@ -3345,17 +3345,17 @@ created_from: tab.createdFrom,
                         <Sparkles className="h-6 w-6 md:h-5 md:w-5 text-primary" />
                       </div>
                       <div className="text-center md:text-left">
-                        <p className="text-sm md:text-sm font-semibold text-foreground">AI Upload Order</p>
-                        <p className="text-xs text-muted-foreground">Tap to upload PDF or take a photo</p>
+                        <p className="text-sm md:text-sm font-semibold text-foreground">{tr("tms.newOrder.ai.uploadOrder")}</p>
+                        <p className="text-xs text-muted-foreground">{tr("tms.newOrder.ai.uploadHint")}</p>
                       </div>
                       <div className="md:ml-auto flex items-center gap-1 text-xs text-primary font-medium md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                        <Zap className="h-3.5 w-3.5" /> Upload
+                        <Zap className="h-3.5 w-3.5" /> {tr("tms.newOrder.common.upload")}
                       </div>
                     </div>
                   </button>
                   <div className="flex items-center gap-3 my-3">
                     <div className="flex-1 h-px bg-border" />
-                    <span className="text-xs text-muted-foreground">or fill manually</span>
+                    <span className="text-xs text-muted-foreground">{tr("tms.newOrder.ai.orFillManually")}</span>
                     <div className="flex-1 h-px bg-border" />
                   </div>
                 </div>
@@ -3363,10 +3363,10 @@ created_from: tab.createdFrom,
                 <div className="px-4 py-2 border-b bg-card shrink-0 flex items-center gap-2">
                   <input ref={fileInputRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.tiff,.webp" className="hidden"
                     onChange={(e) => { const file = e.target.files?.[0]; if (file) handleAiExtract(file); e.target.value = ""; }} />
-                  <span className="text-xs font-medium">Order Details</span>
-                  <span className="text-xs text-muted-foreground">- Review and confirm the extracted data</span>
+                  <span className="text-xs font-medium">{tr("tms.newOrder.ai.orderDetails")}</span>
+                  <span className="text-xs text-muted-foreground">{tr("tms.newOrder.ai.reviewExtracted")}</span>
                   <Button variant="outline" size="sm" className="ml-auto h-7 text-xs bg-transparent" onClick={() => fileInputRef.current?.click()}>
-                    <Upload className="h-3 w-3 mr-1" /> Re-upload
+                    <Upload className="h-3 w-3 mr-1" /> {tr("tms.newOrder.ai.reUpload")}
                   </Button>
                 </div>
               )}
@@ -3379,9 +3379,9 @@ created_from: tab.createdFrom,
 
               <div className="border-t bg-card px-4 py-3 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  {activeTab.saveStatus === "saved" && <><Cloud className="h-3 w-3 text-emerald-500" /> Draft saved</>}
-                  {activeTab.saveStatus === "saving" && <><Loader2 className="h-3 w-3 animate-spin" /> Saving...</>}
-                  {activeTab.saveStatus === "error" && <><CloudOff className="h-3 w-3 text-destructive" /> Save error</>}
+                  {activeTab.saveStatus === "saved" && <><Cloud className="h-3 w-3 text-emerald-500" /> {tr("tms.newOrder.ai.draftSaved")}</>}
+                  {activeTab.saveStatus === "saving" && <><Loader2 className="h-3 w-3 animate-spin" /> {tr("tms.newOrder.ai.saving")}</>}
+                  {activeTab.saveStatus === "error" && <><CloudOff className="h-3 w-3 text-destructive" /> {tr("tms.newOrder.ai.saveError")}</>}
                 </div>
   {/*
     Bottom "Proceed to Execution" button — temporarily hidden per
@@ -3406,7 +3406,7 @@ created_from: tab.createdFrom,
       setStep("execution");
     }} className="gap-2">
     <ArrowRight className="h-4 w-4" />
-    Proceed to Execution
+    {tr("tms.newOrder.submit.proceedExecution")}
     </Button>
   )}
               </div>
@@ -3417,15 +3417,15 @@ created_from: tab.createdFrom,
               <div className="w-full md:w-1/2 h-1/2 md:h-full border-t md:border-t-0 md:border-l flex flex-col relative bg-muted/10">
                 <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-card shrink-0">
                   <FileText className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-xs font-medium truncate">{aiState.fileName || "Document"}</span>
+                  <span className="text-xs font-medium truncate">{aiState.fileName || tr("tms.newOrder.ai.document")}</span>
                   {aiState.stage !== "idle" && aiState.stage !== "done" && aiState.stage !== "error" && (
                     <Badge variant="outline" className="ml-auto text-[10px] gap-1 animate-pulse">
-                      <Brain className="h-2.5 w-2.5" /> Processing...
+                      <Brain className="h-2.5 w-2.5" /> {tr("tms.newOrder.ai.processing")}
                     </Badge>
                   )}
                   {aiState.stage === "done" && (
                     <Badge variant="outline" className="ml-auto text-[10px] gap-1 text-emerald-500 border-emerald-500/30">
-                      <Check className="h-2.5 w-2.5" /> Extracted
+                      <Check className="h-2.5 w-2.5" /> {tr("tms.newOrder.ai.extracted")}
                     </Badge>
                   )}
                 </div>
@@ -3437,11 +3437,11 @@ created_from: tab.createdFrom,
                   {aiState.stage === "error" && (
                     <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center gap-3 z-10">
                       <div className="text-center space-y-1">
-                        <p className="text-sm font-medium text-destructive">Extraction Failed</p>
+                        <p className="text-sm font-medium text-destructive">{tr("tms.newOrder.ai.extractionFailed")}</p>
                         <p className="text-xs text-muted-foreground max-w-xs">{aiState.error}</p>
                       </div>
                       <Button size="sm" variant="outline" className="bg-transparent" onClick={() => setAiState(prev => ({ ...prev, stage: "idle" }))}>
-                        Continue Manually
+                        {tr("tms.newOrder.ai.continueManually")}
                       </Button>
                     </div>
                   )}
@@ -3490,11 +3490,11 @@ created_from: tab.createdFrom,
               {/* Back to details link */}
               <div className="px-3 py-2 border-b border-border/50 flex items-center justify-between">
                 <button onClick={() => setStep("details")} className="flex items-center gap-1 text-[10px] text-primary hover:underline">
-                  <ArrowLeft className="h-2.5 w-2.5" /> Edit Details
+                  <ArrowLeft className="h-2.5 w-2.5" /> {tr("tms.newOrder.execution.editDetails")}
                 </button>
                 <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                  {activeTab.saveStatus === "saved" && <><Cloud className="h-2.5 w-2.5 text-emerald-500" /> Saved</>}
-                  {activeTab.saveStatus === "saving" && <><Loader2 className="h-2.5 w-2.5 animate-spin" /> Saving</>}
+                  {activeTab.saveStatus === "saved" && <><Cloud className="h-2.5 w-2.5 text-emerald-500" /> {tr("tms.newOrder.ai.savedShort")}</>}
+                  {activeTab.saveStatus === "saving" && <><Loader2 className="h-2.5 w-2.5 animate-spin" /> {tr("tms.newOrder.ai.savingShort")}</>}
                 </div>
               </div>
 
