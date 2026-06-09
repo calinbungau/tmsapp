@@ -500,12 +500,12 @@ export default function DriverDetailsPage() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Car className="h-4 w-4" />
-              Assigned Vehicles ({vehicles.length})
+              {t("driverDetail.assignedVehicles")} ({vehicles.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
             {vehicles.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No vehicles assigned</p>
+              <p className="text-sm text-muted-foreground">{t("driverDetail.noVehiclesAssigned")}</p>
             ) : (
               <div className="space-y-2">
                 {vehicles.map((vehicle) => (
@@ -531,29 +531,29 @@ export default function DriverDetailsPage() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              Documents Summary
+              {t("driverDetail.documentsSummary")}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Total Documents</span>
+                <span className="text-muted-foreground">{t("driverDetail.totalDocuments")}</span>
                 <span className="font-medium">{documents.length}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-green-400">Valid</span>
+                <span className="text-green-400">{t("driverDetail.valid")}</span>
                 <span className="font-medium">
                   {documents.filter((d) => getDocumentStatus(d).status === "valid").length}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-yellow-400">Expiring Soon</span>
+                <span className="text-yellow-400">{t("driverDetail.expiringSoon")}</span>
                 <span className="font-medium">
                   {documents.filter((d) => getDocumentStatus(d).status === "expiring").length}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-red-400">Expired</span>
+                <span className="text-red-400">{t("driverDetail.expired")}</span>
                 <span className="font-medium">
                   {documents.filter((d) => getDocumentStatus(d).status === "expired").length}
                 </span>
@@ -568,21 +568,21 @@ export default function DriverDetailsPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Documents
+            {t("driverDetail.documents")}
           </CardTitle>
           <Button onClick={() => setUploadDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Upload Document
+            {t("driverDetail.uploadDocument")}
           </Button>
         </CardHeader>
         <CardContent>
           {documents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8">
               <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground mb-4">No documents uploaded yet</p>
+              <p className="text-muted-foreground mb-4">{t("driverDetail.noDocsYet")}</p>
               <Button onClick={() => setUploadDialogOpen(true)}>
                 <Upload className="h-4 w-4 mr-2" />
-                Upload First Document
+                {t("driverDetail.uploadFirstDoc")}
               </Button>
             </div>
           ) : (
@@ -601,7 +601,7 @@ export default function DriverDetailsPage() {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-medium">
-                            {doc.document_type?.name || "Unknown Type"}
+                            {doc.document_type?.name || t("driverDetail.unknownType")}
                           </span>
                           <Badge className={docStatus.color}>{docStatus.label}</Badge>
                         </div>
@@ -612,7 +612,7 @@ export default function DriverDetailsPage() {
                         {doc.expiry_date && (
                           <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                             <Calendar className="h-3 w-3" />
-                            Expires: {new Date(doc.expiry_date).toLocaleDateString()}
+                            {t("driverDetail.expires")} {new Date(doc.expiry_date).toLocaleDateString()}
                           </div>
                         )}
                       </div>
@@ -675,11 +675,11 @@ export default function DriverDetailsPage() {
       <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Upload Document</DialogTitle>
+            <DialogTitle>{t("driverDetail.uploadDocument")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Document Type *</Label>
+              <Label>{t("driverDetail.documentType")}</Label>
               <Select
                 value={uploadData.document_type_id}
                 onValueChange={(v) =>
@@ -687,7 +687,7 @@ export default function DriverDetailsPage() {
                 }
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select type..." />
+                  <SelectValue placeholder={t("driverDetail.selectType")} />
                 </SelectTrigger>
                 <SelectContent>
                   {documentTypes.map((type) => (
@@ -700,7 +700,7 @@ export default function DriverDetailsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>File *</Label>
+              <Label>{t("driverDetail.file")}</Label>
               <Input
                 type="file"
                 accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
@@ -712,13 +712,13 @@ export default function DriverDetailsPage() {
                 }
               />
               <p className="text-xs text-muted-foreground">
-                Supported: PDF, JPG, PNG, DOC, DOCX
+                {t("driverDetail.supportedFormats")}
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Issued Date</Label>
+                <Label>{t("driverDetail.issuedDate")}</Label>
                 <Input
                   type="date"
                   value={uploadData.issued_date}
@@ -728,7 +728,7 @@ export default function DriverDetailsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Expiry Date</Label>
+                <Label>{t("driverDetail.expiryDate")}</Label>
                 <Input
                   type="date"
                   value={uploadData.expiry_date}
@@ -740,36 +740,36 @@ export default function DriverDetailsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Document Number</Label>
+              <Label>{t("driverDetail.documentNumber")}</Label>
               <Input
                 value={uploadData.document_number}
                 onChange={(e) =>
                   setUploadData({ ...uploadData, document_number: e.target.value })
                 }
-                placeholder="e.g., License number, policy number"
+                placeholder={t("driverDetail.documentNumberPlaceholder")}
               />
             </div>
 
             <div className="space-y-2">
-              <Label>Notes</Label>
+              <Label>{t("driverDetail.notes")}</Label>
               <Input
                 value={uploadData.notes}
                 onChange={(e) =>
                   setUploadData({ ...uploadData, notes: e.target.value })
                 }
-                placeholder="Optional notes..."
+                placeholder={t("driverDetail.notesPlaceholder")}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>
-              Cancel
+              {t("driverDetail.cancel")}
             </Button>
             <Button
               onClick={handleUpload}
               disabled={!uploadData.document_type_id || !uploadData.file || uploading}
             >
-              {uploading ? "Uploading..." : "Upload"}
+              {uploading ? t("driverDetail.uploading") : t("driverDetail.upload")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -779,11 +779,11 @@ export default function DriverDetailsPage() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Document</DialogTitle>
+            <DialogTitle>{t("driverDetail.editDocument")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Expiry Date</Label>
+              <Label>{t("driverDetail.expiryDate")}</Label>
               <Input
                 type="date"
                 value={uploadData.expiry_date}
@@ -794,7 +794,7 @@ export default function DriverDetailsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Document Number</Label>
+              <Label>{t("driverDetail.documentNumber")}</Label>
               <Input
                 value={uploadData.document_number}
                 onChange={(e) =>
@@ -804,7 +804,7 @@ export default function DriverDetailsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Notes</Label>
+              <Label>{t("driverDetail.notes")}</Label>
               <Input
                 value={uploadData.notes}
                 onChange={(e) =>
@@ -815,9 +815,9 @@ export default function DriverDetailsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              Cancel
+              {t("driverDetail.cancel")}
             </Button>
-            <Button onClick={handleUpdateExpiry}>Save Changes</Button>
+            <Button onClick={handleUpdateExpiry}>{t("driverDetail.saveChanges")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -846,12 +846,12 @@ export default function DriverDetailsPage() {
                 <div className="flex flex-col items-center justify-center py-12">
                   <FileText className="h-16 w-16 text-muted-foreground mb-4" />
                   <p className="text-muted-foreground mb-4">
-                    Preview not available for this file type
+                    {t("driverDetail.previewNotAvailable")}
                   </p>
                   <a href={selectedDocument.file_url} target="_blank" rel="noopener noreferrer">
                     <Button>
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      Open in New Tab
+                      {t("driverDetail.openInNewTab")}
                     </Button>
                   </a>
                 </div>
@@ -860,7 +860,7 @@ export default function DriverDetailsPage() {
                 <a href={selectedDocument.file_url} download={selectedDocument.file_name}>
                   <Button variant="outline">
                     <Download className="h-4 w-4 mr-2" />
-                    Download
+                    {t("driverDetail.download")}
                   </Button>
                 </a>
               </div>
@@ -875,20 +875,19 @@ export default function DriverDetailsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-destructive" />
-              Delete Document
+              {t("driverDetail.deleteDocument")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this document? This action cannot be
-              undone.
+              {t("driverDetail.deleteConfirm")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("driverDetail.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("driverDetail.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
