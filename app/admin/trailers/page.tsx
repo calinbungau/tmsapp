@@ -80,6 +80,7 @@ import {
   Users,
 } from "lucide-react";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 
 interface BusinessPartner {
   id: string;
@@ -189,6 +190,7 @@ const EMPTY_FORM: FormData = {
 export default function TrailersPage() {
   const router = useRouter();
   const { session: adminSession, loading: sessionLoading } = useAdminSession();
+  const { t } = useTranslation();
   const [trailers, setTrailers] = useState<Trailer[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -393,12 +395,12 @@ export default function TrailersPage() {
         .from("trailers")
         .update({ ...payload, updated_at: new Date().toISOString() })
         .eq("id", editingTrailer.id);
-      if (error) { alert("Failed to update: " + error.message); setSaving(false); return; }
+      if (error) { alert(t("trailers.failUpdate") + error.message); setSaving(false); return; }
     } else {
       const { error } = await supabase
         .from("trailers")
         .insert({ ...payload, admin_id: adminSession?.id });
-      if (error) { alert("Failed to create: " + error.message); setSaving(false); return; }
+      if (error) { alert(t("trailers.failCreate") + error.message); setSaving(false); return; }
     }
 
     setDialogOpen(false);
@@ -408,10 +410,10 @@ export default function TrailersPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this trailer?")) return;
+    if (!confirm(t("trailers.confirmDelete"))) return;
     const supabase = createClient();
     const { error } = await supabase.from("trailers").delete().eq("id", id);
-    if (error) { alert("Failed to delete: " + error.message); return; }
+    if (error) { alert(t("trailers.failDelete") + error.message); return; }
     fetchTrailers();
   };
 
@@ -591,7 +593,7 @@ export default function TrailersPage() {
   const endIndex = Math.min(startIndex + pageSize, totalCount);
   const paginatedTrailers = filteredTrailers.slice(startIndex, endIndex);
 
-  const typeLabel = (type: string) => TRAILER_TYPES.find((t) => t.value === type)?.label || type;
+  const typeLabel = (type: string) => t(`trailers.type_${type}`, TRAILER_TYPES.find((t) => t.value === type)?.label || type);
 
   // Stats
   const stats = {
@@ -624,22 +626,22 @@ export default function TrailersPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Trailers</h1>
+          <h1 className="text-2xl font-bold">{t("trailers.title")}</h1>
           <p className="text-muted-foreground">
-            Manage your trailer fleet with GPS tracking support
+            {t("trailers.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {traccarConfigured && (adminSession?.isOwner || !adminSession?.user_id || adminSession?.permissions?.["trailers:create"]) && (
             <Button variant="outline" onClick={openImportDialog} className="bg-transparent">
               <Download className="h-4 w-4 mr-2" />
-              Import from GPS
+              {t("trailers.importFromGps")}
             </Button>
           )}
           {(adminSession?.isOwner || !adminSession?.user_id || adminSession?.permissions?.["trailers:create"]) && (
             <Button onClick={() => handleOpenDialog()}>
               <Plus className="h-4 w-4 mr-2" />
-              Add Trailer
+              {t("trailers.addTrailer")}
             </Button>
           )}
         </div>
@@ -655,7 +657,7 @@ export default function TrailersPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.total}</p>
-                <p className="text-xs text-muted-foreground">Total</p>
+                <p className="text-xs text-muted-foreground">{t("trailers.total")}</p>
               </div>
             </div>
           </CardContent>
@@ -668,7 +670,7 @@ export default function TrailersPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.active}</p>
-                <p className="text-xs text-muted-foreground">Active</p>
+                <p className="text-xs text-muted-foreground">{t("trailers.active")}</p>
               </div>
             </div>
           </CardContent>
@@ -681,7 +683,7 @@ export default function TrailersPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.gpsTracked}</p>
-                <p className="text-xs text-muted-foreground">GPS Tracked</p>
+                <p className="text-xs text-muted-foreground">{t("trailers.gpsTracked")}</p>
               </div>
             </div>
           </CardContent>
@@ -694,7 +696,7 @@ export default function TrailersPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.adr}</p>
-                <p className="text-xs text-muted-foreground">ADR Certified</p>
+                <p className="text-xs text-muted-foreground">{t("trailers.adrCertified")}</p>
               </div>
             </div>
           </CardContent>
@@ -708,7 +710,7 @@ export default function TrailersPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by plate, make, model, VIN..."
+                placeholder={t("trailers.searchPlaceholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -716,23 +718,23 @@ export default function TrailersPage() {
             </div>
             <Select value={filterType} onValueChange={setFilterType}>
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Type" />
+                <SelectValue placeholder={t("trailers.type")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                {TRAILER_TYPES.map((t) => (
-                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                <SelectItem value="all">{t("trailers.allTypes")}</SelectItem>
+                {TRAILER_TYPES.map((t2) => (
+                  <SelectItem key={t2.value} value={t2.value}>{typeLabel(t2.value)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as typeof filterStatus)}>
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder={t("trailers.status")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="all">{t("trailers.allStatus")}</SelectItem>
+                <SelectItem value="active">{t("trailers.active")}</SelectItem>
+                <SelectItem value="inactive">{t("trailers.inactive")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -744,14 +746,14 @@ export default function TrailersPage() {
         <Table>
 <TableHeader>
   <TableRow>
-  <TableHead>Plate / Type</TableHead>
-  <TableHead>Make / Model</TableHead>
-  <TableHead>Business Partner</TableHead>
-  <TableHead>Fleet Group</TableHead>
-  <TableHead className="text-center">Capacity</TableHead>
-  <TableHead className="text-center">GPS</TableHead>
-  <TableHead>Status</TableHead>
-  <TableHead className="text-right">Actions</TableHead>
+  <TableHead>{t("trailers.plateType")}</TableHead>
+  <TableHead>{t("trailers.makeModel")}</TableHead>
+  <TableHead>{t("trailers.businessPartner")}</TableHead>
+  <TableHead>{t("trailers.fleetGroup")}</TableHead>
+  <TableHead className="text-center">{t("trailers.capacity")}</TableHead>
+  <TableHead className="text-center">{t("trailers.gps")}</TableHead>
+  <TableHead>{t("trailers.status")}</TableHead>
+  <TableHead className="text-right">{t("trailers.actions")}</TableHead>
   </TableRow>
   </TableHeader>
           <TableBody>
@@ -759,8 +761,8 @@ export default function TrailersPage() {
   <TableRow>
   <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
   {searchQuery || filterType !== "all" || filterStatus !== "all"
-  ? "No trailers match your filters"
-  : "No trailers yet. Add your first trailer."}
+  ? t("trailers.noMatch")
+  : t("trailers.noTrailers")}
   </TableCell>
   </TableRow>
   ) : (
@@ -819,7 +821,7 @@ export default function TrailersPage() {
   {trailer.max_pallets && (
   <span className="flex items-center gap-1">
   <Layers className="h-3 w-3" />
-  {trailer.max_pallets} pallets
+  {trailer.max_pallets} {t("trailers.pallets")}
   </span>
   )}
                       {trailer.loading_meters && (
@@ -858,16 +860,16 @@ export default function TrailersPage() {
                   <TableCell>
                     <div className="flex flex-col gap-1">
                       <Badge variant={trailer.is_active ? "default" : "secondary"} className="text-[10px] w-fit">
-                        {trailer.is_active ? "Active" : "Inactive"}
+                        {trailer.is_active ? t("trailers.active") : t("trailers.inactive")}
                       </Badge>
                       {isExpired(trailer.insurance_expiry) && (
-                        <Badge variant="destructive" className="text-[10px] w-fit">Insurance Expired</Badge>
+                        <Badge variant="destructive" className="text-[10px] w-fit">{t("trailers.insuranceExpired")}</Badge>
                       )}
                       {isExpiringSoon(trailer.insurance_expiry) && !isExpired(trailer.insurance_expiry) && (
-                        <Badge variant="outline" className="text-[10px] w-fit border-amber-500 text-amber-500">Ins. Expiring</Badge>
+                        <Badge variant="outline" className="text-[10px] w-fit border-amber-500 text-amber-500">{t("trailers.insExpiring")}</Badge>
                       )}
                       {isExpired(trailer.next_inspection_date) && (
-                        <Badge variant="destructive" className="text-[10px] w-fit">Inspection Due</Badge>
+                        <Badge variant="destructive" className="text-[10px] w-fit">{t("trailers.inspectionDue")}</Badge>
                       )}
                     </div>
                   </TableCell>
