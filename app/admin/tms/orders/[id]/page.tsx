@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import OrderDetailPanel from "@/components/tms/order-detail-panel";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
@@ -13,6 +14,7 @@ export default function OrderByIdPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { session: adminSession } = useAdminSession();
+  const { t } = useTranslation();
   const orderId = params.id as string;
   const editTripId = searchParams.get("editTrip");
   const [order, setOrder] = useState<any>(null);
@@ -66,10 +68,10 @@ export default function OrderByIdPage() {
   if (!order) {
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-56px)] gap-4">
-        <p className="text-muted-foreground">Order not found or you don't have access.</p>
+        <p className="text-muted-foreground">{t("tms.orderDetail.notFound")}</p>
         <Button variant="outline" className="bg-transparent" onClick={() => router.push("/admin/tms/orders")}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Orders
+          {t("tms.orderDetail.backToOrders")}
         </Button>
       </div>
     );
