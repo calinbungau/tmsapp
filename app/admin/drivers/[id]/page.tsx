@@ -57,6 +57,7 @@ import {
   Loader2,
 } from "lucide-react";
 import type { Driver, Vehicle } from "@/lib/types";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 
 interface DocumentType {
   id: string;
@@ -83,6 +84,7 @@ export default function DriverDetailsPage() {
   const params = useParams();
   const id = params.id as string;
   const { session: adminSession, loading: sessionLoading } = useAdminSession();
+  const { t } = useTranslation();
   const [driver, setDriver] = useState<Driver | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -149,7 +151,7 @@ export default function DriverDetailsPage() {
       setPaySavedAt(Date.now());
       await fetchData();
     } catch (e) {
-      setPayError(e instanceof Error ? e.message : "Failed to save");
+      setPayError(e instanceof Error ? e.message : t("driverDetail.failedToSave"));
     } finally {
       setPaySaving(false);
     }
@@ -304,7 +306,7 @@ export default function DriverDetailsPage() {
 
   const getDocumentStatus = (doc: Document) => {
     if (!doc.document_type?.requires_expiry || !doc.expiry_date) {
-      return { status: "valid", label: "Valid", color: "bg-green-500/20 text-green-400" };
+      return { status: "valid", label: t("driverDetail.valid"), color: "bg-green-500/20 text-green-400" };
     }
 
     const today = new Date();
@@ -312,11 +314,11 @@ export default function DriverDetailsPage() {
     const daysUntilExpiry = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
     if (daysUntilExpiry < 0) {
-      return { status: "expired", label: "Expired", color: "bg-red-500/20 text-red-400" };
+      return { status: "expired", label: t("driverDetail.expired"), color: "bg-red-500/20 text-red-400" };
     } else if (daysUntilExpiry <= 30) {
-      return { status: "expiring", label: `Expires in ${daysUntilExpiry} days`, color: "bg-yellow-500/20 text-yellow-400" };
+      return { status: "expiring", label: t("driverDetail.expiresInDays").replace("{n}", String(daysUntilExpiry)), color: "bg-yellow-500/20 text-yellow-400" };
     }
-    return { status: "valid", label: "Valid", color: "bg-green-500/20 text-green-400" };
+    return { status: "valid", label: t("driverDetail.valid"), color: "bg-green-500/20 text-green-400" };
   };
 
   if (sessionLoading || loading) {
@@ -338,11 +340,11 @@ export default function DriverDetailsPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <User className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Driver not found</h3>
+            <h3 className="text-lg font-medium mb-2">{t("driverDetail.driverNotFound")}</h3>
             <Link href="/admin/drivers">
               <Button variant="outline">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Drivers
+                {t("driverDetail.backToDrivers")}
               </Button>
             </Link>
           </CardContent>
@@ -363,7 +365,7 @@ export default function DriverDetailsPage() {
           </Link>
           <div>
             <h1 className="text-2xl font-bold">{driver.name}</h1>
-            <p className="text-muted-foreground">Driver Details</p>
+            <p className="text-muted-foreground">{t("driverDetail.driverDetails")}</p>
           </div>
         </div>
         <Badge
@@ -374,7 +376,7 @@ export default function DriverDetailsPage() {
               : "bg-muted text-muted-foreground"
           }
         >
-          {driver.status}
+          {driver.status === "active" ? t("drivers.active") : driver.status === "inactive" ? t("drivers.inactive") : driver.status}
         </Badge>
       </div>
 
@@ -384,7 +386,7 @@ export default function DriverDetailsPage() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <User className="h-4 w-4" />
-              Contact Information
+              {t("driverDetail.contactInformation")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -403,7 +405,7 @@ export default function DriverDetailsPage() {
             {driver.license_number && (
               <div className="flex items-center gap-2 text-sm">
                 <FileText className="h-4 w-4 text-muted-foreground" />
-                <span>License: {driver.license_number}</span>
+                <span>{t("driverDetail.license")} {driver.license_number}</span>
               </div>
             )}
           </CardContent>
@@ -414,12 +416,12 @@ export default function DriverDetailsPage() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Wallet className="h-4 w-4" />
-              Driver Pay
+              {t("driverDetail.driverPay")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Rate Mode</Label>
+              <Label className="text-xs text-muted-foreground">{t("driverDetail.rateMode")}</Label>
               <Select
                 value={payForm.rate_mode}
                 onValueChange={(v) =>
@@ -430,15 +432,15 @@ export default function DriverDetailsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="hourly">Hourly (EUR / hour)</SelectItem>
-                  <SelectItem value="per_km">Per kilometer (EUR / km)</SelectItem>
+                  <SelectItem value="hourly">{t("driverDetail.hourlyOption")}</SelectItem>
+                  <SelectItem value="per_km">{t("driverDetail.perKmOption")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="dp_hourly" className="text-xs text-muted-foreground">
-                  Hourly Rate (EUR)
+                  {t("driverDetail.hourlyRate")}
                 </Label>
                 <Input
                   id="dp_hourly"
@@ -449,13 +451,13 @@ export default function DriverDetailsPage() {
                   onChange={(e) =>
                     setPayForm((p) => ({ ...p, hourly_rate: e.target.value }))
                   }
-                  placeholder="e.g. 12.50"
+                  placeholder={t("driverDetail.hourlyPlaceholder")}
                   disabled={payForm.rate_mode !== "hourly"}
                 />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="dp_perkm" className="text-xs text-muted-foreground">
-                  Rate per km (EUR)
+                  {t("driverDetail.ratePerKm")}
                 </Label>
                 <Input
                   id="dp_perkm"
@@ -466,21 +468,20 @@ export default function DriverDetailsPage() {
                   onChange={(e) =>
                     setPayForm((p) => ({ ...p, rate_per_km: e.target.value }))
                   }
-                  placeholder="e.g. 0.18"
+                  placeholder={t("driverDetail.perKmPlaceholder")}
                   disabled={payForm.rate_mode !== "per_km"}
                 />
               </div>
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              This is the default rate. It can be overridden per trip from the trip
-              editor&apos;s P&amp;L tab.
+              {t("driverDetail.defaultRateNote")}
             </p>
             {payError && (
               <p className="text-[11px] text-destructive">{payError}</p>
             )}
             <div className="flex items-center justify-between">
               <span className="text-[11px] text-muted-foreground">
-                {paySavedAt && Date.now() - paySavedAt < 4000 ? "Saved" : ""}
+                {paySavedAt && Date.now() - paySavedAt < 4000 ? t("driverDetail.saved") : ""}
               </span>
               <Button size="sm" onClick={handleSavePay} disabled={paySaving}>
                 {paySaving ? (
@@ -488,7 +489,7 @@ export default function DriverDetailsPage() {
                 ) : (
                   <Save className="h-3.5 w-3.5 mr-1.5" />
                 )}
-                Save pay
+                {t("driverDetail.savePay")}
               </Button>
             </div>
           </CardContent>

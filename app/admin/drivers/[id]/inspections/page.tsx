@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Eye, User, Calendar } from "lucide-react";
 import type { Driver, Inspection } from "@/lib/types";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 
 interface InspectionWithVehicle extends Inspection {
   vehicles: { plate_number: string; make: string | null; model: string | null } | null;
@@ -18,6 +19,7 @@ export default function DriverInspectionsPage() {
   const router = useRouter();
   const params = useParams();
   const driverId = params.id as string;
+  const { t, locale } = useTranslation();
   
   const [driver, setDriver] = useState<Driver | null>(null);
   const [inspections, setInspections] = useState<InspectionWithVehicle[]>([]);
@@ -94,7 +96,7 @@ export default function DriverInspectionsPage() {
   }, [driverId]);
 
   const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString("en-US", {
+    return new Date(date).toLocaleDateString(locale === "ro" ? "ro-RO" : "en-US", {
       weekday: "long",
       year: "numeric",
       month: "long",
@@ -103,7 +105,7 @@ export default function DriverInspectionsPage() {
   };
 
   const formatTime = (date: string) => {
-    return new Date(date).toLocaleTimeString("en-US", {
+    return new Date(date).toLocaleTimeString(locale === "ro" ? "ro-RO" : "en-US", {
       hour: "2-digit",
       minute: "2-digit",
     });
@@ -122,7 +124,7 @@ export default function DriverInspectionsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-muted-foreground">Loading...</p>
+        <p className="text-muted-foreground">{t("driverInspections.loading")}</p>
       </div>
     );
   }
@@ -133,12 +135,12 @@ export default function DriverInspectionsPage() {
         <Link href="/admin/drivers">
           <Button variant="ghost" size="sm">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Drivers
+            {t("driverInspections.backToDrivers")}
           </Button>
         </Link>
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
-            Driver not found.
+            {t("driverInspections.driverNotFound")}
           </CardContent>
         </Card>
       </div>
@@ -152,7 +154,7 @@ export default function DriverInspectionsPage() {
         <Link href="/admin/drivers">
           <Button variant="ghost" size="sm">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Drivers
+            {t("driverInspections.backToDrivers")}
           </Button>
         </Link>
       </div>
@@ -167,7 +169,7 @@ export default function DriverInspectionsPage() {
             <div>
               <h1 className="text-2xl font-semibold">{driver.name}</h1>
               <p className="text-muted-foreground">
-                {inspections.length} inspection{inspections.length !== 1 ? "s" : ""} total
+                {(inspections.length === 1 ? t("driverInspections.inspectionTotal") : t("driverInspections.inspectionsTotal")).replace("{n}", String(inspections.length))}
               </p>
             </div>
           </div>
@@ -176,12 +178,12 @@ export default function DriverInspectionsPage() {
 
       {/* Inspections List */}
       <div>
-        <h2 className="text-lg font-medium mb-4">Inspection History</h2>
+        <h2 className="text-lg font-medium mb-4">{t("driverInspections.inspectionHistory")}</h2>
         
         {inspections.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
-              No inspections found for this driver.
+              {t("driverInspections.noInspections")}
             </CardContent>
           </Card>
         ) : (
@@ -205,14 +207,14 @@ export default function DriverInspectionsPage() {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-medium">
-                            {inspection.vehicles?.plate_number || "Unknown Vehicle"}
+                            {inspection.vehicles?.plate_number || t("driverInspections.unknownVehicle")}
                           </span>
                           <Badge variant={inspection.status === "completed" ? "default" : "secondary"}>
-                            {inspection.status}
+                            {inspection.status === "completed" ? t("driverInspections.statusCompleted") : t("driverInspections.statusInProgress")}
                           </Badge>
                           {isToday(inspection.created_at) && (
                             <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                              Today
+                              {t("driverInspections.today")}
                             </Badge>
                           )}
                         </div>
@@ -220,7 +222,7 @@ export default function DriverInspectionsPage() {
                           {inspection.vehicles?.make} {inspection.vehicles?.model}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {formatDate(inspection.created_at)} at {formatTime(inspection.created_at)}
+                          {formatDate(inspection.created_at)} {t("driverInspections.at")} {formatTime(inspection.created_at)}
                         </p>
                       </div>
                     </div>
@@ -235,7 +237,7 @@ export default function DriverInspectionsPage() {
                         }}
                       >
                         <Eye className="h-4 w-4 mr-2" />
-                        View Photos
+                        {t("driverInspections.viewPhotos")}
                       </Button>
                     )}
                   </div>
