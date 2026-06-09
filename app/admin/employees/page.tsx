@@ -65,6 +65,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 
 interface Department {
   id: string;
@@ -91,14 +92,15 @@ interface Employee {
 }
 
 const EMPLOYEE_TYPES = [
-  { value: "driver", label: "Driver", icon: Car },
-  { value: "office", label: "Office", icon: Briefcase },
-  { value: "field", label: "Field", icon: MapPin },
-  { value: "contractor", label: "Contractor", icon: FileText },
+  { value: "driver", labelKey: "typeDriver", icon: Car },
+  { value: "office", labelKey: "typeOffice", icon: Briefcase },
+  { value: "field", labelKey: "typeField", icon: MapPin },
+  { value: "contractor", labelKey: "typeContractor", icon: FileText },
 ];
 
 export default function EmployeesPage() {
   const { session: adminSession, loading: sessionLoading } = useAdminSession();
+  const { t } = useTranslation();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
@@ -242,7 +244,7 @@ export default function EmployeesPage() {
   };
 
   const handleDelete = async (employee: Employee) => {
-    if (!confirm(`Are you sure you want to delete ${employee.first_name} ${employee.last_name}?`)) return;
+    if (!confirm(t("employeesPage.deleteConfirm").replace("{name}", `${employee.first_name} ${employee.last_name}`))) return;
     
     const supabase = createClient();
     await supabase.from("employees").delete().eq("id", employee.id);
@@ -286,13 +288,13 @@ export default function EmployeesPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "active":
-        return <Badge className="bg-green-100 text-green-800 hover:bg-green-100"><CheckCircle className="h-3 w-3 mr-1" />Active</Badge>;
+        return <Badge className="bg-green-100 text-green-800 hover:bg-green-100"><CheckCircle className="h-3 w-3 mr-1" />{t("employeesPage.active")}</Badge>;
       case "inactive":
-        return <Badge variant="secondary">Inactive</Badge>;
+        return <Badge variant="secondary">{t("employeesPage.inactive")}</Badge>;
       case "suspended":
-        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Suspended</Badge>;
+        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />{t("employeesPage.suspended")}</Badge>;
       case "terminated":
-        return <Badge variant="outline" className="text-muted-foreground">Terminated</Badge>;
+        return <Badge variant="outline" className="text-muted-foreground">{t("employeesPage.terminated")}</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -305,7 +307,7 @@ export default function EmployeesPage() {
     return (
       <Badge variant="outline">
         <Icon className="h-3 w-3 mr-1" />
-        {typeInfo.label}
+        {t(`employeesPage.${typeInfo.labelKey}`)}
       </Badge>
     );
   };
@@ -326,22 +328,22 @@ export default function EmployeesPage() {
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="mr-2 h-4 w-4" />
-        Back to Settings
+        {t("employeesPage.backToSettings")}
       </Link>
 
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Employees</h1>
+          <h1 className="text-2xl font-bold">{t("employeesPage.title")}</h1>
           <p className="text-muted-foreground">
-            Manage all employees including drivers and office staff
+            {t("employeesPage.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/admin/departments">
             <Button variant="outline" className="bg-transparent">
               <Building className="h-4 w-4 mr-2" />
-              Departments
+              {t("employeesPage.departments")}
             </Button>
           </Link>
           {(adminSession?.isOwner || !adminSession?.user_id || adminSession?.permissions?.["employees:create"]) && (
@@ -349,23 +351,23 @@ export default function EmployeesPage() {
               <DialogTrigger asChild>
                 <Button onClick={openCreateDialog}>
                   <Plus className="h-4 w-4 mr-2" />
-                  Add Employee
+                  {t("employeesPage.addEmployee")}
                 </Button>
               </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{editingEmployee ? "Edit Employee" : "Add New Employee"}</DialogTitle>
+                <DialogTitle>{editingEmployee ? t("employeesPage.editEmployee") : t("employeesPage.addNewEmployee")}</DialogTitle>
                 <DialogDescription>
-                  {editingEmployee ? "Update employee information" : "Add a new employee to your organization"}
+                  {editingEmployee ? t("employeesPage.updateInfo") : t("employeesPage.addToOrg")}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-6 py-4">
                 {/* Personal Information */}
                 <div>
-                  <h4 className="font-medium mb-3">Personal Information</h4>
+                  <h4 className="font-medium mb-3">{t("employeesPage.personalInformation")}</h4>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="firstName">First Name *</Label>
+                      <Label htmlFor="firstName">{t("employeesPage.firstName")}</Label>
                       <Input
                         id="firstName"
                         value={formFirstName}
@@ -373,7 +375,7 @@ export default function EmployeesPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="lastName">Last Name *</Label>
+                      <Label htmlFor="lastName">{t("employeesPage.lastName")}</Label>
                       <Input
                         id="lastName"
                         value={formLastName}
@@ -381,7 +383,7 @@ export default function EmployeesPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
+                      <Label htmlFor="email">{t("employeesPage.email")}</Label>
                       <Input
                         id="email"
                         type="email"
@@ -390,7 +392,7 @@ export default function EmployeesPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="phone">Phone</Label>
+                      <Label htmlFor="phone">{t("employeesPage.phone")}</Label>
                       <Input
                         id="phone"
                         value={formPhone}
@@ -402,19 +404,19 @@ export default function EmployeesPage() {
 
                 {/* Employment Information */}
                 <div>
-                  <h4 className="font-medium mb-3">Employment Information</h4>
+                  <h4 className="font-medium mb-3">{t("employeesPage.employmentInformation")}</h4>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="employeeNumber">Employee Number</Label>
+                      <Label htmlFor="employeeNumber">{t("employeesPage.employeeNumber")}</Label>
                       <Input
                         id="employeeNumber"
-                        placeholder="e.g., EMP-001"
+                        placeholder={t("employeesPage.employeeNumberPlaceholder")}
                         value={formEmployeeNumber}
                         onChange={(e) => setFormEmployeeNumber(e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="type">Employee Type *</Label>
+                      <Label htmlFor="type">{t("employeesPage.employeeType")}</Label>
                       <Select value={formEmployeeType} onValueChange={setFormEmployeeType}>
                         <SelectTrigger>
                           <SelectValue />
@@ -422,20 +424,20 @@ export default function EmployeesPage() {
                         <SelectContent>
                           {EMPLOYEE_TYPES.map((type) => (
                             <SelectItem key={type.value} value={type.value}>
-                              {type.label}
+                              {t(`employeesPage.${type.labelKey}`)}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="department">Department</Label>
+                      <Label htmlFor="department">{t("employeesPage.department")}</Label>
                       <Select value={formDepartmentId} onValueChange={setFormDepartmentId}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select department" />
+                          <SelectValue placeholder={t("employeesPage.selectDepartment")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none">No Department</SelectItem>
+                          <SelectItem value="none">{t("employeesPage.noDepartment")}</SelectItem>
                           {departments.map((dept) => (
                             <SelectItem key={dept.id} value={dept.id}>
                               {dept.name}
@@ -445,16 +447,16 @@ export default function EmployeesPage() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="jobTitle">Job Title</Label>
+                      <Label htmlFor="jobTitle">{t("employeesPage.jobTitle")}</Label>
                       <Input
                         id="jobTitle"
-                        placeholder="e.g., Fleet Manager"
+                        placeholder={t("employeesPage.jobTitlePlaceholder")}
                         value={formJobTitle}
                         onChange={(e) => setFormJobTitle(e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="hireDate">Hire Date</Label>
+                      <Label htmlFor="hireDate">{t("employeesPage.hireDate")}</Label>
                       <Input
                         id="hireDate"
                         type="date"
@@ -463,16 +465,16 @@ export default function EmployeesPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="status">Status</Label>
+                      <Label htmlFor="status">{t("employeesPage.status")}</Label>
                       <Select value={formStatus} onValueChange={(v) => setFormStatus(v as typeof formStatus)}>
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="inactive">Inactive</SelectItem>
-                          <SelectItem value="suspended">Suspended</SelectItem>
-                          <SelectItem value="terminated">Terminated</SelectItem>
+                          <SelectItem value="active">{t("employeesPage.active")}</SelectItem>
+                          <SelectItem value="inactive">{t("employeesPage.inactive")}</SelectItem>
+                          <SelectItem value="suspended">{t("employeesPage.suspended")}</SelectItem>
+                          <SelectItem value="terminated">{t("employeesPage.terminated")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -481,10 +483,10 @@ export default function EmployeesPage() {
 
                 {/* Address */}
                 <div>
-                  <h4 className="font-medium mb-3">Address</h4>
+                  <h4 className="font-medium mb-3">{t("employeesPage.address")}</h4>
                   <div className="grid grid-cols-3 gap-4">
                     <div className="col-span-3 space-y-2">
-                      <Label htmlFor="address">Street Address</Label>
+                      <Label htmlFor="address">{t("employeesPage.streetAddress")}</Label>
                       <Input
                         id="address"
                         value={formAddress}
@@ -492,7 +494,7 @@ export default function EmployeesPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="city">City</Label>
+                      <Label htmlFor="city">{t("employeesPage.city")}</Label>
                       <Input
                         id="city"
                         value={formCity}
@@ -500,7 +502,7 @@ export default function EmployeesPage() {
                       />
                     </div>
                     <div className="col-span-2 space-y-2">
-                      <Label htmlFor="country">Country</Label>
+                      <Label htmlFor="country">{t("employeesPage.country")}</Label>
                       <Input
                         id="country"
                         value={formCountry}
@@ -512,11 +514,11 @@ export default function EmployeesPage() {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDialogOpen(false)} className="bg-transparent">
-                  Cancel
+                  {t("employeesPage.cancel")}
                 </Button>
                 <Button onClick={handleSave} disabled={saving || !formFirstName || !formLastName}>
                   {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  {editingEmployee ? "Save Changes" : "Add Employee"}
+                  {editingEmployee ? t("employeesPage.saveChanges") : t("employeesPage.addEmployee")}
                 </Button>
               </DialogFooter>
               </DialogContent>
@@ -532,7 +534,7 @@ export default function EmployeesPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, email, or employee number..."
+                placeholder={t("employeesPage.searchPlaceholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -540,27 +542,27 @@ export default function EmployeesPage() {
             </div>
             <Select value={filterType} onValueChange={setFilterType}>
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Type" />
+                <SelectValue placeholder={t("employeesPage.type")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="all">{t("employeesPage.allTypes")}</SelectItem>
                 {EMPLOYEE_TYPES.map((type) => (
                   <SelectItem key={type.value} value={type.value}>
-                    {type.label}
+                    {t(`employeesPage.${type.labelKey}`)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder={t("employeesPage.status")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-                <SelectItem value="suspended">Suspended</SelectItem>
-                <SelectItem value="terminated">Terminated</SelectItem>
+                <SelectItem value="all">{t("employeesPage.allStatus")}</SelectItem>
+                <SelectItem value="active">{t("employeesPage.active")}</SelectItem>
+                <SelectItem value="inactive">{t("employeesPage.inactive")}</SelectItem>
+                <SelectItem value="suspended">{t("employeesPage.suspended")}</SelectItem>
+                <SelectItem value="terminated">{t("employeesPage.terminated")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -570,17 +572,17 @@ export default function EmployeesPage() {
       {/* Employees Table */}
       <Card>
         <CardHeader>
-          <CardTitle>All Employees ({filteredEmployees.length})</CardTitle>
+          <CardTitle>{t("employeesPage.allEmployees")} ({filteredEmployees.length})</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Employee</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>{t("employeesPage.employee")}</TableHead>
+                <TableHead>{t("employeesPage.type")}</TableHead>
+                <TableHead>{t("employeesPage.department")}</TableHead>
+                <TableHead>{t("employeesPage.contact")}</TableHead>
+                <TableHead>{t("employeesPage.status")}</TableHead>
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -588,7 +590,7 @@ export default function EmployeesPage() {
               {paginatedEmployees.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                    No employees found
+                    {t("employeesPage.noEmployeesFound")}
                   </TableCell>
                 </TableRow>
               ) : (
