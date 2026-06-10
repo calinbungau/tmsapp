@@ -26,6 +26,7 @@ import {
   type TileKey,
 } from "@/lib/tms/map-tiles";
 import { useUserPreference } from "@/hooks/use-user-preference";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 
 // ----- Types -----
 interface OrderRow {
@@ -103,7 +104,7 @@ const COUNTRY_CODES: Record<string, string> = {
   srbija: "RS", schweiz: "CH", suisse: "CH", svizzera: "CH",
   sverige: "SE", norge: "NO", danmark: "DK", suomi: "FI",
   lietuva: "LT", latvija: "LV", eesti: "EE", "crna gora": "ME",
-  "nederland": "NL", "netherland": "NL",
+  "netherland": "NL",
 };
 function getCountryCode(country: string): string {
   if (!country) return "";
@@ -175,6 +176,7 @@ function daysUntil(dateStr: string): number {
 
 // ----- Dispatch Board -----
 export default function DispatchBoardPage() {
+  const { t } = useTranslation();
   const supabase = createClient();
   const [adminSession, setAdminSession] = useState<any>(null);
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -1134,12 +1136,19 @@ export default function DispatchBoardPage() {
       const firstDate = o.stops.map(s => s.planned_date).filter(Boolean).sort()[0];
       if (!firstDate) return;
       const days = daysUntil(firstDate);
+      const fromCity = o.stops[0]?.city || "?";
+      const toCity = o.stops[o.stops.length - 1]?.city || "?";
+      const fromCode = getCountryCode(o.stops[0]?.country || "");
+      const toCode = getCountryCode(o.stops[o.stops.length - 1]?.country || "");
+      const routeDetail = (key: string) => t(`tms.planning.${key}`)
+        .replace("{from}", fromCity).replace("{to}", toCity)
+        .replace("{fromCode}", fromCode).replace("{toCode}", toCode);
       if (days <= 0) {
-        result.push({ type: "urgent", icon: <AlertTriangle className="h-3.5 w-3.5" />, title: `${o.reference_number} starts TODAY`, detail: `${o.stops[0]?.city || "?"} (${getCountryCode(o.stops[0]?.country || "")}) → ${o.stops[o.stops.length - 1]?.city || "?"} (${getCountryCode(o.stops[o.stops.length - 1]?.country || "")}) · No vehicle assigned!`, orderId: o.id });
+        result.push({ type: "urgent", icon: <AlertTriangle className="h-3.5 w-3.5" />, title: t("tms.planning.alertStartsToday").replace("{ref}", o.reference_number), detail: routeDetail("alertNoVehicle"), orderId: o.id });
       } else if (days === 1) {
-        result.push({ type: "urgent", icon: <Timer className="h-3.5 w-3.5" />, title: `${o.reference_number} starts TOMORROW`, detail: `${o.stops[0]?.city || "?"} (${getCountryCode(o.stops[0]?.country || "")}) → ${o.stops[o.stops.length - 1]?.city || "?"} (${getCountryCode(o.stops[o.stops.length - 1]?.country || "")}) · Needs assignment`, orderId: o.id });
+        result.push({ type: "urgent", icon: <Timer className="h-3.5 w-3.5" />, title: t("tms.planning.alertStartsTomorrow").replace("{ref}", o.reference_number), detail: routeDetail("alertNeedsAssignment"), orderId: o.id });
       } else if (days <= 3) {
-        result.push({ type: "warning", icon: <Clock className="h-3.5 w-3.5" />, title: `${o.reference_number} starts in ${days} days`, detail: `${o.stops[0]?.city || "?"} (${getCountryCode(o.stops[0]?.country || "")}) → ${o.stops[o.stops.length - 1]?.city || "?"} (${getCountryCode(o.stops[o.stops.length - 1]?.country || "")}) · Unassigned`, orderId: o.id });
+        result.push({ type: "warning", icon: <Clock className="h-3.5 w-3.5" />, title: t("tms.planning.alertStartsInDays").replace("{ref}", o.reference_number).replace("{days}", String(days)), detail: routeDetail("alertUnassigned"), orderId: o.id });
       }
     });
 
@@ -1149,7 +1158,7 @@ export default function DispatchBoardPage() {
       if (!firstDate) return;
       const days = daysUntil(firstDate);
       if (days <= 1) {
-        result.push({ type: "warning", icon: <Zap className="h-3.5 w-3.5" />, title: `${o.reference_number} not dispatched yet`, detail: `Starts ${days === 0 ? "today" : "tomorrow"} · Vehicle assigned but order not dispatched`, orderId: o.id });
+        result.push({ type: "warning", icon: <Zap className="h-3.5 w-3.5" />, title: t("tms.planning.alertNotDispatched").replace("{ref}", o.reference_number), detail: days === 0 ? t("tms.planning.alertNotDispatchedDetailToday") : t("tms.planning.alertNotDispatchedDetailTomorrow"), orderId: o.id });
       }
     });
 
@@ -1164,7 +1173,7 @@ export default function DispatchBoardPage() {
       if (days >= 0 && days <= 2) {
           const hasUpcoming = orders.some(o => o.vehicle_id === v.id && o.status === "confirmed_to_customer" && o.stops.some(s => s.planned_date && daysUntil(s.planned_date) > days));
         if (!hasUpcoming) {
-          result.push({ type: "info", icon: <Truck className="h-3.5 w-3.5" />, title: `${v.plate_number} becomes idle ${days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`}`, detail: `No upcoming orders after current delivery`, vehicleId: v.id });
+          result.push({ type: "info", icon: <Truck className="h-3.5 w-3.5" />, title: (days === 0 ? t("tms.planning.alertIdleToday") : days === 1 ? t("tms.planning.alertIdleTomorrow") : t("tms.planning.alertIdleInDays").replace("{days}", String(days))).replace("{plate}", v.plate_number), detail: t("tms.planning.alertIdleDetail"), vehicleId: v.id });
         }
       }
     });
@@ -1173,7 +1182,7 @@ export default function DispatchBoardPage() {
     const priority = { urgent: 0, warning: 1, info: 2 };
     result.sort((a, b) => priority[a.type] - priority[b.type]);
     return result;
-  }, [orders, vehicles]);
+  }, [orders, vehicles, t]);
 
   // Order time span for Gantt
   function getOrderTimeSpan(order: OrderRow): { startDay: number; endDay: number } | null {
@@ -1255,7 +1264,7 @@ export default function DispatchBoardPage() {
               <div className="text-muted-foreground">{order.customer_name}</div>
               <div className="flex items-center gap-1"><CountryFlag country={firstCountry} /> {firstCity} <ArrowRight className="h-2.5 w-2.5 opacity-40" /> <CountryFlag country={lastCountry} /> {lastCity}</div>
               {order.estimated_distance_km && <div>{Math.round(order.estimated_distance_km)} km</div>}
-              {order.pallet_count && <div>{order.pallet_count} pallets · {order.weight_kg ? `${(order.weight_kg / 1000).toFixed(1)}t` : ""}</div>}
+              {order.pallet_count && <div>{t("tms.planning.pallets").replace("{count}", String(order.pallet_count))} · {order.weight_kg ? `${(order.weight_kg / 1000).toFixed(1)}t` : ""}</div>}
             </div>
           </TooltipContent>
         </Tooltip>
@@ -1312,7 +1321,7 @@ export default function DispatchBoardPage() {
             <div className="text-xs space-y-1.5">
               {trip.orders.length > 1 ? (
                 <div className="space-y-0.5">
-                  <div className="font-semibold text-amber-400">{trip.orders.length} orders in this trip</div>
+                  <div className="font-semibold text-amber-400">{t("tms.planning.ordersInTrip").replace("{count}", String(trip.orders.length))}</div>
                   {trip.orders.map(o => (
                     <div key={o.id} className="text-[10px] text-muted-foreground">{o.reference_number}{o.customer_name ? ` - ${o.customer_name}` : ""}</div>
                   ))}
@@ -1356,8 +1365,8 @@ export default function DispatchBoardPage() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between px-3 lg:px-5 py-2 lg:py-2.5 border-b border-border/50 bg-card/30 gap-2 lg:gap-0">
         <div className="flex items-center justify-between lg:justify-start gap-2 lg:gap-4">
           <div>
-            <h1 className="text-base lg:text-lg font-semibold tracking-tight">Dispatch Board</h1>
-            <p className="text-[10px] lg:text-[11px] text-muted-foreground hidden sm:block">Fleet planning, live tracking &amp; smart alerts</p>
+            <h1 className="text-base lg:text-lg font-semibold tracking-tight">{t("tms.planning.boardTitle")}</h1>
+            <p className="text-[10px] lg:text-[11px] text-muted-foreground hidden sm:block">{t("tms.planning.boardSubtitle")}</p>
           </div>
           {/* Mobile/Tablet controls (shown <lg) */}
           <div className="flex items-center gap-2 lg:hidden">
@@ -1372,21 +1381,21 @@ export default function DispatchBoardPage() {
           <div className="hidden lg:flex items-center gap-2 ml-4 overflow-x-auto scrollbar-none max-w-[calc(100vw-700px)] shrink">
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 shrink-0">
               <Signal className="h-3 w-3 text-emerald-400" />
-              <span className="text-[11px] font-medium text-emerald-400 whitespace-nowrap">{onlineDriverCount} drivers</span>
+              <span className="text-[11px] font-medium text-emerald-400 whitespace-nowrap">{t("tms.planning.driversCount").replace("{count}", String(onlineDriverCount))}</span>
             </div>
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 shrink-0">
               <SatelliteDish className="h-3 w-3 text-blue-400" />
-              <span className="text-[11px] font-medium text-blue-400 whitespace-nowrap">{gpsOnlineCount}/{gpsVehicleCount} GPS</span>
-            {wsConnected && <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /><span className="text-[10px] font-medium text-emerald-400">LIVE</span></span>}
+              <span className="text-[11px] font-medium text-blue-400 whitespace-nowrap">{t("tms.planning.gpsCount").replace("{online}", String(gpsOnlineCount)).replace("{total}", String(gpsVehicleCount))}</span>
+            {wsConnected && <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /><span className="text-[10px] font-medium text-emerald-400">{t("tms.planning.live")}</span></span>}
             </div>
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 shrink-0">
               <Route className="h-3 w-3 text-amber-400" />
-              <span className="text-[11px] font-medium text-amber-400 whitespace-nowrap">{activeOrderCount} active</span>
+              <span className="text-[11px] font-medium text-amber-400 whitespace-nowrap">{t("tms.planning.activeCount").replace("{count}", String(activeOrderCount))}</span>
             </div>
             {idleVehicles.length > 0 && (
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-500/10 border border-zinc-500/20 shrink-0">
                 <Truck className="h-3 w-3 text-zinc-400" />
-                <span className="text-[11px] font-medium text-zinc-400 whitespace-nowrap">{idleVehicles.length} idle</span>
+                <span className="text-[11px] font-medium text-zinc-400 whitespace-nowrap">{t("tms.planning.idleCount").replace("{count}", String(idleVehicles.length))}</span>
               </div>
             )}
             {selectedVehicleId && (
@@ -1395,7 +1404,7 @@ export default function DispatchBoardPage() {
                 onClick={() => setSelectedVehicleId(null)}>
                 <Crosshair className="h-3 w-3 text-emerald-400 animate-pulse" />
                 <span className="text-[11px] font-medium text-emerald-400">
-                  Following {vehicles.find(v => v.id === selectedVehicleId)?.plate_number}
+                  {t("tms.planning.following").replace("{plate}", vehicles.find(v => v.id === selectedVehicleId)?.plate_number || "")}
                 </span>
                 <XCircle className="h-3 w-3 text-emerald-400/60" />
               </button>
@@ -1412,7 +1421,7 @@ export default function DispatchBoardPage() {
                 onClick={() => setAlertsPopupOpen(v => !v)}>
                 <Sparkles className={`h-3 w-3 ${alerts.some(a => a.type === "urgent") ? "text-red-400 animate-pulse" : "text-amber-400"}`} />
                 <span className={`text-[11px] font-medium ${alerts.some(a => a.type === "urgent") ? "text-red-400" : "text-amber-400"}`}>
-                  {alerts.length} Alert{alerts.length !== 1 ? "s" : ""}
+                  {(alerts.length !== 1 ? t("tms.planning.alertCountPlural") : t("tms.planning.alertCount")).replace("{count}", String(alerts.length))}
                 </span>
               </button>
             )}
@@ -1435,7 +1444,7 @@ export default function DispatchBoardPage() {
           {wsConnected && (
             <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[10px] font-medium text-emerald-400">LIVE</span>
+              <span className="text-[10px] font-medium text-emerald-400">{t("tms.planning.live")}</span>
             </span>
           )}
           {alerts.length > 0 && (
@@ -1451,12 +1460,12 @@ export default function DispatchBoardPage() {
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="h-7 w-[100px] text-[10px] bg-card/50 border-border/50 shrink-0"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="confirmed">Confirmed</SelectItem>
-              <SelectItem value="dispatched">Dispatched</SelectItem>
-              <SelectItem value="in_transit">In Transit</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="active">{t("tms.planning.statusActive")}</SelectItem>
+              <SelectItem value="confirmed">{t("tms.planning.statusConfirmed")}</SelectItem>
+              <SelectItem value="dispatched">{t("tms.planning.statusDispatched")}</SelectItem>
+              <SelectItem value="in_transit">{t("tms.planning.statusInTransit")}</SelectItem>
+              <SelectItem value="completed">{t("tms.planning.statusCompleted")}</SelectItem>
+              <SelectItem value="all">{t("tms.planning.statusAll")}</SelectItem>
             </SelectContent>
           </Select>
           {/* Mobile/tablet action buttons — mirrors the full desktop toolbar.
@@ -1472,25 +1481,25 @@ export default function DispatchBoardPage() {
             onClick={() => setShowDriverPos(v => !v)}
             className={`flex items-center gap-1 px-2 py-1 rounded-full shrink-0 ${showDriverPos ? "bg-emerald-500/20 border border-emerald-500/40" : "bg-muted/50 border border-border/50"}`}>
             <CircleDot className="h-3 w-3 text-emerald-400" />
-            <span className="text-[10px] font-medium text-emerald-400">Drivers</span>
+            <span className="text-[10px] font-medium text-emerald-400">{t("tms.planning.drivers")}</span>
           </button>
           <Link href="/admin/tms/trips" className="shrink-0">
             <button className="flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 border border-primary/30 shrink-0">
               <Route className="h-3 w-3 text-primary" />
-              <span className="text-[10px] font-medium text-primary whitespace-nowrap">Round Trips</span>
+              <span className="text-[10px] font-medium text-primary whitespace-nowrap">{t("tms.planning.roundTrips")}</span>
             </button>
           </Link>
           <Link href="/admin/tms/carriers/consolidation" className="shrink-0">
             <button className="flex items-center gap-1 px-2 py-1 rounded-full bg-violet-500/10 border border-violet-500/30 shrink-0">
               <Layers className="h-3 w-3 text-violet-400" />
-              <span className="text-[10px] font-medium text-violet-400">Consolidate</span>
+              <span className="text-[10px] font-medium text-violet-400">{t("tms.planning.consolidate")}</span>
             </button>
           </Link>
           <button
             onClick={() => setShowMap(v => !v)}
             className={`flex items-center gap-1 px-2 py-1 rounded-full shrink-0 ${showMap ? "bg-cyan-500/20 border border-cyan-500/40" : "bg-muted/50 border border-border/50"}`}>
             {showMap ? <EyeOff className="h-3 w-3 text-cyan-400" /> : <Eye className="h-3 w-3 text-cyan-400" />}
-            <span className="text-[10px] font-medium text-cyan-400">Map</span>
+            <span className="text-[10px] font-medium text-cyan-400">{t("tms.planning.map")}</span>
           </button>
         </div>
         <div className="hidden lg:flex items-center gap-2">
@@ -1498,7 +1507,7 @@ export default function DispatchBoardPage() {
             <button
               className={`h-8 w-8 flex items-center justify-center rounded-md transition-all ${searchOpen ? "hidden" : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"}`}
               onClick={() => { setSearchOpen(true); setTimeout(() => searchInputRef.current?.focus(), 50); }}
-              aria-label="Search">
+              aria-label={t("tms.planning.search")}>
               <Search className="h-4 w-4" />
             </button>
             <div className={`flex items-center transition-all duration-200 ease-out overflow-hidden ${searchOpen ? "w-64 opacity-100" : "w-0 opacity-0"}`}>
@@ -1506,7 +1515,7 @@ export default function DispatchBoardPage() {
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
                   ref={searchInputRef}
-                  placeholder="Search driver, vehicle, order..."
+                  placeholder={t("tms.planning.searchPlaceholder")}
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   onBlur={() => { if (!search) setSearchOpen(false); }}
@@ -1526,12 +1535,12 @@ export default function DispatchBoardPage() {
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="confirmed">Confirmed</SelectItem>
-              <SelectItem value="dispatched">Dispatched</SelectItem>
-              <SelectItem value="in_transit">In Transit</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="active">{t("tms.planning.statusActive")}</SelectItem>
+              <SelectItem value="confirmed">{t("tms.planning.statusConfirmed")}</SelectItem>
+              <SelectItem value="dispatched">{t("tms.planning.statusDispatched")}</SelectItem>
+              <SelectItem value="in_transit">{t("tms.planning.statusInTransit")}</SelectItem>
+              <SelectItem value="completed">{t("tms.planning.statusCompleted")}</SelectItem>
+              <SelectItem value="all">{t("tms.planning.statusAll")}</SelectItem>
             </SelectContent>
           </Select>
           <div className="flex items-center border border-border/50 rounded-md overflow-hidden">
@@ -1540,21 +1549,21 @@ export default function DispatchBoardPage() {
             </Button>
             <div className="w-px h-5 bg-border/50" />
             <Button variant={showDriverPos ? "secondary" : "ghost"} size="sm" className="h-8 rounded-none text-xs gap-1.5 px-2.5" onClick={() => setShowDriverPos(v => !v)}>
-              <CircleDot className="h-3.5 w-3.5" /> Drivers
+              <CircleDot className="h-3.5 w-3.5" /> {t("tms.planning.drivers")}
             </Button>
           </div>
           <Link href="/admin/tms/trips" className="hidden xl:block">
             <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-              <Route className="h-3.5 w-3.5" /> Round Trips
+              <Route className="h-3.5 w-3.5" /> {t("tms.planning.roundTrips")}
             </Button>
           </Link>
           <Link href="/admin/tms/carriers/consolidation" className="hidden xl:block">
             <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-              <Layers className="h-3.5 w-3.5" /> Consolidate
+              <Layers className="h-3.5 w-3.5" /> {t("tms.planning.consolidate")}
             </Button>
           </Link>
           <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setShowMap(v => !v)}>
-            {showMap ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} Map
+            {showMap ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {t("tms.planning.map")}
           </Button>
           <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => { fetchData(); fetchGps(); }}>
             <RefreshCw className="h-3.5 w-3.5" />
@@ -1576,8 +1585,8 @@ export default function DispatchBoardPage() {
                   <Sparkles className="h-4 w-4 text-amber-400" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold">Smart Alerts</h3>
-                  <p className="text-[10px] text-muted-foreground">{alerts.length} active alert{alerts.length !== 1 ? "s" : ""} for your fleet</p>
+                  <h3 className="text-sm font-semibold">{t("tms.planning.smartAlerts")}</h3>
+                  <p className="text-[10px] text-muted-foreground">{(alerts.length !== 1 ? t("tms.planning.activeAlertsForPlural") : t("tms.planning.activeAlertsFor")).replace("{count}", String(alerts.length))}</p>
                 </div>
               </div>
               <button onClick={() => setAlertsPopupOpen(false)} className="p-1.5 rounded-md hover:bg-muted/20 transition-colors text-muted-foreground hover:text-foreground">
@@ -1588,9 +1597,9 @@ export default function DispatchBoardPage() {
             {/* Alert categories summary */}
             <div className="flex gap-2 px-5 py-2.5 border-b border-border/20 bg-muted/5">
               {[
-                { type: "urgent" as const, label: "Urgent", color: "red", count: alerts.filter(a => a.type === "urgent").length },
-                { type: "warning" as const, label: "Warning", color: "amber", count: alerts.filter(a => a.type === "warning").length },
-                { type: "info" as const, label: "Info", color: "blue", count: alerts.filter(a => a.type === "info").length },
+                { type: "urgent" as const, label: t("tms.planning.urgent"), color: "red", count: alerts.filter(a => a.type === "urgent").length },
+                { type: "warning" as const, label: t("tms.planning.warning"), color: "amber", count: alerts.filter(a => a.type === "warning").length },
+                { type: "info" as const, label: t("tms.planning.info"), color: "blue", count: alerts.filter(a => a.type === "info").length },
               ].filter(c => c.count > 0).map(cat => (
                 <div key={cat.type} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold
                   ${cat.color === "red" ? "bg-red-500/10 text-red-400 border border-red-500/20" :
@@ -1629,7 +1638,7 @@ export default function DispatchBoardPage() {
                     ${alert.type === "urgent" ? "bg-red-500/10 text-red-400" :
                       alert.type === "warning" ? "bg-amber-500/10 text-amber-400" :
                       "bg-blue-500/10 text-blue-400"}`}>
-                    {alert.type}
+                    {alert.type === "urgent" ? t("tms.planning.urgent") : alert.type === "warning" ? t("tms.planning.warning") : t("tms.planning.info")}
                   </div>
                 </button>
               ))}
@@ -1642,10 +1651,10 @@ export default function DispatchBoardPage() {
                   <Sparkles className="h-4 w-4 text-violet-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[11px] font-semibold text-violet-300">AI Dispatcher Assistant</div>
-                  <div className="text-[10px] text-muted-foreground">Predictions, route optimization & driver suggestions -- coming soon</div>
+                  <div className="text-[11px] font-semibold text-violet-300">{t("tms.planning.aiAssistant")}</div>
+                  <div className="text-[10px] text-muted-foreground">{t("tms.planning.aiAssistantDesc")}</div>
                 </div>
-                <Badge variant="outline" className="text-[9px] border-violet-500/30 text-violet-400 bg-violet-500/5 shrink-0">Soon</Badge>
+                <Badge variant="outline" className="text-[9px] border-violet-500/30 text-violet-400 bg-violet-500/5 shrink-0">{t("tms.planning.soon")}</Badge>
               </div>
             </div>
           </div>
@@ -1676,20 +1685,20 @@ export default function DispatchBoardPage() {
                 {showDriverPos && (
                   <div className="flex items-center gap-1">
                     <div className="w-2 md:w-2.5 h-2 md:h-2.5 rounded-full bg-violet-500" />
-                    <span className="text-muted-foreground hidden sm:inline">Driver App</span>
+                    <span className="text-muted-foreground hidden sm:inline">{t("tms.planning.driverApp")}</span>
                   </div>
                 )}
                 <div className="flex items-center gap-1">
                   <div className="w-4 md:w-5 h-0.5 bg-emerald-400 rounded" />
-                  <span className="text-muted-foreground hidden sm:inline">Confirmed</span>
+                  <span className="text-muted-foreground hidden sm:inline">{t("tms.planning.statusConfirmed")}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-4 md:w-5 h-0.5 bg-blue-400 rounded" />
-                  <span className="text-muted-foreground hidden sm:inline">Dispatched</span>
+                  <span className="text-muted-foreground hidden sm:inline">{t("tms.planning.statusDispatched")}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-4 md:w-5 h-0.5 bg-amber-400 rounded" />
-                  <span className="text-muted-foreground hidden sm:inline">In Transit</span>
+                  <span className="text-muted-foreground hidden sm:inline">{t("tms.planning.statusInTransit")}</span>
                 </div>
               </div>
             </div>}
@@ -1703,7 +1712,7 @@ export default function DispatchBoardPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                title={`Base map: ${TILE_LAYERS[activeTile]?.name ?? activeTile}`}
+                title={t("tms.planning.baseMapTip").replace("{name}", TILE_LAYERS[activeTile]?.name ?? activeTile)}
                 className="h-7 w-7 bg-card/80 backdrop-blur-sm border border-border/50 shadow-md"
                 onClick={() => setTileMenuOpen(o => !o)}
               >
@@ -1712,7 +1721,7 @@ export default function DispatchBoardPage() {
               {tileMenuOpen && (
                 <div className="absolute bottom-full left-0 mb-1.5 w-44 bg-card/95 backdrop-blur-md border border-border/50 rounded-lg shadow-2xl overflow-hidden">
                   <div className="px-2.5 py-1.5 border-b border-border/30 text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">
-                    Base Map
+                    {t("tms.planning.baseMap")}
                   </div>
                   <div className="py-1">
                     {TILE_LAYER_ENTRIES.map(([key, cfg]) => (
@@ -1736,17 +1745,17 @@ export default function DispatchBoardPage() {
               <button
                 type="button"
                 onClick={() => setFleetStatusCollapsed(false)}
-                title="Expand fleet status"
+                title={t("tms.planning.expandFleet")}
                 className="absolute top-2 md:top-3 right-10 md:right-12 z-[1000] inline-flex items-center gap-2 h-9 px-3 rounded-full bg-card/95 backdrop-blur-md border border-border/50 shadow-xl hover:border-primary/40 hover:bg-card transition-all group"
               >
                 <PanelRightOpen className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground group-hover:text-foreground transition-colors">
-                  Fleet
+                  {t("tms.planning.fleet")}
                 </span>
                 <Badge variant="outline" className="text-[9px] h-4 group-hover:border-primary/40 transition-colors">
                   {vehicles.length}
                 </Badge>
-                {wsConnected && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" title="Live WebSocket" />}
+                {wsConnected && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" title={t("tms.planning.liveWebSocket")} />}
               </button>
             )}
 
@@ -1764,7 +1773,7 @@ export default function DispatchBoardPage() {
                     <button
                       type="button"
                       onClick={() => setFleetStatusCollapsed(true)}
-                      title="Collapse panel"
+                      title={t("tms.planning.collapsePanel")}
                       className="inline-flex items-center justify-center h-5 w-5 rounded text-muted-foreground/60 hover:text-foreground hover:bg-muted/40 transition-colors"
                     >
                       <PanelRightClose className="h-3.5 w-3.5" />
