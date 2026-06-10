@@ -44,6 +44,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import { PublishToExchangeDialog } from "@/components/tms/publish-to-exchange-dialog";
 import { OfferRecipientsPanel } from "@/components/exchange/offer-recipients-panel";
 
@@ -223,6 +224,7 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
 export default function OfferDetailPage() {
   const { session: adminSession } = useAdminSession();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useParams();
   const supabase = createClient();
@@ -336,7 +338,7 @@ export default function OfferDetailPage() {
       }
     } catch (err) {
       console.error("Failed to load offer:", err);
-      toast({ title: "Error", description: "Failed to load offer", variant: "destructive" });
+      toast({ title: t("tms.exchangeDetail.toast.errorTitle"), description: t("tms.exchangeDetail.toast.loadFailed"), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -351,10 +353,10 @@ export default function OfferDetailPage() {
     try {
       const { error } = await supabase.from("freight_offers").delete().eq("id", offerId);
       if (error) throw error;
-      toast({ title: "Deleted", description: "Offer deleted successfully" });
+      toast({ title: t("tms.exchangeDetail.toast.deletedTitle"), description: t("tms.exchangeDetail.toast.deletedDesc") });
       router.push("/admin/tms/exchange");
     } catch {
-      toast({ title: "Error", description: "Failed to delete offer", variant: "destructive" });
+      toast({ title: t("tms.exchangeDetail.toast.errorTitle"), description: t("tms.exchangeDetail.toast.deleteFailed"), variant: "destructive" });
       setActionLoading(false);
     }
   };
@@ -373,11 +375,11 @@ export default function OfferDetailPage() {
         })
         .eq("id", offerId);
       if (error) throw error;
-      toast({ title: "Unpublished", description: "Offer reverted to draft" });
+      toast({ title: t("tms.exchangeDetail.toast.unpublishedTitle"), description: t("tms.exchangeDetail.toast.unpublishedDesc") });
       setShowUnpublish(false);
       fetchOffer();
     } catch {
-      toast({ title: "Error", description: "Failed to unpublish", variant: "destructive" });
+      toast({ title: t("tms.exchangeDetail.toast.errorTitle"), description: t("tms.exchangeDetail.toast.unpublishFailed"), variant: "destructive" });
     } finally {
       setActionLoading(false);
     }
@@ -395,9 +397,9 @@ export default function OfferDetailPage() {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center gap-3">
         <Package className="h-12 w-12 text-muted-foreground/50" />
-        <p className="text-muted-foreground">Offer not found</p>
+        <p className="text-muted-foreground">{t("tms.exchangeDetail.offerNotFound")}</p>
         <Button asChild variant="outline">
-          <Link href="/admin/tms/exchange">Back to Exchange</Link>
+          <Link href="/admin/tms/exchange">{t("tms.exchangeDetail.backToExchange")}</Link>
         </Button>
       </div>
     );
@@ -425,15 +427,15 @@ export default function OfferDetailPage() {
                   {offer.reference}
                 </h1>
                 <Badge className={STATUS_COLORS[offer.status] || "bg-muted"}>
-                  {STATUS_LABELS[offer.status] || offer.status}
+                  {t(`tms.exchangeDetail.status.${offer.status}`, STATUS_LABELS[offer.status] || offer.status)}
                 </Badge>
                 <Badge variant="outline" className="gap-1">
                   {offer.visibility === "public" ? (
-                    <><Globe className="h-3 w-3" /> Public</>
+                    <><Globe className="h-3 w-3" /> {t("tms.exchangeDetail.public")}</>
                   ) : offer.visibility === "external" ? (
-                    <><Users className="h-3 w-3" /> External</>
+                    <><Users className="h-3 w-3" /> {t("tms.exchangeDetail.external")}</>
                   ) : (
-                    <><Lock className="h-3 w-3" /> Private</>
+                    <><Lock className="h-3 w-3" /> {t("tms.exchangeDetail.private")}</>
                   )}
                 </Badge>
                 {linkedOrder && (
@@ -443,9 +445,9 @@ export default function OfferDetailPage() {
                       className="gap-1 bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"
                     >
                       <Folder className="h-3 w-3" />
-                      {linkedOrder.reference_number || "Order"}
+                      {linkedOrder.reference_number || t("tms.exchangeDetail.order")}
                       {linkedLeg && (
-                        <span className="ml-1 text-[10px] opacity-80">· Leg {linkedLeg.leg_number ?? "?"}</span>
+                        <span className="ml-1 text-[10px] opacity-80">· {t("tms.exchangeDetail.leg")} {linkedLeg.leg_number ?? "?"}</span>
                       )}
                     </Badge>
                   </Link>
@@ -460,18 +462,18 @@ export default function OfferDetailPage() {
             {canPublish && (
               <Button onClick={() => setShowPublish(true)}>
                 <Send className="h-4 w-4 mr-2" />
-                Publish
+                {t("tms.exchangeDetail.publish")}
               </Button>
             )}
             {isPublished && (
               <>
                 <Button variant="outline" onClick={() => setShowPublish(true)}>
                   <Send className="h-4 w-4 mr-2" />
-                  Manage
+                  {t("tms.exchangeDetail.manage")}
                 </Button>
                 <Button variant="outline" onClick={() => setShowUnpublish(true)}>
                   <XCircle className="h-4 w-4 mr-2" />
-                  Unpublish
+                  {t("tms.exchangeDetail.unpublish")}
                 </Button>
               </>
             )}
@@ -500,10 +502,10 @@ export default function OfferDetailPage() {
             <div className="rounded-lg border border-border/50 bg-card p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Send className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-sm font-semibold text-foreground">Published to</h2>
+                <h2 className="text-sm font-semibold text-foreground">{t("tms.exchangeDetail.publishedTo")}</h2>
               </div>
               {distributions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No active distributions.</p>
+                <p className="text-sm text-muted-foreground">{t("tms.exchangeDetail.noDistributions")}</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {distributions.map((d) => (
@@ -514,7 +516,7 @@ export default function OfferDetailPage() {
                       {d.channel === "public" ? (
                         <>
                           <Globe className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-                          <span className="text-sm text-foreground">Public Board</span>
+                          <span className="text-sm text-foreground">{t("tms.exchangeDetail.publicBoard")}</span>
                         </>
                       ) : (
                         <>
@@ -523,11 +525,11 @@ export default function OfferDetailPage() {
                           ) : (
                             <span className={`h-2 w-2 rounded-full ${COLOR_DOT[d.group_color || "blue"] || COLOR_DOT.blue}`} />
                           )}
-                          <span className="text-sm text-foreground">{d.group_name || "Group"}</span>
+                          <span className="text-sm text-foreground">{d.group_name || t("tms.exchangeDetail.group")}</span>
                         </>
                       )}
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                        Tier {d.tier}
+                        {t("tms.exchangeDetail.tier").replace("{n}", String(d.tier))}
                       </Badge>
                     </div>
                   ))}
@@ -536,12 +538,12 @@ export default function OfferDetailPage() {
               <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
                 {offer.published_at && (
                   <span className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" /> Published {fmtDateTime(offer.published_at)}
+                    <Clock className="h-3 w-3" /> {t("tms.exchangeDetail.publishedAt").replace("{date}", fmtDateTime(offer.published_at))}
                   </span>
                 )}
                 {offer.expires_at && (
                   <span className="flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3" /> Expires {fmtDateTime(offer.expires_at)}
+                    <AlertTriangle className="h-3 w-3" /> {t("tms.exchangeDetail.expiresAt").replace("{date}", fmtDateTime(offer.expires_at))}
                   </span>
                 )}
               </div>
@@ -573,12 +575,12 @@ export default function OfferDetailPage() {
               <div className="flex items-center justify-between gap-2 mb-3">
                 <div className="flex items-center gap-2">
                   <ClipboardList className="h-4 w-4 text-orange-400" />
-                  <h2 className="text-sm font-semibold text-foreground">Linked Transport Order</h2>
+                  <h2 className="text-sm font-semibold text-foreground">{t("tms.exchangeDetail.linkedOrder")}</h2>
                 </div>
                 <Link href={`/admin/tms/orders/${linkedOrder.id}`}>
                   <Button variant="outline" size="sm" className="h-7 gap-1 text-xs">
                     <ExternalLink className="h-3 w-3" />
-                    Open Order
+                    {t("tms.exchangeDetail.openOrder")}
                   </Button>
                 </Link>
               </div>
@@ -586,7 +588,7 @@ export default function OfferDetailPage() {
               {/* Order reference + customer + leg scope */}
               <div className="flex flex-wrap items-center gap-2 mb-3">
                 <span className="font-mono text-sm font-medium text-foreground">
-                  {linkedOrder.reference_number || "Order"}
+                  {linkedOrder.reference_number || t("tms.exchangeDetail.order")}
                 </span>
                 {linkedOrder.customer_name && (
                   <span className="text-xs text-muted-foreground">· {linkedOrder.customer_name}</span>
@@ -598,14 +600,14 @@ export default function OfferDetailPage() {
                 )}
                 {linkedLeg ? (
                   <Badge variant="outline" className="text-[10px] text-blue-400 border-blue-500/30 bg-blue-500/10">
-                    Leg {linkedLeg.leg_number ?? "?"}
+                    {t("tms.exchangeDetail.leg")} {linkedLeg.leg_number ?? "?"}
                     {linkedLeg.from_label && linkedLeg.to_label
                       ? ` · ${linkedLeg.from_label} → ${linkedLeg.to_label}`
                       : ""}
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                    Whole order
+                    {t("tms.exchangeDetail.wholeOrder")}
                   </Badge>
                 )}
               </div>
@@ -613,13 +615,13 @@ export default function OfferDetailPage() {
               {/* Commercial snapshot */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="rounded-md bg-background border border-border/40 p-2.5">
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Customer Price</p>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">{t("tms.exchangeDetail.customerPrice")}</p>
                   <p className="text-sm font-semibold text-foreground">
                     {fmtCurrency(linkedOrder.customer_price, linkedOrder.customer_currency || "EUR")}
                   </p>
                 </div>
                 <div className="rounded-md bg-background border border-border/40 p-2.5">
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Offer Price</p>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">{t("tms.exchangeDetail.offerPrice")}</p>
                   <p className="text-sm font-semibold text-foreground">
                     {fmtCurrency(offer.price_amount, offer.currency || "EUR")}
                   </p>
@@ -634,7 +636,7 @@ export default function OfferDetailPage() {
                   const marginPct = linkedOrder.margin != null ? linkedOrder.margin : derived;
                   return (
                     <div className="rounded-md bg-background border border-border/40 p-2.5">
-                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Margin</p>
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">{t("tms.exchangeDetail.margin")}</p>
                       <p
                         className={`text-sm font-semibold ${
                           marginPct == null
@@ -650,7 +652,7 @@ export default function OfferDetailPage() {
                   );
                 })()}
                 <div className="rounded-md bg-background border border-border/40 p-2.5">
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Distance</p>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">{t("tms.exchangeDetail.distance")}</p>
                   <p className="text-sm font-semibold text-foreground">
                     {linkedOrder.estimated_distance_km != null && linkedOrder.estimated_distance_km > 0
                       ? `${Math.round(linkedOrder.estimated_distance_km).toLocaleString()} km`
@@ -665,7 +667,7 @@ export default function OfferDetailPage() {
           <div className="rounded-lg border border-border/50 bg-card p-4">
             <div className="flex items-center gap-2 mb-4">
               <MapPin className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold text-foreground">Route</h2>
+              <h2 className="text-sm font-semibold text-foreground">{t("tms.exchangeDetail.route")}</h2>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               {/* Origin */}
@@ -673,7 +675,7 @@ export default function OfferDetailPage() {
                 <div className="flex items-center gap-2 mb-2">
                   <span className="h-2 w-2 rounded-full bg-green-500" />
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Loading
+                    {t("tms.exchangeDetail.loading")}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mb-1">
@@ -701,7 +703,7 @@ export default function OfferDetailPage() {
                 <div className="flex items-center gap-2 mb-2">
                   <span className="h-2 w-2 rounded-full bg-red-500" />
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Unloading
+                    {t("tms.exchangeDetail.unloading")}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mb-1">
@@ -731,18 +733,18 @@ export default function OfferDetailPage() {
           <div className="rounded-lg border border-border/50 bg-card p-4">
             <div className="flex items-center gap-2 mb-4">
               <Truck className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold text-foreground">Cargo & Vehicle</h2>
+              <h2 className="text-sm font-semibold text-foreground">{t("tms.exchangeDetail.cargoVehicle")}</h2>
             </div>
             <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4">
-              <Field label="Vehicle Type" value={offer.vehicle_type} />
-              <Field label="Body Type" value={offer.body_type} />
-              <Field label="Length" value={offer.length_m ? `${offer.length_m} m` : null} />
-              <Field label="Weight" value={offer.weight_kg ? `${(offer.weight_kg / 1000).toFixed(1)} t` : null} />
-              <Field label="Loading Meters" value={offer.ldm ? `${offer.ldm} LDM` : null} />
-              <Field label="Pallets" value={offer.pallet_count} />
-              <Field label="Volume" value={offer.volume_m3 ? `${offer.volume_m3} m³` : null} />
+              <Field label={t("tms.exchangeDetail.vehicleType")} value={offer.vehicle_type} />
+              <Field label={t("tms.exchangeDetail.bodyType")} value={offer.body_type} />
+              <Field label={t("tms.exchangeDetail.length")} value={offer.length_m ? `${offer.length_m} m` : null} />
+              <Field label={t("tms.exchangeDetail.weight")} value={offer.weight_kg ? `${(offer.weight_kg / 1000).toFixed(1)} t` : null} />
+              <Field label={t("tms.exchangeDetail.loadingMeters")} value={offer.ldm ? `${offer.ldm} LDM` : null} />
+              <Field label={t("tms.exchangeDetail.pallets")} value={offer.pallet_count} />
+              <Field label={t("tms.exchangeDetail.volume")} value={offer.volume_m3 ? `${offer.volume_m3} m³` : null} />
               <Field
-                label="ADR"
+                label={t("tms.exchangeDetail.adr")}
                 value={
                   offer.adr_class && offer.adr_class !== "None" ? (
                     <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
@@ -753,7 +755,7 @@ export default function OfferDetailPage() {
               />
               {hasTemp && (
                 <Field
-                  label="Temperature"
+                  label={t("tms.exchangeDetail.temperature")}
                   value={
                     <span className="flex items-center gap-1">
                       <Thermometer className="h-3.5 w-3.5" />
@@ -766,7 +768,7 @@ export default function OfferDetailPage() {
             {offer.goods_description && (
               <>
                 <Separator className="my-3" />
-                <Field label="Goods Description" value={offer.goods_description} />
+                <Field label={t("tms.exchangeDetail.goodsDescription")} value={offer.goods_description} />
               </>
             )}
           </div>
@@ -775,12 +777,12 @@ export default function OfferDetailPage() {
           <div className="rounded-lg border border-border/50 bg-card p-4">
             <div className="flex items-center gap-2 mb-4">
               <Banknote className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold text-foreground">Pricing</h2>
+              <h2 className="text-sm font-semibold text-foreground">{t("tms.exchangeDetail.pricing")}</h2>
             </div>
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div>
                 {offer.pricing_mode === "open" ? (
-                  <p className="text-2xl font-semibold text-foreground">Open pricing</p>
+                  <p className="text-2xl font-semibold text-foreground">{t("tms.exchangeDetail.openPricing")}</p>
                 ) : (
                   <p className="text-2xl font-semibold text-foreground">
                     {fmtCurrency(offer.price_amount, offer.currency)}
@@ -788,14 +790,14 @@ export default function OfferDetailPage() {
                 )}
                 <p className="text-xs text-muted-foreground capitalize">
                   {offer.pricing_mode === "fixed"
-                    ? "Fixed price"
+                    ? t("tms.exchangeDetail.fixedPrice")
                     : offer.pricing_mode === "target"
-                    ? "Target price"
-                    : "Carriers submit their price"}
+                    ? t("tms.exchangeDetail.targetPrice")
+                    : t("tms.exchangeDetail.carriersSubmit")}
                 </p>
               </div>
               {offer.payment_terms_days != null && (
-                <Field label="Payment Terms" value={`${offer.payment_terms_days} days`} />
+                <Field label={t("tms.exchangeDetail.paymentTerms")} value={t("tms.exchangeDetail.days").replace("{n}", String(offer.payment_terms_days))} />
               )}
             </div>
           </div>
@@ -805,7 +807,7 @@ export default function OfferDetailPage() {
             <div className="rounded-lg border border-border/50 bg-card p-4">
               <div className="flex items-center gap-2 mb-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-sm font-semibold text-foreground">Notes</h2>
+                <h2 className="text-sm font-semibold text-foreground">{t("tms.exchangeDetail.notes")}</h2>
               </div>
               <p className="text-sm text-muted-foreground whitespace-pre-wrap">{offer.notes}</p>
             </div>
@@ -829,16 +831,15 @@ export default function OfferDetailPage() {
       <AlertDialog open={showUnpublish} onOpenChange={setShowUnpublish}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Unpublish this offer?</AlertDialogTitle>
+            <AlertDialogTitle>{t("tms.exchangeDetail.unpublishTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the offer from all carrier groups and the public board, and reverts it
-              to draft. Carriers will no longer see it.
+              {t("tms.exchangeDetail.unpublishDesc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={actionLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={actionLoading}>{t("tms.exchangeDetail.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleUnpublish} disabled={actionLoading}>
-              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Unpublish"}
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t("tms.exchangeDetail.unpublish")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -848,20 +849,19 @@ export default function OfferDetailPage() {
       <AlertDialog open={showDelete} onOpenChange={setShowDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this offer?</AlertDialogTitle>
+            <AlertDialogTitle>{t("tms.exchangeDetail.deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently deletes offer {offer.reference} and all its distribution records.
-              This action cannot be undone.
+              {t("tms.exchangeDetail.deleteDesc").replace("{ref}", offer.reference)}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={actionLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={actionLoading}>{t("tms.exchangeDetail.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={actionLoading}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete"}
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t("tms.exchangeDetail.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
