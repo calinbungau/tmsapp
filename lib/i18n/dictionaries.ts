@@ -1020,10 +1020,6 @@ const en: Dict = {
       driverUnassigned: "Driver unassigned",
       carrierUnassigned: "Carrier unassigned",
     },
-    exchange: {
-      onExchange: "On Exchange",
-      draft: "Exchange Draft",
-    },
     orders: {
       title: "Transport Orders",
       ordersTotal: "{count} orders total",
@@ -1237,7 +1233,11 @@ const en: Dict = {
       removeStop: "Remove Stop",
     },
     exchange: {
-      title: "Freight Exchange",
+      onExchange: "On Exchange",
+      draft: "Exchange Draft",
+    },
+    orders: {
+      title: "Transport Orders",
       offersTotal: "{count} offers total",
       newOffer: "New Offer",
       new: "New",
@@ -2908,10 +2908,6 @@ const ro: Dict = {
       driverUnassigned: "Șofer neasignat",
       carrierUnassigned: "Transportator neasignat",
     },
-    exchange: {
-      onExchange: "Pe bursă",
-      draft: "Ciornă bursă",
-    },
     orders: {
       title: "Comenzi de transport",
       ordersTotal: "{count} comenzi în total",
@@ -3125,6 +3121,7 @@ const ro: Dict = {
       removeStop: "Elimină oprirea",
     },
     exchange: {
+      onExchange: "Pe bursă",
       title: "Bursă de transport",
       offersTotal: "{count} oferte în total",
       newOffer: "Ofertă nouă",
