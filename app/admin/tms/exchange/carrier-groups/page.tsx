@@ -997,11 +997,11 @@ export default function CarrierGroupsPage() {
                 resetForm()
               }}
             >
-              Cancel
+              {t("tms.carrierGroups.cancel")}
             </Button>
             <Button onClick={handleEditGroup} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save Changes
+              {t("tms.carrierGroups.saveChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1011,16 +1011,16 @@ export default function CarrierGroupsPage() {
       <Dialog open={showMembersDialog} onOpenChange={setShowMembersDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Manage Members</DialogTitle>
+            <DialogTitle>{t("tms.carrierGroups.manageMembersTitle")}</DialogTitle>
             <DialogDescription>
-              Add or remove carriers from {selectedGroup?.name}
+              {t("tms.carrierGroups.manageMembersDesc").replace("{name}", selectedGroup?.name ?? "")}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <div className="relative mb-4">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search carriers..."
+                placeholder={t("tms.carrierGroups.searchCarriers")}
                 className="pl-9"
                 value={carrierSearch}
                 onChange={(e) => setCarrierSearch(e.target.value)}
@@ -1029,7 +1029,7 @@ export default function CarrierGroupsPage() {
             <ScrollArea className="h-[300px] pr-4">
               {filteredCarriers.length === 0 ? (
                 <div className="text-sm text-muted-foreground text-center py-8">
-                  No carriers found
+                  {t("tms.carrierGroups.noCarriersFound")}
                 </div>
               ) : (
                 <div className="space-y-1">
@@ -1070,7 +1070,7 @@ export default function CarrierGroupsPage() {
                 fetchGroups() // Refresh counts
               }}
             >
-              Done
+              {t("tms.carrierGroups.done")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1082,11 +1082,10 @@ export default function CarrierGroupsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-destructive" />
-              Delete Group
+              {t("tms.carrierGroups.deleteTitle")}
             </DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete &quot;{selectedGroup?.name}&quot;?
-              This action cannot be undone.
+              {t("tms.carrierGroups.deleteConfirm").replace("{name}", selectedGroup?.name ?? "")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1097,7 +1096,7 @@ export default function CarrierGroupsPage() {
                 setSelectedGroup(null)
               }}
             >
-              Cancel
+              {t("tms.carrierGroups.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -1105,7 +1104,7 @@ export default function CarrierGroupsPage() {
               disabled={saving}
             >
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete
+              {t("tms.carrierGroups.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
