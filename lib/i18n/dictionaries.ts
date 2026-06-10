@@ -1236,8 +1236,9 @@ const en: Dict = {
       onExchange: "On Exchange",
       draft: "Exchange Draft",
     },
-    orders: {
-      title: "Transport Orders",
+    exchange: {
+      onExchange: "On Exchange",
+      title: "Freight Exchange",
       offersTotal: "{count} offers total",
       newOffer: "New Offer",
       new: "New",
