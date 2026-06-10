@@ -34,6 +34,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
+import { useTranslation } from "@/components/i18n/i18n-provider"
 import {
   Plus,
   Users,
@@ -120,6 +121,7 @@ const OPERATORS: Record<string, { value: string; label: string }[]> = {
 }
 
 export default function CarrierGroupsPage() {
+  const { t } = useTranslation()
   const { session, loading: sessionLoading } = useAdminSession()
   const adminId = session?.id
   const supabase = createClient()
@@ -194,7 +196,7 @@ export default function CarrierGroupsPage() {
       setGroups(enrichedGroups)
     } catch (error) {
       console.error("Error fetching groups:", error)
-      toast.error("Failed to load carrier groups")
+      toast.error(t("tms.carrierGroups.toast.loadFailed"))
     } finally {
       setLoading(false)
     }
@@ -238,7 +240,7 @@ export default function CarrierGroupsPage() {
 
   const handleCreateGroup = async () => {
     if (!adminId || !formData.name.trim()) {
-      toast.error("Please enter a group name")
+      toast.error(t("tms.carrierGroups.toast.enterName"))
       return
     }
 
@@ -274,13 +276,13 @@ export default function CarrierGroupsPage() {
         if (rulesError) throw rulesError
       }
 
-      toast.success("Carrier group created")
+      toast.success(t("tms.carrierGroups.toast.created"))
       setShowCreateDialog(false)
       resetForm()
       fetchGroups()
     } catch (error) {
       console.error("Error creating group:", error)
-      toast.error("Failed to create group")
+      toast.error(t("tms.carrierGroups.toast.createFailed"))
     } finally {
       setSaving(false)
     }
@@ -288,7 +290,7 @@ export default function CarrierGroupsPage() {
 
   const handleEditGroup = async () => {
     if (!selectedGroup || !formData.name.trim()) {
-      toast.error("Please enter a group name")
+      toast.error(t("tms.carrierGroups.toast.enterName"))
       return
     }
 
@@ -330,14 +332,14 @@ export default function CarrierGroupsPage() {
         }
       }
 
-      toast.success("Carrier group updated")
+      toast.success(t("tms.carrierGroups.toast.updated"))
       setShowEditDialog(false)
       setSelectedGroup(null)
       resetForm()
       fetchGroups()
     } catch (error) {
       console.error("Error updating group:", error)
-      toast.error("Failed to update group")
+      toast.error(t("tms.carrierGroups.toast.updateFailed"))
     } finally {
       setSaving(false)
     }
@@ -355,13 +357,13 @@ export default function CarrierGroupsPage() {
 
       if (error) throw error
 
-      toast.success("Carrier group deleted")
+      toast.success(t("tms.carrierGroups.toast.deleted"))
       setShowDeleteDialog(false)
       setSelectedGroup(null)
       fetchGroups()
     } catch (error) {
       console.error("Error deleting group:", error)
-      toast.error("Failed to delete group")
+      toast.error(t("tms.carrierGroups.toast.deleteFailed"))
     } finally {
       setSaving(false)
     }
@@ -428,7 +430,7 @@ export default function CarrierGroupsPage() {
       }
     } catch (error) {
       console.error("Error toggling member:", error)
-      toast.error("Failed to update member")
+      toast.error(t("tms.carrierGroups.toast.memberUpdateFailed"))
     }
   }
 
@@ -495,15 +497,15 @@ export default function CarrierGroupsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Carrier Groups
+            {t("tms.carrierGroups.title")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Organize carriers into groups for targeted offer distribution
+            {t("tms.carrierGroups.subtitle")}
           </p>
         </div>
         <Button onClick={() => setShowCreateDialog(true)}>
           <Plus className="mr-2 h-4 w-4" />
-          New Group
+          {t("tms.carrierGroups.newGroup")}
         </Button>
       </div>
 
@@ -512,14 +514,13 @@ export default function CarrierGroupsPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <FolderOpen className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">No carrier groups yet</h3>
+            <h3 className="text-lg font-medium">{t("tms.carrierGroups.emptyTitle")}</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Create your first group to organize carriers for offer
-              distribution
+              {t("tms.carrierGroups.emptyDesc")}
             </p>
             <Button onClick={() => setShowCreateDialog(true)}>
               <Plus className="mr-2 h-4 w-4" />
-              Create Group
+              {t("tms.carrierGroups.createGroup")}
             </Button>
           </CardContent>
         </Card>
@@ -539,14 +540,18 @@ export default function CarrierGroupsPage() {
                         {group.group_type === "static" ? (
                           <span className="flex items-center gap-1">
                             <Users className="h-3 w-3" />
-                            {group.member_count} carrier
-                            {group.member_count !== 1 ? "s" : ""}
+                            {(group.member_count === 1
+                              ? t("tms.carrierGroups.carrierCountOne")
+                              : t("tms.carrierGroups.carrierCountOther")
+                            ).replace("{count}", String(group.member_count ?? 0))}
                           </span>
                         ) : (
                           <span className="flex items-center gap-1">
                             <Filter className="h-3 w-3" />
-                            Dynamic ({group.rules?.length || 0} rule
-                            {(group.rules?.length || 0) !== 1 ? "s" : ""})
+                            {((group.rules?.length || 0) === 1
+                              ? t("tms.carrierGroups.dynamicRulesOne")
+                              : t("tms.carrierGroups.dynamicRulesOther")
+                            ).replace("{count}", String(group.rules?.length || 0))}
                           </span>
                         )}
                       </CardDescription>
@@ -561,14 +566,14 @@ export default function CarrierGroupsPage() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => openEditDialog(group)}>
                         <Pencil className="mr-2 h-4 w-4" />
-                        Edit
+                        {t("tms.carrierGroups.edit")}
                       </DropdownMenuItem>
                       {group.group_type === "static" && (
                         <DropdownMenuItem
                           onClick={() => openMembersDialog(group)}
                         >
                           <UserPlus className="mr-2 h-4 w-4" />
-                          Manage Members
+                          {t("tms.carrierGroups.manageMembers")}
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem
@@ -579,7 +584,7 @@ export default function CarrierGroupsPage() {
                         }}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
+                        {t("tms.carrierGroups.delete")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -597,15 +602,15 @@ export default function CarrierGroupsPage() {
                       group.group_type === "static" ? "secondary" : "outline"
                     }
                   >
-                    {group.group_type === "static" ? "Static" : "Dynamic"}
+                    {group.group_type === "static" ? t("tms.carrierGroups.static") : t("tms.carrierGroups.dynamic")}
                   </Badge>
                   {group.group_type === "dynamic" && (
                     <Badge variant="outline" className="text-xs">
-                      Match {group.match_mode}
+                      {t("tms.carrierGroups.matchPrefix")} {group.match_mode}
                     </Badge>
                   )}
                   {!group.is_active && (
-                    <Badge variant="destructive">Inactive</Badge>
+                    <Badge variant="destructive">{t("tms.carrierGroups.inactive")}</Badge>
                   )}
                 </div>
               </CardContent>
@@ -618,18 +623,18 @@ export default function CarrierGroupsPage() {
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Create Carrier Group</DialogTitle>
+            <DialogTitle>{t("tms.carrierGroups.createTitle")}</DialogTitle>
             <DialogDescription>
-              Create a new group to organize carriers for offer distribution
+              {t("tms.carrierGroups.createDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="name">Name</Label>
+                <Label htmlFor="name">{t("tms.carrierGroups.name")}</Label>
                 <Input
                   id="name"
-                  placeholder="e.g. German Carriers"
+                  placeholder={t("tms.carrierGroups.namePlaceholder")}
                   value={formData.name}
                   onChange={(e) =>
                     setFormData((prev) => ({ ...prev, name: e.target.value }))
@@ -637,10 +642,10 @@ export default function CarrierGroupsPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="description">Description (optional)</Label>
+                <Label htmlFor="description">{t("tms.carrierGroups.descriptionOptional")}</Label>
                 <Textarea
                   id="description"
-                  placeholder="Describe this group..."
+                  placeholder={t("tms.carrierGroups.descriptionPlaceholder")}
                   value={formData.description}
                   onChange={(e) =>
                     setFormData((prev) => ({
@@ -652,7 +657,7 @@ export default function CarrierGroupsPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label>Color</Label>
+                  <Label>{t("tms.carrierGroups.color")}</Label>
                   <Select
                     value={formData.color}
                     onValueChange={(v) =>
@@ -669,7 +674,7 @@ export default function CarrierGroupsPage() {
                             <div
                               className={`h-3 w-3 rounded-full ${c.class}`}
                             />
-                            {c.label}
+                            {t(`tms.carrierGroups.colors.${c.value}`)}
                           </div>
                         </SelectItem>
                       ))}
@@ -677,7 +682,7 @@ export default function CarrierGroupsPage() {
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Type</Label>
+                  <Label>{t("tms.carrierGroups.type")}</Label>
                   <Select
                     value={formData.group_type}
                     onValueChange={(v: "static" | "dynamic") =>
@@ -691,13 +696,13 @@ export default function CarrierGroupsPage() {
                       <SelectItem value="static">
                         <div className="flex items-center gap-2">
                           <Users className="h-4 w-4" />
-                          Static
+                          {t("tms.carrierGroups.static")}
                         </div>
                       </SelectItem>
                       <SelectItem value="dynamic">
                         <div className="flex items-center gap-2">
                           <Filter className="h-4 w-4" />
-                          Dynamic
+                          {t("tms.carrierGroups.dynamic")}
                         </div>
                       </SelectItem>
                     </SelectContent>
@@ -709,7 +714,7 @@ export default function CarrierGroupsPage() {
               {formData.group_type === "dynamic" && (
                 <div className="space-y-3 pt-2 border-t">
                   <div className="flex items-center justify-between">
-                    <Label>Rules</Label>
+                    <Label>{t("tms.carrierGroups.rules")}</Label>
                     <Select
                       value={formData.match_mode}
                       onValueChange={(v: "all" | "any") =>
@@ -720,16 +725,15 @@ export default function CarrierGroupsPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Match ALL</SelectItem>
-                        <SelectItem value="any">Match ANY</SelectItem>
+                        <SelectItem value="all">{t("tms.carrierGroups.matchAll")}</SelectItem>
+                        <SelectItem value="any">{t("tms.carrierGroups.matchAny")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
                   {rules.length === 0 ? (
                     <div className="text-sm text-muted-foreground text-center py-4 border rounded-md">
-                      No rules defined. Add a rule to filter carriers
-                      dynamically.
+                      {t("tms.carrierGroups.noRulesCreate")}
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -750,7 +754,7 @@ export default function CarrierGroupsPage() {
                             <SelectContent>
                               {RULE_FIELDS.map((f) => (
                                 <SelectItem key={f.value} value={f.value}>
-                                  {f.label}
+                                  {t(`tms.carrierGroups.fields.${f.value}`)}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -767,7 +771,7 @@ export default function CarrierGroupsPage() {
                             <SelectContent>
                               {(OPERATORS[rule.field] || []).map((op) => (
                                 <SelectItem key={op.value} value={op.value}>
-                                  {op.label}
+                                  {t(`tms.carrierGroups.operators.${op.value}`)}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -775,7 +779,7 @@ export default function CarrierGroupsPage() {
                           {!["is_true", "is_false"].includes(rule.operator) && (
                             <Input
                               className="flex-1 h-8"
-                              placeholder="Value"
+                              placeholder={t("tms.carrierGroups.value")}
                               value={rule.value || ""}
                               onChange={(e) =>
                                 updateRule(index, { value: e.target.value })
@@ -802,7 +806,7 @@ export default function CarrierGroupsPage() {
                     onClick={addRule}
                   >
                     <Plus className="mr-2 h-4 w-4" />
-                    Add Rule
+                    {t("tms.carrierGroups.addRule")}
                   </Button>
                 </div>
               )}
@@ -816,11 +820,11 @@ export default function CarrierGroupsPage() {
                 resetForm()
               }}
             >
-              Cancel
+              {t("tms.carrierGroups.cancel")}
             </Button>
             <Button onClick={handleCreateGroup} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create Group
+              {t("tms.carrierGroups.createGroup")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -830,13 +834,13 @@ export default function CarrierGroupsPage() {
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Edit Carrier Group</DialogTitle>
-            <DialogDescription>Update the group settings</DialogDescription>
+            <DialogTitle>{t("tms.carrierGroups.editTitle")}</DialogTitle>
+            <DialogDescription>{t("tms.carrierGroups.editDesc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="edit-name">Name</Label>
+                <Label htmlFor="edit-name">{t("tms.carrierGroups.name")}</Label>
                 <Input
                   id="edit-name"
                   value={formData.name}
@@ -846,7 +850,7 @@ export default function CarrierGroupsPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="edit-description">Description (optional)</Label>
+                <Label htmlFor="edit-description">{t("tms.carrierGroups.descriptionOptional")}</Label>
                 <Textarea
                   id="edit-description"
                   value={formData.description}
@@ -859,7 +863,7 @@ export default function CarrierGroupsPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label>Color</Label>
+                <Label>{t("tms.carrierGroups.color")}</Label>
                 <Select
                   value={formData.color}
                   onValueChange={(v) =>
@@ -874,7 +878,7 @@ export default function CarrierGroupsPage() {
                       <SelectItem key={c.value} value={c.value}>
                         <div className="flex items-center gap-2">
                           <div className={`h-3 w-3 rounded-full ${c.class}`} />
-                          {c.label}
+                          {t(`tms.carrierGroups.colors.${c.value}`)}
                         </div>
                       </SelectItem>
                     ))}
@@ -886,7 +890,7 @@ export default function CarrierGroupsPage() {
               {selectedGroup?.group_type === "dynamic" && (
                 <div className="space-y-3 pt-2 border-t">
                   <div className="flex items-center justify-between">
-                    <Label>Rules</Label>
+                    <Label>{t("tms.carrierGroups.rules")}</Label>
                     <Select
                       value={formData.match_mode}
                       onValueChange={(v: "all" | "any") =>
@@ -897,15 +901,15 @@ export default function CarrierGroupsPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Match ALL</SelectItem>
-                        <SelectItem value="any">Match ANY</SelectItem>
+                        <SelectItem value="all">{t("tms.carrierGroups.matchAll")}</SelectItem>
+                        <SelectItem value="any">{t("tms.carrierGroups.matchAny")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
                   {rules.length === 0 ? (
                     <div className="text-sm text-muted-foreground text-center py-4 border rounded-md">
-                      No rules defined.
+                      {t("tms.carrierGroups.noRulesEdit")}
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -926,7 +930,7 @@ export default function CarrierGroupsPage() {
                             <SelectContent>
                               {RULE_FIELDS.map((f) => (
                                 <SelectItem key={f.value} value={f.value}>
-                                  {f.label}
+                                  {t(`tms.carrierGroups.fields.${f.value}`)}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -943,7 +947,7 @@ export default function CarrierGroupsPage() {
                             <SelectContent>
                               {(OPERATORS[rule.field] || []).map((op) => (
                                 <SelectItem key={op.value} value={op.value}>
-                                  {op.label}
+                                  {t(`tms.carrierGroups.operators.${op.value}`)}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -951,7 +955,7 @@ export default function CarrierGroupsPage() {
                           {!["is_true", "is_false"].includes(rule.operator) && (
                             <Input
                               className="flex-1 h-8"
-                              placeholder="Value"
+                              placeholder={t("tms.carrierGroups.value")}
                               value={rule.value || ""}
                               onChange={(e) =>
                                 updateRule(index, { value: e.target.value })
@@ -978,7 +982,7 @@ export default function CarrierGroupsPage() {
                     onClick={addRule}
                   >
                     <Plus className="mr-2 h-4 w-4" />
-                    Add Rule
+                    {t("tms.carrierGroups.addRule")}
                   </Button>
                 </div>
               )}
