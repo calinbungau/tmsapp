@@ -159,13 +159,14 @@ function getDateRange(startDate: Date, days: number): Date[] {
 
 function fmt(d: Date): string { return d.toISOString().split("T")[0]; }
 
-function timeAgo(ts: string | null): string {
-  if (!ts) return "never";
+function timeAgo(ts: string | null, t?: (k: string) => string): string {
+  const tr = t || ((k: string) => k.split(".").pop() || k);
+  if (!ts) return tr("tms.planning.never");
   const diff = Date.now() - new Date(ts).getTime();
-  if (diff < 60000) return "now";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-  return `${Math.floor(diff / 86400000)}d ago`;
+  if (diff < 60000) return tr("tms.planning.nowTime");
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}${tr("tms.planning.minAgo")}`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}${tr("tms.planning.hourAgo")}`;
+  return `${Math.floor(diff / 86400000)}${tr("tms.planning.dayAgo")}`;
 }
 
 function daysUntil(dateStr: string): number {
@@ -980,7 +981,7 @@ export default function DispatchBoardPage() {
           const marker = L.marker(pos, {
             icon: L.divIcon({ className: "", iconSize: [28, 28], iconAnchor: [14, 14], html: iconHtml }),
             zIndexOffset: 1000,
-          }).bindTooltip(`<strong>${d.name}</strong><br/>Last seen: ${timeAgo(d.last_seen_at)}`, { direction: "top" });
+          }).bindTooltip(`<strong>${d.name}</strong><br/>${t("tms.planning.lastSeen")}: ${timeAgo(d.last_seen_at, t)}`, { direction: "top" });
           marker.addTo(map);
           driverMarkersRef.current.set(d.id, marker);
         }
@@ -1778,7 +1779,7 @@ export default function DispatchBoardPage() {
                     >
                       <PanelRightClose className="h-3.5 w-3.5" />
                     </button>
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Fleet Status</span>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{t("tms.planning.fleetStatus")}</span>
                     {wsConnected && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" title="Live WebSocket" />}
                   </div>
                   <Badge variant="outline" className="text-[9px] h-4">{vehicles.length}</Badge>
@@ -1786,11 +1787,11 @@ export default function DispatchBoardPage() {
                 {/* Status filter tabs */}
                 <div className="flex gap-1">
                   {([
-                    { key: "all", label: "All", count: vehicles.length },
-                    { key: "moving", label: "Moving", count: vehicles.filter(v => { const p = gpsPositions.get(v.id); return p && p.speed > 2; }).length, color: "emerald" },
-                    { key: "idling", label: "Idle", count: vehicles.filter(v => { const p = gpsPositions.get(v.id); return p && p.speed <= 2 && p.ignition === true; }).length, color: "amber" },
-                    { key: "parked", label: "Parked", count: vehicles.filter(v => { const p = gpsPositions.get(v.id); return p && p.speed <= 2 && p.ignition !== true; }).length, color: "blue" },
-                    { key: "offline", label: "Off", count: vehicles.filter(v => !gpsPositions.has(v.id)).length, color: "zinc" },
+                    { key: "all", label: t("tms.planning.filterAll"), count: vehicles.length },
+                    { key: "moving", label: t("tms.planning.filterMoving"), count: vehicles.filter(v => { const p = gpsPositions.get(v.id); return p && p.speed > 2; }).length, color: "emerald" },
+                    { key: "idling", label: t("tms.planning.filterIdle"), count: vehicles.filter(v => { const p = gpsPositions.get(v.id); return p && p.speed <= 2 && p.ignition === true; }).length, color: "amber" },
+                    { key: "parked", label: t("tms.planning.filterParked"), count: vehicles.filter(v => { const p = gpsPositions.get(v.id); return p && p.speed <= 2 && p.ignition !== true; }).length, color: "blue" },
+                    { key: "offline", label: t("tms.planning.filterOff"), count: vehicles.filter(v => !gpsPositions.has(v.id)).length, color: "zinc" },
                   ] as const).map(f => (
                     <button key={f.key}
                       className={`flex-1 text-[8px] font-semibold py-1 rounded transition-colors ${
@@ -1811,10 +1812,10 @@ onClick={() => setFleetStatusFilter(f.key)}>
   {fleetGroups.length > 0 && (
     <Select value={fleetGroupFilter} onValueChange={setFleetGroupFilter}>
       <SelectTrigger className="h-7 text-[10px] bg-muted/30 border-border/30 w-[140px]">
-        <SelectValue placeholder="All Groups" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="all">All Groups</SelectItem>
+                        <SelectValue placeholder={t("tms.planning.allGroups")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t("tms.planning.allGroups")}</SelectItem>
         {fleetGroups.map(g => (
           <SelectItem key={g.id} value={g.id}>
             <div className="flex items-center gap-2">
@@ -1852,7 +1853,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
                   const isParked = isOnline && !isMoving && !isIdling;
                   const hasOrder = activeVehicleIds.has(v.id);
                   const assignedDriver = drivers.find(d => orders.some(o => o.vehicle_id === v.id && o.driver_id === d.id && ["dispatched", "in_transit"].includes(o.status)));
-                  const statusText = isMoving ? `${Math.round(pos!.speed)} km/h` : isIdling ? "Idling" : isParked ? "Parked" : !hasGps ? "" : "Offline";
+                  const statusText = isMoving ? `${Math.round(pos!.speed)} km/h` : isIdling ? t("tms.planning.idling") : isParked ? t("tms.planning.parked") : !hasGps ? "" : t("tms.planning.offline");
                   const statusColor = isMoving ? "text-emerald-400" : isIdling ? "text-amber-400" : isParked ? "text-blue-400" : "text-zinc-500";
                   const isFollowing = selectedVehicleId === v.id;
 
@@ -1883,7 +1884,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
                             {hasGps && <SatelliteDish className="h-2.5 w-2.5 text-blue-400/30" />}
                           </div>
                           <div className="text-[9px] text-muted-foreground truncate">
-                            {assignedDriver ? assignedDriver.name : "No driver"}
+                            {assignedDriver ? assignedDriver.name : t("tms.planning.noDriver")}
                             {statusText && <span className={`ml-1 ${statusColor}`}>{statusText}</span>}
                           </div>
                         </button>
@@ -1892,7 +1893,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
                           {isOnline && (
                             <button
                               className={`p-1 rounded transition-colors ${isFollowing ? "bg-emerald-500/20 text-emerald-400" : "text-zinc-600 hover:text-zinc-300 hover:bg-muted/30 opacity-0 group-hover:opacity-100"}`}
-                              title={isFollowing ? "Stop following" : "Follow vehicle"}
+                              title={isFollowing ? t("tms.planning.stopFollowing") : t("tms.planning.followVehicle")}
                               onClick={() => { setSelectedVehicleId(isFollowing ? null : v.id); if (!isFollowing) setSelectedOrderId(null); }}>
                               <Crosshair className="h-3 w-3" />
                             </button>
@@ -1901,13 +1902,13 @@ onClick={() => setFleetStatusFilter(f.key)}>
                           {hasGps && (
                             <button
                               className={`p-1 rounded transition-colors ${routeHistoryVehicleId === v.id ? "bg-amber-500/20 text-amber-400" : "text-zinc-600 hover:text-zinc-300 hover:bg-muted/30 opacity-0 group-hover:opacity-100"}`}
-                              title="Route history"
+                              title={t("tms.planning.routeHistory")}
                               onClick={(e) => { e.stopPropagation(); setRouteHistoryVehicleId(routeHistoryVehicleId === v.id ? null : v.id); setSelectedOrderId(null); }}>
                               <Route className="h-3 w-3" />
                             </button>
                           )}
                           <div className={`text-[8px] px-1.5 py-0.5 rounded font-medium ${hasOrder ? "bg-amber-500/10 text-amber-400" : "bg-zinc-500/10 text-zinc-500"}`}>
-                            {hasOrder ? "Active" : "Idle"}
+                            {hasOrder ? t("tms.planning.active") : t("tms.planning.idle")}
                           </div>
                         </div>
                       </div>
@@ -1915,7 +1916,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
                       {infoPopupVehicleId === v.id && pos && (() => {
                         const fmtWorkState = (s: string | null) => {
                           if (!s) return null;
-                          const m: Record<string, string> = { workingStateDrive: "Driving", workingStateWork: "Working", workingStateRest: "Resting", workingStateBreak: "Break", workingStateDriverAvailable: "Available" };
+                          const m: Record<string, string> = { workingStateDrive: t("tms.planning.driving"), workingStateWork: t("tms.planning.working"), workingStateRest: t("tms.planning.resting"), workingStateBreak: t("tms.planning.break"), workingStateDriverAvailable: t("tms.planning.available") };
                           return m[s] || s.replace(/workingState/i, "");
                         };
                         const fmtSince = (d: string | null) => {
@@ -1925,8 +1926,8 @@ onClick={() => setFleetStatusFilter(f.key)}>
                         const dState = fmtWorkState(pos.driverWorkingState);
                         const d2State = fmtWorkState(pos.driver2WorkingState);
                         const since = fmtSince(pos.lastParked);
-                        const stateColor = (s: string | null) => s === "Driving" ? "text-emerald-400" : s === "Resting" ? "text-blue-400" : s === "Break" ? "text-amber-400" : "text-zinc-400";
-                        const stateDot = (s: string | null) => s === "Driving" ? "bg-emerald-400" : s === "Resting" ? "bg-blue-400" : s === "Break" ? "bg-amber-400" : "bg-zinc-400";
+                        const stateColor = (s: string | null) => s === t("tms.planning.driving") ? "text-emerald-400" : s === t("tms.planning.resting") ? "text-blue-400" : s === t("tms.planning.break") ? "text-amber-400" : "text-zinc-400";
+                        const stateDot = (s: string | null) => s === t("tms.planning.driving") ? "bg-emerald-400" : s === t("tms.planning.resting") ? "bg-blue-400" : s === t("tms.planning.break") ? "bg-amber-400" : "bg-zinc-400";
                         const coordsStr = `${pos.latitude.toFixed(5)}, ${pos.longitude.toFixed(5)}`;
                         // Extract country from last part of address for flag
                         const addrParts = (pos.address || "").split(",").map(s => s.trim());
@@ -1943,13 +1944,13 @@ onClick={() => setFleetStatusFilter(f.key)}>
                                 e.stopPropagation();
                                 navigator.clipboard.writeText(pos.address || "");
                                 const hint = e.currentTarget.querySelector("[data-hint]");
-                                if (hint) { hint.textContent = "Copied!"; setTimeout(() => { hint.textContent = "Click to copy address"; }, 1500); }
+                                if (hint) { hint.textContent = t("tms.planning.copied"); setTimeout(() => { hint.textContent = t("tms.planning.clickToCopyAddress"); }, 1500); }
                               }}>
                               <span className="flex items-start gap-1.5 break-words">
                                 {flagUrl && <img src={flagUrl} alt={addrCountry} className="w-4 h-3 rounded-[2px] object-cover shrink-0 mt-0.5" crossOrigin="anonymous" />}
                                 <span>{pos.address}</span>
                               </span>
-                              <span data-hint className="text-[8px] text-zinc-600 mt-0.5 block">{"Click to copy address"}</span>
+                              <span data-hint className="text-[8px] text-zinc-600 mt-0.5 block">{t("tms.planning.clickToCopyAddress")}</span>
                             </button>
                           )}
                           {/* Coords -- clickable to copy */}
@@ -1959,20 +1960,20 @@ onClick={() => setFleetStatusFilter(f.key)}>
                               e.stopPropagation();
                               navigator.clipboard.writeText(coordsStr);
                               const span = e.currentTarget.querySelector("[data-coord]");
-                              if (span) { span.textContent = "Copied!"; setTimeout(() => { span.textContent = coordsStr; }, 1500); }
+                              if (span) { span.textContent = t("tms.planning.copied"); setTimeout(() => { span.textContent = coordsStr; }, 1500); }
                             }}>
                             <span data-coord>{coordsStr}</span>
                             <Copy className="h-2.5 w-2.5 shrink-0 text-zinc-600" />
                           </button>
                           {/* Position grid */}
                           <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                            <span className="text-zinc-500">Speed</span><span className="font-semibold">{Math.round(pos.speed)} km/h</span>
-                            <span className="text-zinc-500">Heading</span><span>{Math.round(pos.course || 0)}{"\u00B0"}</span>
-                            {pos.totalDistance != null && <><span className="text-zinc-500">Odometer</span><span>{Math.round(pos.totalDistance).toLocaleString()} km</span></>}
-                            {pos.ignition != null && <><span className="text-zinc-500">Ignition</span><span className={pos.ignition ? "text-emerald-400 font-semibold" : "text-zinc-500"}>{ pos.ignition ? "ON" : "OFF"}</span></>}
+                            <span className="text-zinc-500">{t("tms.planning.speed")}</span><span className="font-semibold">{Math.round(pos.speed)} km/h</span>
+                            <span className="text-zinc-500">{t("tms.planning.heading")}</span><span>{Math.round(pos.course || 0)}{"\u00B0"}</span>
+                            {pos.totalDistance != null && <><span className="text-zinc-500">{t("tms.planning.odometer")}</span><span>{Math.round(pos.totalDistance).toLocaleString()} km</span></>}
+                            {pos.ignition != null && <><span className="text-zinc-500">{t("tms.planning.ignition")}</span><span className={pos.ignition ? "text-emerald-400 font-semibold" : "text-zinc-500"}>{ pos.ignition ? t("tms.planning.on") : t("tms.planning.off")}</span></>}
                             {pos.fuel != null && (
                               <>
-                                <span className="text-zinc-500">Fuel</span>
+                                <span className="text-zinc-500">{t("tms.planning.fuel")}</span>
                                 <div className="flex items-center gap-1.5">
                                   <div className="flex-1 h-1 rounded-full bg-zinc-800 overflow-hidden">
                                     <div className={`h-full rounded-full ${pos.fuel > 50 ? "bg-emerald-500" : pos.fuel > 20 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${pos.fuel}%` }} />
@@ -1981,14 +1982,14 @@ onClick={() => setFleetStatusFilter(f.key)}>
                                 </div>
                               </>
                             )}
-                            {since && <><span className="text-zinc-500">{isMoving ? "Moving since" : isIdling ? "Idle since" : "Parked since"}</span><span className="font-semibold">{since}</span></>}
-                            {pos.satellites != null && <><span className="text-zinc-500">Satellites</span><span>{pos.satellites}</span></>}
-                            {pos.lastUpdate && <><span className="text-zinc-500">Updated</span><span>{timeAgo(pos.lastUpdate)}</span></>}
+                            {since && <><span className="text-zinc-500">{isMoving ? t("tms.planning.movingSince") : isIdling ? t("tms.planning.idleSince") : t("tms.planning.parkedSince")}</span><span className="font-semibold">{since}</span></>}
+                            {pos.satellites != null && <><span className="text-zinc-500">{t("tms.planning.satellites")}</span><span>{pos.satellites}</span></>}
+                            {pos.lastUpdate && <><span className="text-zinc-500">{t("tms.planning.updated")}</span><span>{timeAgo(pos.lastUpdate, t)}</span></>}
                           </div>
                           {/* Tachograph section -- only if driverWorkingState exists */}
                           {(pos.driverWorkingState || pos.driver2WorkingState) && (
                             <div className="mt-2 pt-2 border-t border-border/10">
-                              <div className="text-[8px] uppercase tracking-wider text-zinc-600 font-semibold mb-1">Tachograph</div>
+                              <div className="text-[8px] uppercase tracking-wider text-zinc-600 font-semibold mb-1">{t("tms.planning.tachograph")}</div>
                               {pos.driverUniqueId && <div className="font-mono text-[8px] text-zinc-400 mb-0.5">{pos.driverUniqueId}</div>}
                               {dState && (
                                 <div className="flex items-center gap-1.5">
@@ -2008,7 +2009,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
                             className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors text-[10px] font-semibold"
                             onClick={(e) => { e.stopPropagation(); setRouteHistoryVehicleId(v.id); setInfoPopupVehicleId(null); setSelectedOrderId(null); }}>
                             <Route className="h-3 w-3" />
-                            View Route History
+                            {t("tms.planning.viewRouteHistory")}
                           </button>
                         </div>
                         );
@@ -2026,7 +2027,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
                     >
                       <span className="flex items-center gap-1.5">
                         <Package className="h-3 w-3" />
-                        Trailers
+                        {t("tms.planning.trailers")}
                         <Badge variant="outline" className="text-[9px] h-4 ml-1">{trailers.length}</Badge>
                       </span>
                       {showTrailersList ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -2035,7 +2036,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
                       const tpos = trailerGpsPositions.get(tr.id);
                       const isMoving = tpos && tpos.speed > 2;
                       const isOnline = !!tpos;
-                      const speedTxt = isMoving ? `${Math.round(tpos!.speed)} km/h` : isOnline ? "Idle" : "Offline";
+                      const speedTxt = isMoving ? `${Math.round(tpos!.speed)} km/h` : isOnline ? t("tms.planning.idle") : t("tms.planning.offline");
                       const speedColor = isMoving ? "text-emerald-400" : isOnline ? "text-amber-400" : "text-zinc-500";
                       return (
                         <button
@@ -2051,7 +2052,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
                           <div className="min-w-0 flex-1">
                             <div className="text-[11px] font-medium truncate">{tr.plate_number}</div>
                             <div className="text-[9px] text-muted-foreground truncate">
-                              {tr.trailer_type || "Trailer"}
+                              {tr.trailer_type || t("tms.planning.trailer")}
                               <span className={`ml-1 ${speedColor}`}>{speedTxt}</span>
                             </div>
                           </div>
@@ -2070,7 +2071,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
                     >
                       <span className="flex items-center gap-1.5">
                         <CircleDot className="h-3 w-3" />
-                        Drivers
+                        {t("tms.planning.drivers")}
                         <Badge variant="outline" className="text-[9px] h-4 ml-1">{drivers.filter(d => d.is_online).length}/{drivers.length}</Badge>
                       </span>
                       {showDriversList ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -2098,8 +2099,8 @@ onClick={() => setFleetStatusFilter(f.key)}>
                             <div className="min-w-0 flex-1">
                               <div className="text-[11px] font-medium truncate">{d.name}</div>
                               <div className="text-[9px] text-muted-foreground truncate">
-                                <span className={stateColor}>{d.is_online ? "Online" : "Offline"}</span>
-                                {d.last_seen_at && <span className="ml-1">· {timeAgo(d.last_seen_at)}</span>}
+                                <span className={stateColor}>{d.is_online ? t("tms.planning.online") : t("tms.planning.offline")}</span>
+                                {d.last_seen_at && <span className="ml-1">· {timeAgo(d.last_seen_at, t)}</span>}
                               </div>
                             </div>
                           </button>
@@ -2116,7 +2117,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
         <div className="flex items-center justify-between px-2 md:px-4 py-1.5 md:py-2 border-b border-border/50 bg-card/20">
           <div className="flex items-center gap-1 md:gap-2">
             <Button variant="ghost" size="icon" className="h-8 w-8 md:h-7 md:w-7" onClick={goPrev}><ChevronLeft className="h-4 w-4" /></Button>
-            <Button variant="outline" size="sm" className="h-8 md:h-7 text-xs px-2 md:px-3" onClick={goToday}>Today</Button>
+            <Button variant="outline" size="sm" className="h-8 md:h-7 text-xs px-2 md:px-3" onClick={goToday}>{t("tms.planning.today")}</Button>
             <Button variant="ghost" size="icon" className="h-8 w-8 md:h-7 md:w-7" onClick={goNext}><ChevronRight className="h-4 w-4" /></Button>
             <span className="text-[10px] md:text-xs text-muted-foreground ml-1 md:ml-2 hidden sm:inline">
               {dateRange[0]?.toLocaleDateString("en", { month: "short", day: "numeric" })} - {dateRange[dateRange.length - 1]?.toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })}
@@ -2136,7 +2137,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
             {/* Day headers */}
             <div className="flex border-b border-border/40 sticky top-0 z-[30] bg-background">
               <div className="w-36 md:w-56 shrink-0 px-2 md:px-3 py-1.5 text-[9px] md:text-[10px] font-medium text-muted-foreground uppercase tracking-wider border-r border-border/40">
-                Vehicle / Driver
+                {t("tms.planning.vehicleDriver")}
               </div>
               <div className="flex-1 flex">
                 {dateRange.map((d, i) => {
@@ -2173,7 +2174,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
               const isIdling = !!pos && !isMoving && pos.ignition === true;
               const isParked = !!pos && !isMoving && !isIdling;
               const dotColor = isMoving ? "bg-emerald-500 animate-pulse" : isIdling ? "bg-amber-400" : isParked ? "bg-blue-400" : "bg-zinc-600";
-              const statusText = isMoving ? `${Math.round(pos!.speed)} km/h` : isIdling ? "Idling" : isParked ? "Parked" : hasGps ? "GPS offline" : "No GPS";
+              const statusText = isMoving ? `${Math.round(pos!.speed)} km/h` : isIdling ? t("tms.planning.idling") : isParked ? t("tms.planning.parked") : hasGps ? t("tms.planning.gpsOffline") : t("tms.planning.noGps");
               const statusColor = isMoving ? "text-emerald-400" : isIdling ? "text-amber-400" : isParked ? "text-blue-400" : "text-zinc-600";
               return (
                 <div key={vehicle.id} className="flex border-b border-border/20 hover:bg-muted/10 group">
@@ -2219,7 +2220,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
               <div className="border-b border-border/20 bg-zinc-500/3">
                 <div className="flex items-center gap-2 px-2 md:px-3 py-1.5 border-b border-border/10">
                   <Truck className="h-3 w-3 text-zinc-600" />
-                  <span className="text-[9px] md:text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Idle Vehicles ({idleVehicles.length})</span>
+                  <span className="text-[9px] md:text-[10px] font-medium text-zinc-500 uppercase tracking-wider">{t("tms.planning.idleVehicles").replace("{count}", String(idleVehicles.length))}</span>
                 </div>
                 {idleVehicles.map(vehicle => {
                   const pos = gpsPositions.get(vehicle.id);
@@ -2239,7 +2240,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
                             {hasGps && <SatelliteDish className="h-2.5 w-2.5 text-blue-400/40" />}
                           </div>
                           <div className="text-[8px] md:text-[9px] text-zinc-600 truncate">
-                            {pos ? `${pos.speed > 2 ? `${Math.round(pos.speed)} km/h` : "Parked"}` : hasGps ? "GPS offline" : "No GPS"}
+                            {pos ? `${pos.speed > 2 ? `${Math.round(pos.speed)} km/h` : t("tms.planning.parked")}` : hasGps ? t("tms.planning.gpsOffline") : t("tms.planning.noGps")}
                           </div>
                         </div>
                       </div>
@@ -2249,7 +2250,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
                           return <div key={i} className={`flex-1 border-r border-border/5 ${isToday ? "bg-amber-500/3" : ""}`} />;
                         })}
                         <div className="absolute inset-0 flex items-center justify-center">
-                          <span className="text-[8px] md:text-[9px] text-zinc-700">No orders assigned</span>
+                          <span className="text-[8px] md:text-[9px] text-zinc-700">{t("tms.planning.noOrdersAssigned")}</span>
                         </div>
                       </div>
                     </div>
@@ -2263,7 +2264,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
               <div className="border-b border-border/20 bg-red-500/5">
                 <div className="flex items-center gap-2 px-2 md:px-3 py-1.5">
                   <AlertTriangle className="h-3 w-3 text-red-400" />
-                  <span className="text-[9px] md:text-[10px] font-medium text-red-400 uppercase tracking-wider">Unassigned Orders ({vehicleOrders.unassigned.length})</span>
+                  <span className="text-[9px] md:text-[10px] font-medium text-red-400 uppercase tracking-wider">{t("tms.planning.unassignedOrders").replace("{count}", String(vehicleOrders.unassigned.length))}</span>
                 </div>
                 {vehicleOrders.unassigned.map(order => {
                   const span = getOrderTimeSpan(order);
@@ -2298,7 +2299,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
                     <div key={order.id} className="flex border-t border-red-500/10">
                       <div className="w-56 shrink-0 border-r border-border/30 px-3 py-2">
                         <div className="text-[10px] text-muted-foreground">
-                          {firstDate && lastDate ? `${firstDate} - ${lastDate}` : "No dates"}
+                          {firstDate && lastDate ? `${firstDate} - ${lastDate}` : t("tms.planning.noDates")}
                         </div>
                       </div>
                       <div className="flex-1 px-2 py-1.5">
@@ -2322,15 +2323,15 @@ onClick={() => setFleetStatusFilter(f.key)}>
             {/* Empty state */}
             {loading ? (
               <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">
-                <RefreshCw className="h-4 w-4 animate-spin mr-2" /> Loading dispatch data...
+                <RefreshCw className="h-4 w-4 animate-spin mr-2" /> {t("tms.planning.loadingDispatch")}
               </div>
             ) : orders.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <div className="w-14 h-14 rounded-2xl bg-muted/20 flex items-center justify-center mb-3">
                   <Calendar className="h-7 w-7 text-muted-foreground" />
                 </div>
-                <p className="text-sm font-medium">No orders found</p>
-                <p className="text-xs text-muted-foreground mt-1">Create orders and assign vehicles to see them here</p>
+                <p className="text-sm font-medium">{t("tms.planning.noOrdersFound")}</p>
+                <p className="text-xs text-muted-foreground mt-1">{t("tms.planning.noOrdersFoundDesc")}</p>
               </div>
             ) : null}
           </div>
@@ -2380,7 +2381,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 md:gap-2 mb-0.5 flex-wrap">
                   {selectedGanttTrip && <span className="text-[9px] md:text-[10px] font-mono text-muted-foreground/60">{selectedGanttTrip.trip_id.slice(0, 8)}</span>}
-                  <span className="text-xs md:text-sm font-semibold">{tripOrders.length} order{tripOrders.length !== 1 ? "s" : ""}</span>
+                  <span className="text-xs md:text-sm font-semibold">{tripOrders.length} {tripOrders.length !== 1 ? t("tms.planning.orders") : t("tms.planning.order")}</span>
                   {tripOrders.map(o => (
                     <Badge key={o.id} variant="outline" className={`text-[9px] md:text-[10px] cursor-pointer hover:opacity-80 ${STATUS_COLORS[o.status]}`}
                       onClick={() => window.open(`/admin/tms/orders/${o.id}`, "_blank")}>
@@ -2406,22 +2407,22 @@ onClick={() => setFleetStatusFilter(f.key)}>
               {/* Mobile: Compact info row */}
               <div className="flex md:hidden items-center gap-3 text-[10px] border-t border-border/20 pt-1.5 flex-wrap">
                 <span className="flex items-center gap-1">
-                  <span className="text-muted-foreground">Vehicle:</span>
+                  <span className="text-muted-foreground">{t("tms.planning.vehicle")}:</span>
                   <span className="font-medium">{vehicle?.plate_number || <span className="text-red-400">N/A</span>}</span>
                   {gpsPos && <SatelliteDish className="h-2.5 w-2.5 text-blue-400" />}
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="text-muted-foreground">Driver:</span>
+                  <span className="text-muted-foreground">{t("tms.planning.driver")}:</span>
                   <span className="font-medium">{driver?.name || <span className="text-red-400">N/A</span>}</span>
                   {driver?.is_online && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="text-muted-foreground">Cargo:</span>
+                  <span className="text-muted-foreground">{t("tms.planning.cargo")}:</span>
                   <span className="font-medium">{totalPallets}p · {totalWeight ? `${(totalWeight / 1000).toFixed(1)}t` : "-"}</span>
                 </span>
                 {totalRevenue > 0 && (
                   <span className="flex items-center gap-1">
-                    <span className="text-muted-foreground">Rev:</span>
+                    <span className="text-muted-foreground">{t("tms.planning.rev")}:</span>
                     <span className="font-medium text-emerald-400">EUR {totalRevenue.toLocaleString()}</span>
                   </span>
                 )}
@@ -2430,24 +2431,24 @@ onClick={() => setFleetStatusFilter(f.key)}>
               {/* Desktop: Info columns */}
               <div className="hidden md:flex items-center gap-5 text-xs shrink-0">
                 <div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Vehicle</div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">{t("tms.planning.vehicle")}</div>
                   <div className="font-medium flex items-center gap-1">
-                    {vehicle?.plate_number ? <>{vehicle.plate_number}{gpsPos && <SatelliteDish className="h-2.5 w-2.5 text-blue-400" />}</> : <span className="text-red-400">Unassigned</span>}
+                    {vehicle?.plate_number ? <>{vehicle.plate_number}{gpsPos && <SatelliteDish className="h-2.5 w-2.5 text-blue-400" />}</> : <span className="text-red-400">{t("tms.planning.unassigned")}</span>}
                   </div>
                 </div>
                 <div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Driver</div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">{t("tms.planning.driver")}</div>
                   <div className="font-medium flex items-center gap-1">
-                    {driver ? (<>{driver.is_online && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}{driver.name}</>) : <span className="text-red-400">Unassigned</span>}
+                    {driver ? (<>{driver.is_online && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}{driver.name}</>) : <span className="text-red-400">{t("tms.planning.unassigned")}</span>}
                   </div>
                 </div>
                 <div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Cargo</div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">{t("tms.planning.cargo")}</div>
                   <div className="font-medium">{totalPallets}p · {totalWeight ? `${(totalWeight / 1000).toFixed(1)}t` : "-"}</div>
                 </div>
                 {totalRevenue > 0 && (
                   <div>
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Revenue</div>
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">{t("tms.planning.revenue")}</div>
                     <div className="font-medium text-emerald-400">EUR {totalRevenue.toLocaleString()}</div>
                   </div>
                 )}
@@ -2462,7 +2463,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
                       const url = `/admin/tms/trips/${selectedGanttTrip.trip_id}/edit?vehicle=${selectedGanttTrip.vehicle_id || ""}`;
                       window.open(url, "_blank");
                     }}>
-                    <Edit2 className="h-3 w-3 md:mr-1" /><span className="hidden md:inline">Edit Trip</span>
+                    <Edit2 className="h-3 w-3 md:mr-1" /><span className="hidden md:inline">{t("tms.planning.editTrip")}</span>
                   </Button>
                 )}
                 <Button variant="ghost" size="icon" className="h-8 w-8 md:h-7 md:w-7" onClick={() => { setSelectedOrderId(null); setSelectedTripId(null); }}>
@@ -2504,14 +2505,14 @@ onClick={() => setFleetStatusFilter(f.key)}>
                       );
                       
                       const isForwarding = leg?.assignment_type === "forwarding" || leg?.assignment_type === "subcontract" || leg?.carrier_id;
-                      const legLabel = leg ? `Leg ${leg.leg_number}` : `RT ${ti + 1}`;
+                      const legLabel = leg ? `${t("tms.planning.leg")} ${leg.leg_number}` : `RT ${ti + 1}`;
                       
                       return (
                         <div key={`${trip.id}-${legIdx}`} className="shrink-0 flex-1 min-w-[220px] md:min-w-[280px]">
                           <div className="flex items-center gap-1.5 md:gap-2 mb-1 md:mb-1.5 flex-wrap">
                             <span className="text-[9px] md:text-[10px] font-mono text-muted-foreground/60">{legLabel}</span>
                             <Badge variant="outline" className={`text-[8px] md:text-[9px] h-4 ${isForwarding ? "bg-orange-500/10 text-orange-400 border-orange-500/20" : "bg-blue-500/10 text-blue-400 border-blue-500/20"}`}>
-                              {isForwarding ? "Subcontract" : "Own Fleet"}
+                              {isForwarding ? t("tms.planning.subcontract") : t("tms.planning.ownFleet")}
                             </Badge>
                             {!isForwarding && legVehicle?.plate_number && <span className="text-[9px] md:text-[10px] font-medium">{legVehicle.plate_number}</span>}
                             {!isForwarding && legDriver?.name && <span className="hidden sm:inline text-[9px] md:text-[10px] text-muted-foreground">{legDriver.name}</span>}
@@ -2537,7 +2538,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
                                 <div className={`group relative flex items-center gap-1 px-1.5 py-1 rounded ${isActive ? "bg-primary/10 ring-1 ring-primary/20" : ""} ${isEtaTarget ? "ring-1 ring-blue-400/30" : ""}`}>
                                   {STOP_STATUS_ICON[ts.status] || STOP_STATUS_ICON.pending}
                                   <div className="flex flex-col">
-                                    <span className="text-[10px] font-medium leading-tight whitespace-nowrap">{ts.city || ts.company_name || `Stop ${ts.sequence_order}`}</span>
+                                    <span className="text-[10px] font-medium leading-tight whitespace-nowrap">{ts.city || ts.company_name || `${t("tms.planning.stop")} ${ts.sequence_order}`}</span>
                                     <div className="flex items-center gap-1">
                                       <span className="text-[8px] text-muted-foreground/60 leading-tight whitespace-nowrap">{actionName}</span>
                                       {stopOrderRef && tripOrders.length > 1 && (
@@ -2555,11 +2556,11 @@ onClick={() => setFleetStatusFilter(f.key)}>
                                     {ts.address && <p className="text-[9px] text-muted-foreground">{ts.address}</p>}
                                     {stopOrderRef && <p className={`text-[9px] font-mono ${orderColor}`}>{stopOrderRef}</p>}
                                     {ts.planned_date && <p className="text-[9px] text-muted-foreground">{ts.planned_date}{ts.planned_time_from ? ` ${ts.planned_time_from}` : ""}{ts.planned_time_to ? `-${ts.planned_time_to}` : ""}</p>}
-                                    {ts.distance_to_km != null && <p className="text-[9px] text-muted-foreground">{Math.round(ts.distance_to_km)} km from prev</p>}
-                                    {ts.duration_to_minutes != null && <p className="text-[9px] text-muted-foreground">{Math.round(ts.duration_to_minutes)} min from prev</p>}
-                                    {isEtaTarget && eta && <p className="text-[9px] font-medium text-blue-400 mt-0.5">ETA: ~{eta.etaMinutes}min ({eta.remainingKm}km via {eta.source})</p>}
-                                    {ts.actual_arrival && <p className="text-[9px] text-emerald-400">Arrived: {new Date(ts.actual_arrival).toLocaleTimeString()}</p>}
-                                    {ts.actual_departure && <p className="text-[9px] text-emerald-400">Departed: {new Date(ts.actual_departure).toLocaleTimeString()}</p>}
+                                    {ts.distance_to_km != null && <p className="text-[9px] text-muted-foreground">{Math.round(ts.distance_to_km)} {t("tms.planning.kmFromPrev")}</p>}
+                                    {ts.duration_to_minutes != null && <p className="text-[9px] text-muted-foreground">{Math.round(ts.duration_to_minutes)} {t("tms.planning.minFromPrev")}</p>}
+                                    {isEtaTarget && eta && <p className="text-[9px] font-medium text-blue-400 mt-0.5">{t("tms.planning.eta")}: ~{eta.etaMinutes}min ({eta.remainingKm}km via {eta.source})</p>}
+                                    {ts.actual_arrival && <p className="text-[9px] text-emerald-400">{t("tms.planning.arrived")}: {new Date(ts.actual_arrival).toLocaleTimeString()}</p>}
+                                    {ts.actual_departure && <p className="text-[9px] text-emerald-400">{t("tms.planning.departed")}: {new Date(ts.actual_departure).toLocaleTimeString()}</p>}
                                     {ts.notes && <p className="text-[9px] text-muted-foreground/80 mt-0.5 italic">{ts.notes}</p>}
                                     <p className="text-[9px] font-medium mt-0.5 capitalize">{ts.status.replace("_", " ")}</p>
                                   </div>
@@ -2630,7 +2631,7 @@ onClick={() => setFleetStatusFilter(f.key)}>
             {/* No trips message (single order, no trips) */}
                 {!hasTrips && tripOrders.length <= 1 && (order.status === "confirmed_to_customer" || order.status === "in_execution") && (
               <div className="border-t border-border/30 px-5 py-1.5">
-                <span className="text-[10px] text-muted-foreground/50">No execution trips created yet</span>
+                <span className="text-[10px] text-muted-foreground/50">{t("tms.planning.noExecutionTrips")}</span>
               </div>
             )}
           </div>
