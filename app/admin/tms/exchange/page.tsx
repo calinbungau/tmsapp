@@ -45,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import { PublishToExchangeDialog } from "@/components/tms/publish-to-exchange-dialog";
 import { OfferDetailPanel } from "@/components/exchange/offer-detail-panel";
 import {
@@ -218,10 +219,11 @@ function EventLine({ offer }: { offer: FreightOffer }) {
   );
 }
 
-// ─── Page ──────────────────────────────────────────────────
+// ─── Page ────────────────────────────────────────��─────────
 export default function FreightExchangePage() {
   const { session: adminSession } = useAdminSession();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const router = useRouter();
   const supabase = createClient();
 
@@ -363,23 +365,27 @@ export default function FreightExchangePage() {
           if (r.dispatcher_decision === "accepted") curr.awarded = r.carrier_name || undefined;
           recipientMap.set(r.offer_id, curr);
 
-          const who = r.carrier_name || r.email || "A carrier";
+          const who = r.carrier_name || r.email || t("tms.exchange.event.aCarrier");
           if (r.response === "quoted" && r.responded_at) {
             const amount = r.quote_amount != null ? ` · ${fmtCurrency(r.quote_amount, r.quote_currency || "EUR")}` : "";
-            consider(r.offer_id, r.responded_at, "quote", `New quote from ${who}${amount}`);
+            consider(r.offer_id, r.responded_at, "quote", `${t("tms.exchange.event.newQuoteFrom").replace("{who}", who)}${amount}`);
           } else if (r.response && r.responded_at) {
-            const verb = r.response === "interested" ? "is interested" : r.response === "declined" ? "declined" : "responded";
-            consider(r.offer_id, r.responded_at, "response", `${who} ${verb}`);
+            const label = r.response === "interested"
+              ? t("tms.exchange.event.isInterested")
+              : r.response === "declined"
+              ? t("tms.exchange.event.declined")
+              : t("tms.exchange.event.responded");
+            consider(r.offer_id, r.responded_at, "response", label.replace("{who}", who));
           } else if (r.last_viewed_at) {
-            consider(r.offer_id, r.last_viewed_at, "view", `${who} viewed the offer`);
+            consider(r.offer_id, r.last_viewed_at, "view", t("tms.exchange.event.viewedOffer").replace("{who}", who));
           }
         });
 
         convData.forEach((c: any) => {
           const offerId = recipientToOffer.get(c.context_id);
           if (!offerId || !c.last_message_at) return;
-          const who = c.last_message_sender_name || "A carrier";
-          consider(offerId, c.last_message_at, "message", `New message from ${who}`);
+          const who = c.last_message_sender_name || t("tms.exchange.event.aCarrier");
+          consider(offerId, c.last_message_at, "message", t("tms.exchange.event.newMessageFrom").replace("{who}", who));
         });
 
         const enriched: FreightOffer[] = (data || []).map((o: FreightOffer) => {
@@ -421,8 +427,8 @@ export default function FreightExchangePage() {
     } catch (err) {
       console.error("Failed to fetch offers:", err);
       toast({
-        title: "Error",
-        description: "Failed to load freight offers",
+        title: t("tms.exchange.errorTitle"),
+        description: t("tms.exchange.loadFailed"),
         variant: "destructive",
       });
     } finally {
@@ -492,11 +498,11 @@ export default function FreightExchangePage() {
       if (error) throw error;
       if (selectedOfferId === deleteOfferId) selectOffer(null);
       setDeleteOfferId(null);
-      toast({ title: "Deleted", description: "Offer deleted successfully" });
+      toast({ title: t("tms.exchange.deletedTitle"), description: t("tms.exchange.deletedDesc") });
       fetchOffers();
       fetchStats();
     } catch {
-      toast({ title: "Error", description: "Failed to delete offer", variant: "destructive" });
+      toast({ title: t("tms.exchange.errorTitle"), description: t("tms.exchange.deleteFailed"), variant: "destructive" });
     } finally {
       setDeleting(false);
     }
@@ -523,18 +529,18 @@ export default function FreightExchangePage() {
             </button>
             <div>
               <h1 className="text-lg md:text-xl font-semibold text-foreground tracking-tight">
-                Freight Exchange
+                {t("tms.exchange.title")}
               </h1>
               <p className="text-[10px] md:text-xs text-muted-foreground mt-0.5">
-                {totalCount} offers total
+                {t("tms.exchange.offersTotal").replace("{count}", String(totalCount))}
               </p>
             </div>
           </div>
           <Button asChild size="sm" className="gap-1.5 h-9 md:h-8 px-3 md:px-4 text-xs">
             <Link href="/admin/tms/exchange/new">
               <Plus className="h-4 w-4 md:h-3.5 md:w-3.5" />
-              <span className="hidden sm:inline">New Offer</span>
-              <span className="sm:hidden">New</span>
+              <span className="hidden sm:inline">{t("tms.exchange.newOffer")}</span>
+              <span className="sm:hidden">{t("tms.exchange.new")}</span>
             </Link>
           </Button>
         </div>
@@ -547,7 +553,7 @@ export default function FreightExchangePage() {
             </div>
             <div>
               <p className="text-base md:text-lg font-semibold leading-none">{stats.total}</p>
-              <p className="text-[10px] text-muted-foreground">Total</p>
+              <p className="text-[10px] text-muted-foreground">{t("tms.exchange.stats.total")}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -556,7 +562,7 @@ export default function FreightExchangePage() {
             </div>
             <div>
               <p className="text-base md:text-lg font-semibold leading-none">{stats.published}</p>
-              <p className="text-[10px] text-muted-foreground">Published</p>
+              <p className="text-[10px] text-muted-foreground">{t("tms.exchange.stats.published")}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -565,7 +571,7 @@ export default function FreightExchangePage() {
             </div>
             <div>
               <p className="text-base md:text-lg font-semibold leading-none">{stats.bidding}</p>
-              <p className="text-[10px] text-muted-foreground">Bidding</p>
+              <p className="text-[10px] text-muted-foreground">{t("tms.exchange.stats.bidding")}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -574,7 +580,7 @@ export default function FreightExchangePage() {
             </div>
             <div>
               <p className="text-base md:text-lg font-semibold leading-none">{stats.awarded}</p>
-              <p className="text-[10px] text-muted-foreground">Awarded</p>
+              <p className="text-[10px] text-muted-foreground">{t("tms.exchange.stats.awarded")}</p>
             </div>
           </div>
         </div>
@@ -585,7 +591,7 @@ export default function FreightExchangePage() {
             <div className="relative flex-1 max-w-xs">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search offers..."
+                placeholder={t("tms.exchange.searchPlaceholder")}
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -602,17 +608,17 @@ export default function FreightExchangePage() {
               }}
             >
               <SelectTrigger className="w-[140px] h-9">
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder={t("tms.exchange.statusPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="published">Published</SelectItem>
-                <SelectItem value="bidding">Bidding</SelectItem>
-                <SelectItem value="awarded">Awarded</SelectItem>
-                <SelectItem value="booked">Booked</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-                <SelectItem value="expired">Expired</SelectItem>
+                <SelectItem value="all">{t("tms.exchange.allStatus")}</SelectItem>
+                <SelectItem value="draft">{t("tms.exchange.status.draft")}</SelectItem>
+                <SelectItem value="published">{t("tms.exchange.status.published")}</SelectItem>
+                <SelectItem value="bidding">{t("tms.exchange.status.bidding")}</SelectItem>
+                <SelectItem value="awarded">{t("tms.exchange.status.awarded")}</SelectItem>
+                <SelectItem value="booked">{t("tms.exchange.status.booked")}</SelectItem>
+                <SelectItem value="cancelled">{t("tms.exchange.status.cancelled")}</SelectItem>
+                <SelectItem value="expired">{t("tms.exchange.status.expired")}</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="ghost" size="icon" onClick={fetchOffers} className="h-9 w-9">
@@ -630,17 +636,17 @@ export default function FreightExchangePage() {
           ) : offers.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center px-4">
               <Package className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-medium text-foreground mb-1">No offers found</h3>
+              <h3 className="text-lg font-medium text-foreground mb-1">{t("tms.exchange.noOffersFound")}</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 {search || statusFilter !== "all"
-                  ? "Try adjusting your filters"
-                  : "Create your first freight offer to get started"}
+                  ? t("tms.exchange.adjustFilters")
+                  : t("tms.exchange.createFirst")}
               </p>
               {!search && statusFilter === "all" && (
                 <Button asChild>
                   <Link href="/admin/tms/exchange/new">
                     <Plus className="h-4 w-4 mr-2" />
-                    Create Offer
+                    {t("tms.exchange.createOffer")}
                   </Link>
                 </Button>
               )}
@@ -667,7 +673,7 @@ export default function FreightExchangePage() {
                           {offer.reference}
                         </span>
                         <Badge className={`text-[10px] ${STATUS_COLORS[offer.status] || "bg-muted"}`}>
-                          {STATUS_LABELS[offer.status] || offer.status}
+                          {t(`tms.exchange.status.${offer.status}`, STATUS_LABELS[offer.status] || offer.status)}
                         </Badge>
                         {offer.visibility === "private" ? (
                           <Lock className="h-3 w-3 text-muted-foreground" />
@@ -733,7 +739,7 @@ export default function FreightExchangePage() {
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="text-right mr-1">
                         {offer.pricing_mode === "open" ? (
-                          <span className="text-xs text-muted-foreground">Open</span>
+                          <span className="text-xs text-muted-foreground">{t("tms.exchange.open")}</span>
                         ) : (
                           <p className="text-sm font-semibold text-foreground">
                             {fmtCurrency(offer.price_amount, offer.currency)}
@@ -752,7 +758,7 @@ export default function FreightExchangePage() {
                           }}
                         >
                           <Send className="h-3.5 w-3.5" />
-                          <span className="hidden sm:inline">{offer.status === "draft" ? "Publish" : "Manage"}</span>
+                          <span className="hidden sm:inline">{offer.status === "draft" ? t("tms.exchange.publish") : t("tms.exchange.manage")}</span>
                         </Button>
                       )}
                       <Button
@@ -764,7 +770,7 @@ export default function FreightExchangePage() {
                       >
                         <Link href={`/admin/tms/exchange/${offer.id}/edit`}>
                           <Edit className="h-3.5 w-3.5" />
-                          <span className="hidden md:inline">Edit</span>
+                          <span className="hidden md:inline">{t("tms.exchange.edit")}</span>
                         </Link>
                       </Button>
                       <DropdownMenu>
@@ -776,12 +782,12 @@ export default function FreightExchangePage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => selectOffer(offer.id)}>
                             <Eye className="h-4 w-4 mr-2" />
-                            View
+                            {t("tms.exchange.view")}
                           </DropdownMenuItem>
                           <DropdownMenuItem asChild>
                             <Link href={`/admin/tms/exchange/${offer.id}/edit`}>
                               <Edit className="h-4 w-4 mr-2" />
-                              Edit
+                              {t("tms.exchange.edit")}
                             </Link>
                           </DropdownMenuItem>
                           {(offer.status === "draft" ||
@@ -794,7 +800,7 @@ export default function FreightExchangePage() {
                               }}
                             >
                               <Send className="h-4 w-4 mr-2" />
-                              {offer.status === "draft" ? "Publish" : "Manage"}
+                              {offer.status === "draft" ? t("tms.exchange.publish") : t("tms.exchange.manage")}
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem
@@ -805,7 +811,7 @@ export default function FreightExchangePage() {
                             }}
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
+                            {t("tms.exchange.delete")}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -826,10 +832,10 @@ export default function FreightExchangePage() {
                   {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalCount)} of{" "}
                 </span>
                 {totalCount}
-                <span className="hidden sm:inline"> offers</span>
+                <span className="hidden sm:inline"> {t("tms.exchange.ofOffers")}</span>
               </>
             ) : (
-              "No offers"
+              t("tms.exchange.noOffers")
             )}
           </p>
           {totalPages > 1 && (
@@ -896,9 +902,9 @@ export default function FreightExchangePage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="25">25 / pg</SelectItem>
-              <SelectItem value="50">50 / pg</SelectItem>
-              <SelectItem value="100">100 / pg</SelectItem>
+              <SelectItem value="25">{t("tms.exchange.perPage").replace("{n}", "25")}</SelectItem>
+              <SelectItem value="50">{t("tms.exchange.perPage").replace("{n}", "50")}</SelectItem>
+              <SelectItem value="100">{t("tms.exchange.perPage").replace("{n}", "100")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -939,20 +945,19 @@ export default function FreightExchangePage() {
       <AlertDialog open={!!deleteOfferId} onOpenChange={(open) => !open && setDeleteOfferId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Offer</AlertDialogTitle>
+            <AlertDialogTitle>{t("tms.exchange.deleteOfferTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this offer? This action cannot be undone and will
-              permanently remove the offer along with all its recipients and responses.
+              {t("tms.exchange.deleteOfferDesc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("tms.exchange.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={deleting}
               className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
             >
-              {deleting ? "Deleting..." : "Delete Offer"}
+              {deleting ? t("tms.exchange.deleting") : t("tms.exchange.deleteOfferAction")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

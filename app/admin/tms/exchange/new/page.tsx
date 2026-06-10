@@ -40,6 +40,7 @@ import {
   Route as RouteIcon,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import { AddressAutocomplete, ParsedAddress } from "@/components/ui/address-autocomplete";
 import { PublishToExchangeDialog } from "@/components/tms/publish-to-exchange-dialog";
 
@@ -252,6 +253,7 @@ interface LinkedOrder {
 function NewFreightOfferForm() {
   const { session: adminSession } = useAdminSession();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -429,7 +431,7 @@ function NewFreightOfferForm() {
       } catch (err: any) {
         console.error("Prefill from order error:", err);
         toast({
-          title: "Could not load order",
+          title: t("tms.exchangeNew.toast.couldNotLoadOrder"),
           description: err?.message || "Starting with a blank offer instead.",
           variant: "destructive",
         });
@@ -556,7 +558,7 @@ function NewFreightOfferForm() {
   // Remove stop
   const removeStop = (id: string) => {
     if (stops.length <= 2) {
-      toast({ title: "Minimum stops", description: "At least 2 stops required", variant: "destructive" });
+      toast({ title: t("tms.exchangeNew.toast.minStopsTitle"), description: t("tms.exchangeNew.toast.minStopsDesc"), variant: "destructive" });
       return;
     }
     setStops((prev) => prev.filter((s) => s.id !== id));
@@ -574,7 +576,7 @@ function NewFreightOfferForm() {
   // Save offer
   const handleSave = async (publish = false) => {
     if (!adminSession?.id) {
-      toast({ title: "Error", description: "Not authenticated", variant: "destructive" });
+      toast({ title: t("tms.exchangeNew.toast.errorTitle"), description: t("tms.exchangeNew.toast.notAuthenticated"), variant: "destructive" });
       return;
     }
 
@@ -582,11 +584,11 @@ function NewFreightOfferForm() {
     const firstStop = stops[0];
     const lastStop = stops[stops.length - 1];
     if (!firstStop.city && !firstStop.country) {
-      toast({ title: "Missing origin", description: "First stop needs at least city or country", variant: "destructive" });
+      toast({ title: t("tms.exchangeNew.toast.missingOriginTitle"), description: t("tms.exchangeNew.toast.missingOriginDesc"), variant: "destructive" });
       return;
     }
     if (!lastStop.city && !lastStop.country) {
-      toast({ title: "Missing destination", description: "Last stop needs at least city or country", variant: "destructive" });
+      toast({ title: t("tms.exchangeNew.toast.missingDestTitle"), description: t("tms.exchangeNew.toast.missingDestDesc"), variant: "destructive" });
       return;
     }
 
@@ -699,15 +701,15 @@ function NewFreightOfferForm() {
       }
 
       toast({
-        title: "Created",
-        description: `Offer ${reference} saved as draft`,
+        title: t("tms.exchangeNew.toast.createdTitle"),
+        description: t("tms.exchangeNew.toast.savedAsDraft").replace("{ref}", String(reference ?? "")),
       });
       // When linked to an order, land on the offer detail so the operator
       // can immediately manage distribution; otherwise back to the list.
       router.push(offer?.id ? `/admin/tms/exchange/${offer.id}` : "/admin/tms/exchange");
     } catch (err: any) {
       console.error("Save error:", err);
-      toast({ title: "Error", description: err?.message || "Failed to save offer", variant: "destructive" });
+      toast({ title: t("tms.exchangeNew.toast.errorTitle"), description: err?.message || t("tms.exchangeNew.toast.saveFailed"), variant: "destructive" });
     } finally {
       setSaving(false);
       setSaveMode(null);
@@ -728,12 +730,12 @@ function NewFreightOfferForm() {
             </button>
             <div>
               <h1 className="text-lg font-semibold text-foreground">
-                {linkedOrder ? "Publish on Exchange" : "New Freight Offer"}
+                {linkedOrder ? t("tms.exchangeNew.titlePublish") : t("tms.exchangeNew.titleNew")}
               </h1>
               <p className="text-sm text-muted-foreground">
                 {linkedOrder
-                  ? `Prefilled from order ${linkedOrder.reference_number || ""}`.trim()
-                  : "Create a standalone offer for the freight exchange"}
+                  ? t("tms.exchangeNew.subtitlePrefilled").replace("{ref}", linkedOrder.reference_number || "").trim()
+                  : t("tms.exchangeNew.subtitleStandalone")}
               </p>
             </div>
           </div>
@@ -744,7 +746,7 @@ function NewFreightOfferForm() {
               ) : (
                 <Save className="h-4 w-4 mr-2" />
               )}
-              Save as Draft
+              {t("tms.exchangeNew.saveDraft")}
             </Button>
             <Button onClick={() => handleSave(true)} disabled={saving}>
               {saving && saveMode === "publish" ? (
@@ -752,7 +754,7 @@ function NewFreightOfferForm() {
               ) : (
                 <Send className="h-4 w-4 mr-2" />
               )}
-              Publish Offer
+              {t("tms.exchangeNew.publishOffer")}
             </Button>
           </div>
         </div>
@@ -765,7 +767,7 @@ function NewFreightOfferForm() {
           {prefilling && (
             <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Loading order details…
+              {t("tms.exchangeNew.loadingOrder")}
             </div>
           )}
           {linkedOrder && !prefilling && (
@@ -774,14 +776,14 @@ function NewFreightOfferForm() {
                 <div className="flex items-center gap-2 min-w-0">
                   <ClipboardList className="h-4 w-4 text-orange-400 shrink-0" />
                   <span className="text-sm font-medium text-foreground">
-                    Linked to order{" "}
+                    {t("tms.exchangeNew.linkedTo")}{" "}
                     <span className="font-mono">{linkedOrder.reference_number || "—"}</span>
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                   {linkedOrder.customer_price != null && (
                     <span>
-                      Customer price{" "}
+                      {t("tms.exchangeNew.customerPrice")}{" "}
                       <span className="font-semibold text-foreground">
                         {new Intl.NumberFormat("en-US", {
                           style: "currency",
@@ -793,12 +795,12 @@ function NewFreightOfferForm() {
                   )}
                   {linkedOrder.margin != null && (
                     <span>
-                      Margin <span className="font-semibold text-foreground">{Math.round(linkedOrder.margin)}%</span>
+                      {t("tms.exchangeNew.margin")} <span className="font-semibold text-foreground">{Math.round(linkedOrder.margin)}%</span>
                     </span>
                   )}
                   {linkedOrder.estimated_distance_km != null && linkedOrder.estimated_distance_km > 0 && (
                     <span>
-                      Est.{" "}
+                      {t("tms.exchangeNew.est")}{" "}
                       <span className="font-semibold text-foreground">
                         {Math.round(linkedOrder.estimated_distance_km).toLocaleString()} km
                       </span>
@@ -812,10 +814,10 @@ function NewFreightOfferForm() {
           <div className="bg-card border border-border/50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-4">
               <FileText className="h-4 w-4 text-primary" />
-              <h2 className="font-medium text-foreground">Title (Optional)</h2>
+              <h2 className="font-medium text-foreground">{t("tms.exchangeNew.titleSection")}</h2>
             </div>
             <Input
-              placeholder="e.g., FTL Budapest to Munich"
+              placeholder={t("tms.exchangeNew.titlePlaceholder")}
               value={form.title}
               onChange={(e) => updateField("title", e.target.value)}
             />
@@ -891,9 +893,9 @@ function NewFreightOfferForm() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {STOP_TYPES.map((t) => (
-                                <SelectItem key={t.value} value={t.value}>
-                                  <span className={t.color}>{t.label}</span>
+                              {STOP_TYPES.map((t2) => (
+                                <SelectItem key={t2.value} value={t2.value}>
+                                  <span className={t2.color}>{t(`tms.exchangeNew.stopType.${t2.value}`, t2.label)}</span>
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -1452,7 +1454,7 @@ function NewFreightOfferForm() {
               ) : (
                 <Save className="h-4 w-4 mr-2" />
               )}
-              Save as Draft
+              {t("tms.exchangeNew.saveDraft")}
             </Button>
             <Button onClick={() => handleSave(true)} disabled={saving}>
               {saving && saveMode === "publish" ? (
@@ -1460,7 +1462,7 @@ function NewFreightOfferForm() {
               ) : (
                 <Send className="h-4 w-4 mr-2" />
               )}
-              Publish Offer
+              {t("tms.exchangeNew.publishOffer")}
             </Button>
           </div>
         </div>
