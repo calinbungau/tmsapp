@@ -1467,7 +1467,7 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
       {showChecklist && (
         <div className="border-t border-border/30 px-3 md:px-6 py-2 md:py-3">
           <div className="flex items-center gap-2 md:gap-3 mb-2">
-            <span className="text-[9px] md:text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Post-Delivery Checklist</span>
+            <span className="text-[9px] md:text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t("tms.forwarding.postDeliveryChecklist")}</span>
             <div className="flex-1 h-1.5 rounded-full bg-muted-foreground/10 overflow-hidden max-w-[120px] md:max-w-[200px]">
               <div className={`h-full rounded-full transition-all ${checkedCount === totalCount ? "bg-green-500" : "bg-amber-500"}`} style={{ width: `${(checkedCount / totalCount) * 100}%` }} />
             </div>
@@ -1475,7 +1475,6 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 md:gap-2">
             {checklistEntries.map(([key, item]) => {
-              const meta = CHECKLIST_LABELS[key];
               return (
                 <button
                   key={key}
@@ -1492,7 +1491,7 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
                     {item.checked && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                   </div>
                   <div className="min-w-0">
-                    <div className={`text-[10px] font-medium ${item.checked ? "text-green-400" : "text-foreground"}`}>{meta.label}</div>
+                    <div className={`text-[10px] font-medium ${item.checked ? "text-green-400" : "text-foreground"}`}>{t(`tms.forwarding.checklistLabels.${key}`)}</div>
                     {item.checked && item.date && <div className="text-[8px] text-muted-foreground/50">{item.date}</div>}
                   </div>
                 </button>
