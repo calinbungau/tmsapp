@@ -827,16 +827,16 @@ export default function TMSReportsPage() {
                   </Button>
                   {activeReport && (() => { const IconComp = ICON_MAP[activeReport.icon] || Package; return <IconComp className="h-5 w-5 text-primary shrink-0 hidden md:block" />; })()}
                   <div className="min-w-0">
-                    <h2 className="text-base font-semibold truncate">{reportTitle || activeReport?.nameEn || "Report"}</h2>
-                    <p className="text-xs text-muted-foreground">{dateFrom} → {dateTo} • {reportData.length} rows</p>
+                    <h2 className="text-base font-semibold truncate">{reportTitle || (activeReport ? getTMSReportName(activeReport, locale) : t("tms.reports.reportFallback"))}</h2>
+                    <p className="text-xs text-muted-foreground">{dateFrom} → {dateTo} • {t("tms.reports.rowsCount").replace("{count}", String(reportData.length))}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 pl-[52px] md:pl-0">
                   <Button variant="outline" size="sm" className="gap-1.5 h-10 md:h-8 flex-1 md:flex-none" onClick={() => generateReport()}>
-                    <RefreshCw className="h-4 w-4 md:h-3.5 md:w-3.5" /> Refresh
+                    <RefreshCw className="h-4 w-4 md:h-3.5 md:w-3.5" /> {t("tms.reports.refresh")}
                   </Button>
                   <Button variant="outline" size="sm" className="gap-1.5 h-10 md:h-8 flex-1 md:flex-none">
-                    <Download className="h-4 w-4 md:h-3.5 md:w-3.5" /> Export
+                    <Download className="h-4 w-4 md:h-3.5 md:w-3.5" /> {t("tms.reports.export")}
                   </Button>
                 </div>
               </div>
@@ -912,8 +912,8 @@ export default function TMSReportsPage() {
                     <div className="w-16 h-16 rounded-2xl bg-muted/30 flex items-center justify-center mx-auto mb-4">
                       <FileText className="h-8 w-8 text-muted-foreground/40" />
                     </div>
-                    <p className="text-sm font-medium text-muted-foreground">No data for the selected period</p>
-                    <p className="text-xs text-muted-foreground/60 mt-1">Try adjusting your date range or filters</p>
+                    <p className="text-sm font-medium text-muted-foreground">{t("tms.reports.noDataPeriod")}</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">{t("tms.reports.noDataHint")}</p>
                   </div>
                 </div>
               ) : (
@@ -989,14 +989,14 @@ export default function TMSReportsPage() {
                   {/* Table Footer */}
                   <div className="flex items-center justify-between mt-4 px-2">
                     <p className="text-xs text-muted-foreground">
-                      Showing {reportData.length} {reportData.length === 1 ? "row" : "rows"}
+                      {(reportData.length === 1 ? t("tms.reports.showingRow") : t("tms.reports.showingRows")).replace("{count}", String(reportData.length))}
                     </p>
                     <div className="flex items-center gap-2">
                       <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5">
-                        <Download className="h-3 w-3" /> Export CSV
+                        <Download className="h-3 w-3" /> {t("tms.reports.exportCsv")}
                       </Button>
                       <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5">
-                        <FileText className="h-3 w-3" /> Export PDF
+                        <FileText className="h-3 w-3" /> {t("tms.reports.exportPdf")}
                       </Button>
                     </div>
                   </div>
