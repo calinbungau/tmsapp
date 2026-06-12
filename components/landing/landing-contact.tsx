@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, type FormEvent } from "react"
+import { useRouter } from "next/navigation"
 import { ArrowRight, Building2, User, Phone, Mail, CheckCircle2, Loader2 } from "lucide-react"
 import { useLanguage } from "./language-provider"
 import { submitLead } from "@/app/actions/submit-lead"
@@ -9,6 +10,7 @@ type Fields = "company_name" | "contact_name" | "phone" | "email" | "message"
 
 export function LandingContact() {
   const { t, locale } = useLanguage()
+  const router = useRouter()
   const [values, setValues] = useState<Record<Fields, string>>({
     company_name: "",
     contact_name: "",
@@ -43,6 +45,7 @@ export function LandingContact() {
     if (res.ok) {
       setStatus("success")
       setValues({ company_name: "", contact_name: "", phone: "", email: "", message: "" })
+      router.push("/thank-you")
     } else {
       setStatus("error")
     }

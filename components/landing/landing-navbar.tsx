@@ -21,6 +21,8 @@ export function LandingNavbar() {
 
   const links = [
     { href: "#features", label: t.nav.features },
+    { href: "#tms", label: t.nav.tms },
+    { href: "#telematics", label: t.nav.telematics },
     { href: "#platform", label: t.nav.platform },
     { href: "#contact", label: t.nav.contact },
   ]

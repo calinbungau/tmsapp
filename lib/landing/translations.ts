@@ -6,6 +6,8 @@ export const translations = {
       features: "Funcționalități",
       platform: "Platformă",
       modules: "Module",
+      tms: "TMS",
+      telematics: "Telematică",
       contact: "Contact",
       login: "Autentificare",
       cta: "Solicită o demonstrație",
@@ -120,6 +122,101 @@ export const translations = {
       required: "Acest câmp este obligatoriu",
       invalidEmail: "Adresă de email invalidă",
     },
+    tms: {
+      badge: "Transport Management System",
+      title: "Sala de comandă a operațiunii tale.",
+      subtitle:
+        "Dispecerizare, planificare multi-leg, prețuri inteligente și execuție live — totul într-un singur ecran, conectat în timp real.",
+      confidential: "Previzualizare confidențială — date demonstrative",
+      previewLabel: "BNG TMS · Dispecerat",
+      points: [
+        {
+          title: "Board de dispecerat în timp real",
+          desc: "Comenzi, curse și statusuri actualizate live, cu drag & drop pe planificator și alerte de întârziere.",
+        },
+        {
+          title: "Prețuri și marje automate",
+          desc: "Prețul transportatorului derivat din prețul clientului, cu spread și €/km calculate instant.",
+        },
+        {
+          title: "Execuție și tracking live",
+          desc: "Vezi fiecare cursă pe hartă, cu ETA, stații și status partajabil cu clientul.",
+        },
+      ],
+      kpis: {
+        activeTrips: "Curse active",
+        revenue: "Venit luna aceasta",
+        margin: "Marjă medie",
+        onTime: "Livrări la timp",
+      },
+      board: {
+        title: "Board comenzi",
+        cols: { planned: "Planificat", transit: "În tranzit", delivered: "Livrat" },
+        route: "Rută",
+        carrier: "Transportator",
+        price: "Preț",
+      },
+      pricing: {
+        title: "Preț inteligent comandă",
+        customer: "Preț client",
+        carrier: "Preț transportator",
+        margin: "Marjă",
+        perKm: "€/km",
+        spread: "Spread",
+      },
+    },
+    telematics: {
+      badge: "Telematică & Tahograf",
+      title: "Date direct din vehicul, fără presupuneri.",
+      subtitle:
+        "Consum și nivel de combustibil, alerte de furt, date live de la tahograf și descărcare automată a fișierelor legale — totul integrat.",
+      confidential: "Previzualizare confidențială — date demonstrative",
+      points: [
+        {
+          title: "Consum și nivel combustibil",
+          desc: "Monitorizare în timp real a consumului real, nivelului din rezervor și detectarea scăderilor bruște (furt).",
+        },
+        {
+          title: "Date live de la tahograf",
+          desc: "Status șofer, timpi de condus și odihnă, viteză și activitate — direct de pe CAN-bus.",
+        },
+        {
+          title: "Descărcare fișiere tahograf",
+          desc: "Descărcare automată și programată a fișierelor .ddd de șofer și vehicul, arhivate legal.",
+        },
+      ],
+      fuel: {
+        consumptionTitle: "Consum combustibil",
+        consumptionUnit: "L/100km",
+        levelTitle: "Nivel rezervor",
+        theftAlert: "Alertă: scădere bruscă detectată",
+        avg: "Medie",
+        range: "Autonomie",
+      },
+      tacho: {
+        liveTitle: "Tahograf — date live",
+        driving: "Condus",
+        rest: "Odihnă",
+        available: "Disponibil",
+        work: "Muncă",
+        speed: "Viteză",
+        driverCard: "Card șofer",
+        remaining: "Timp rămas condus",
+        filesTitle: "Fișiere tahograf",
+        downloaded: "Descărcat",
+        pending: "În așteptare",
+        driver: "Șofer",
+        vehicle: "Vehicul",
+      },
+    },
+    thankYou: {
+      badge: "Solicitare primită",
+      title: "Mulțumim! Am primit solicitarea ta.",
+      subtitle:
+        "Echipa BNG Tracking te va contacta în cel mai scurt timp pentru a-ți pregăti o demonstrație personalizată.",
+      back: "Înapoi la pagina principală",
+      contact: "Sau scrie-ne direct la",
+    },
     footer: {
       tagline: "Platforma completă de transport și management al flotei.",
       product: "Produs",
@@ -133,6 +230,8 @@ export const translations = {
       features: "Features",
       platform: "Platform",
       modules: "Modules",
+      tms: "TMS",
+      telematics: "Telematics",
       contact: "Contact",
       login: "Log in",
       cta: "Request a demo",
@@ -245,6 +344,101 @@ export const translations = {
       error: "Something went wrong. Please try again.",
       required: "This field is required",
       invalidEmail: "Invalid email address",
+    },
+    tms: {
+      badge: "Transport Management System",
+      title: "The command center of your operation.",
+      subtitle:
+        "Dispatching, multi-leg planning, smart pricing and live execution — all in one screen, connected in real time.",
+      confidential: "Confidential preview — demo data",
+      previewLabel: "BNG TMS · Dispatch",
+      points: [
+        {
+          title: "Real-time dispatch board",
+          desc: "Orders, trips and statuses updated live, with drag & drop planning and delay alerts.",
+        },
+        {
+          title: "Automatic pricing & margins",
+          desc: "Carrier price derived from the customer price, with spread and €/km calculated instantly.",
+        },
+        {
+          title: "Live execution & tracking",
+          desc: "See every trip on the map, with ETA, stops and a status link you can share with the customer.",
+        },
+      ],
+      kpis: {
+        activeTrips: "Active trips",
+        revenue: "Revenue this month",
+        margin: "Average margin",
+        onTime: "On-time deliveries",
+      },
+      board: {
+        title: "Order board",
+        cols: { planned: "Planned", transit: "In transit", delivered: "Delivered" },
+        route: "Route",
+        carrier: "Carrier",
+        price: "Price",
+      },
+      pricing: {
+        title: "Smart order pricing",
+        customer: "Customer price",
+        carrier: "Carrier price",
+        margin: "Margin",
+        perKm: "€/km",
+        spread: "Spread",
+      },
+    },
+    telematics: {
+      badge: "Telematics & Tachograph",
+      title: "Data straight from the vehicle, no guessing.",
+      subtitle:
+        "Fuel consumption and level, theft alerts, live tachograph data and automatic download of legal files — all integrated.",
+      confidential: "Confidential preview — demo data",
+      points: [
+        {
+          title: "Fuel consumption & level",
+          desc: "Real-time monitoring of actual consumption, tank level and detection of sudden drops (theft).",
+        },
+        {
+          title: "Live tachograph data",
+          desc: "Driver status, driving and rest times, speed and activity — straight from the CAN-bus.",
+        },
+        {
+          title: "Tachograph file download",
+          desc: "Automatic, scheduled download of driver and vehicle .ddd files, legally archived.",
+        },
+      ],
+      fuel: {
+        consumptionTitle: "Fuel consumption",
+        consumptionUnit: "L/100km",
+        levelTitle: "Tank level",
+        theftAlert: "Alert: sudden drop detected",
+        avg: "Average",
+        range: "Range",
+      },
+      tacho: {
+        liveTitle: "Tachograph — live data",
+        driving: "Driving",
+        rest: "Rest",
+        available: "Available",
+        work: "Work",
+        speed: "Speed",
+        driverCard: "Driver card",
+        remaining: "Remaining driving time",
+        filesTitle: "Tachograph files",
+        downloaded: "Downloaded",
+        pending: "Pending",
+        driver: "Driver",
+        vehicle: "Vehicle",
+      },
+    },
+    thankYou: {
+      badge: "Request received",
+      title: "Thank you! We've received your request.",
+      subtitle:
+        "The BNG Tracking team will get in touch shortly to prepare a personalized demo for you.",
+      back: "Back to homepage",
+      contact: "Or write to us directly at",
     },
     footer: {
       tagline: "The complete transport and fleet management platform.",
