@@ -4,6 +4,8 @@ import { LandingNavbar } from "@/components/landing/landing-navbar"
 import { LandingHero } from "@/components/landing/landing-hero"
 import { LandingStats } from "@/components/landing/landing-stats"
 import { LandingFeatures } from "@/components/landing/landing-features"
+import { LandingTms } from "@/components/landing/landing-tms"
+import { LandingTelematics } from "@/components/landing/landing-telematics"
 import { LandingPlatform } from "@/components/landing/landing-platform"
 import { LandingContact } from "@/components/landing/landing-contact"
 import { LandingFooter } from "@/components/landing/landing-footer"
@@ -28,6 +30,8 @@ export default function LandingPage() {
           <LandingHero />
           <LandingStats />
           <LandingFeatures />
+          <LandingTms />
+          <LandingTelematics />
           <LandingPlatform />
           <LandingContact />
         </main>
