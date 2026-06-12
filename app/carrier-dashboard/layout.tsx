@@ -8,6 +8,7 @@ import { Truck, Package, MessageSquare, User, LogOut, Loader2 } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { useCarrierSession } from "@/hooks/use-carrier-session";
 import { CarrierPushManager } from "@/components/carrier/carrier-push-manager";
+import { ThemeSync } from "@/components/theme-sync";
 
 declare global {
   interface Window {
@@ -129,6 +130,7 @@ export default function CarrierDashboardLayout({
 
   return (
     <div className="min-h-screen bg-muted/30 flex flex-col">
+      <ThemeSync />
       <header className="sticky top-0 z-40 bg-card border-b">
         <div className="flex items-center justify-between px-4 h-14">
           <div className="flex items-center gap-2 min-w-0">

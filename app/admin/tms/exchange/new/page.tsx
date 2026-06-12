@@ -40,6 +40,7 @@ import {
   Route as RouteIcon,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import { AddressAutocomplete, ParsedAddress } from "@/components/ui/address-autocomplete";
 import { PublishToExchangeDialog } from "@/components/tms/publish-to-exchange-dialog";
 
@@ -252,6 +253,7 @@ interface LinkedOrder {
 function NewFreightOfferForm() {
   const { session: adminSession } = useAdminSession();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -429,7 +431,7 @@ function NewFreightOfferForm() {
       } catch (err: any) {
         console.error("Prefill from order error:", err);
         toast({
-          title: "Could not load order",
+          title: t("tms.exchangeNew.toast.couldNotLoadOrder"),
           description: err?.message || "Starting with a blank offer instead.",
           variant: "destructive",
         });
@@ -556,7 +558,7 @@ function NewFreightOfferForm() {
   // Remove stop
   const removeStop = (id: string) => {
     if (stops.length <= 2) {
-      toast({ title: "Minimum stops", description: "At least 2 stops required", variant: "destructive" });
+      toast({ title: t("tms.exchangeNew.toast.minStopsTitle"), description: t("tms.exchangeNew.toast.minStopsDesc"), variant: "destructive" });
       return;
     }
     setStops((prev) => prev.filter((s) => s.id !== id));
@@ -574,7 +576,7 @@ function NewFreightOfferForm() {
   // Save offer
   const handleSave = async (publish = false) => {
     if (!adminSession?.id) {
-      toast({ title: "Error", description: "Not authenticated", variant: "destructive" });
+      toast({ title: t("tms.exchangeNew.toast.errorTitle"), description: t("tms.exchangeNew.toast.notAuthenticated"), variant: "destructive" });
       return;
     }
 
@@ -582,11 +584,11 @@ function NewFreightOfferForm() {
     const firstStop = stops[0];
     const lastStop = stops[stops.length - 1];
     if (!firstStop.city && !firstStop.country) {
-      toast({ title: "Missing origin", description: "First stop needs at least city or country", variant: "destructive" });
+      toast({ title: t("tms.exchangeNew.toast.missingOriginTitle"), description: t("tms.exchangeNew.toast.missingOriginDesc"), variant: "destructive" });
       return;
     }
     if (!lastStop.city && !lastStop.country) {
-      toast({ title: "Missing destination", description: "Last stop needs at least city or country", variant: "destructive" });
+      toast({ title: t("tms.exchangeNew.toast.missingDestTitle"), description: t("tms.exchangeNew.toast.missingDestDesc"), variant: "destructive" });
       return;
     }
 
@@ -699,15 +701,15 @@ function NewFreightOfferForm() {
       }
 
       toast({
-        title: "Created",
-        description: `Offer ${reference} saved as draft`,
+        title: t("tms.exchangeNew.toast.createdTitle"),
+        description: t("tms.exchangeNew.toast.savedAsDraft").replace("{ref}", String(reference ?? "")),
       });
       // When linked to an order, land on the offer detail so the operator
       // can immediately manage distribution; otherwise back to the list.
       router.push(offer?.id ? `/admin/tms/exchange/${offer.id}` : "/admin/tms/exchange");
     } catch (err: any) {
       console.error("Save error:", err);
-      toast({ title: "Error", description: err?.message || "Failed to save offer", variant: "destructive" });
+      toast({ title: t("tms.exchangeNew.toast.errorTitle"), description: err?.message || t("tms.exchangeNew.toast.saveFailed"), variant: "destructive" });
     } finally {
       setSaving(false);
       setSaveMode(null);
@@ -728,12 +730,12 @@ function NewFreightOfferForm() {
             </button>
             <div>
               <h1 className="text-lg font-semibold text-foreground">
-                {linkedOrder ? "Publish on Exchange" : "New Freight Offer"}
+                {linkedOrder ? t("tms.exchangeNew.titlePublish") : t("tms.exchangeNew.titleNew")}
               </h1>
               <p className="text-sm text-muted-foreground">
                 {linkedOrder
-                  ? `Prefilled from order ${linkedOrder.reference_number || ""}`.trim()
-                  : "Create a standalone offer for the freight exchange"}
+                  ? t("tms.exchangeNew.subtitlePrefilled").replace("{ref}", linkedOrder.reference_number || "").trim()
+                  : t("tms.exchangeNew.subtitleStandalone")}
               </p>
             </div>
           </div>
@@ -744,7 +746,7 @@ function NewFreightOfferForm() {
               ) : (
                 <Save className="h-4 w-4 mr-2" />
               )}
-              Save as Draft
+              {t("tms.exchangeNew.saveDraft")}
             </Button>
             <Button onClick={() => handleSave(true)} disabled={saving}>
               {saving && saveMode === "publish" ? (
@@ -752,7 +754,7 @@ function NewFreightOfferForm() {
               ) : (
                 <Send className="h-4 w-4 mr-2" />
               )}
-              Publish Offer
+              {t("tms.exchangeNew.publishOffer")}
             </Button>
           </div>
         </div>
@@ -765,7 +767,7 @@ function NewFreightOfferForm() {
           {prefilling && (
             <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Loading order details…
+              {t("tms.exchangeNew.loadingOrder")}
             </div>
           )}
           {linkedOrder && !prefilling && (
@@ -774,14 +776,14 @@ function NewFreightOfferForm() {
                 <div className="flex items-center gap-2 min-w-0">
                   <ClipboardList className="h-4 w-4 text-orange-400 shrink-0" />
                   <span className="text-sm font-medium text-foreground">
-                    Linked to order{" "}
+                    {t("tms.exchangeNew.linkedTo")}{" "}
                     <span className="font-mono">{linkedOrder.reference_number || "—"}</span>
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                   {linkedOrder.customer_price != null && (
                     <span>
-                      Customer price{" "}
+                      {t("tms.exchangeNew.customerPrice")}{" "}
                       <span className="font-semibold text-foreground">
                         {new Intl.NumberFormat("en-US", {
                           style: "currency",
@@ -793,12 +795,12 @@ function NewFreightOfferForm() {
                   )}
                   {linkedOrder.margin != null && (
                     <span>
-                      Margin <span className="font-semibold text-foreground">{Math.round(linkedOrder.margin)}%</span>
+                      {t("tms.exchangeNew.margin")} <span className="font-semibold text-foreground">{Math.round(linkedOrder.margin)}%</span>
                     </span>
                   )}
                   {linkedOrder.estimated_distance_km != null && linkedOrder.estimated_distance_km > 0 && (
                     <span>
-                      Est.{" "}
+                      {t("tms.exchangeNew.est")}{" "}
                       <span className="font-semibold text-foreground">
                         {Math.round(linkedOrder.estimated_distance_km).toLocaleString()} km
                       </span>
@@ -812,10 +814,10 @@ function NewFreightOfferForm() {
           <div className="bg-card border border-border/50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-4">
               <FileText className="h-4 w-4 text-primary" />
-              <h2 className="font-medium text-foreground">Title (Optional)</h2>
+              <h2 className="font-medium text-foreground">{t("tms.exchangeNew.titleSection")}</h2>
             </div>
             <Input
-              placeholder="e.g., FTL Budapest to Munich"
+              placeholder={t("tms.exchangeNew.titlePlaceholder")}
               value={form.title}
               onChange={(e) => updateField("title", e.target.value)}
             />
@@ -826,8 +828,8 @@ function NewFreightOfferForm() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-primary" />
-                <h2 className="font-medium text-foreground">Route</h2>
-                <span className="text-xs text-muted-foreground">({stops.length} stops)</span>
+                <h2 className="font-medium text-foreground">{t("tms.exchangeNew.route")}</h2>
+                <span className="text-xs text-muted-foreground">{t("tms.exchangeNew.stopsCount").replace("{n}", String(stops.length))}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -838,7 +840,7 @@ function NewFreightOfferForm() {
                   className="h-8 text-xs"
                 >
                   <Plus className="h-3 w-3 mr-1" />
-                  Add Stop
+                  {t("tms.exchangeNew.addStop")}
                 </Button>
               </div>
             </div>
@@ -891,9 +893,9 @@ function NewFreightOfferForm() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {STOP_TYPES.map((t) => (
-                                <SelectItem key={t.value} value={t.value}>
-                                  <span className={t.color}>{t.label}</span>
+                              {STOP_TYPES.map((t2) => (
+                                <SelectItem key={t2.value} value={t2.value}>
+                                  <span className={t2.color}>{t(`tms.exchangeNew.stopType.${t2.value}`, t2.label)}</span>
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -919,11 +921,11 @@ function NewFreightOfferForm() {
                     {/* Address Autocomplete */}
                     <div className="mb-4">
                       <Label className="text-xs text-muted-foreground mb-1.5 block">
-                        Search Address
+                        {t("tms.exchangeNew.searchAddress")}
                       </Label>
                       <AddressAutocomplete
                         value={stop.address}
-                        placeholder="Start typing address..."
+                        placeholder={t("tms.exchangeNew.addressPlaceholder")}
                         onSelect={(result) => handleAddressSelect(stop.id, result)}
                         onClear={() => {
                           updateStop(stop.id, "address", "");
@@ -946,10 +948,10 @@ function NewFreightOfferForm() {
                       <div>
                         <Label className="text-xs text-muted-foreground flex items-center gap-1 mb-1.5">
                           <Building2 className="h-3 w-3" />
-                          Company
+                          {t("tms.exchangeNew.company")}
                         </Label>
                         <Input
-                          placeholder="Company name"
+                          placeholder={t("tms.exchangeNew.companyPlaceholder")}
                           value={stop.company_name}
                           onChange={(e) => updateStop(stop.id, "company_name", e.target.value)}
                           className="h-9"
@@ -957,10 +959,10 @@ function NewFreightOfferForm() {
                       </div>
                       <div>
                         <Label className="text-xs text-muted-foreground mb-1.5 block">
-                          Reference
+                          {t("tms.exchangeNew.reference")}
                         </Label>
                         <Input
-                          placeholder="Loading reference"
+                          placeholder={t("tms.exchangeNew.referencePlaceholder")}
                           value={stop.reference_number}
                           onChange={(e) => updateStop(stop.id, "reference_number", e.target.value)}
                           className="h-9"
@@ -972,10 +974,10 @@ function NewFreightOfferForm() {
                     <div className="grid md:grid-cols-2 gap-4 mt-3">
                       <div>
                         <Label className="text-xs text-muted-foreground mb-1.5 block">
-                          Contact Name
+                          {t("tms.exchangeNew.contactName")}
                         </Label>
                         <Input
-                          placeholder="Contact person"
+                          placeholder={t("tms.exchangeNew.contactPlaceholder")}
                           value={stop.contact_name}
                           onChange={(e) => updateStop(stop.id, "contact_name", e.target.value)}
                           className="h-9"
@@ -984,7 +986,7 @@ function NewFreightOfferForm() {
                       <div>
                         <Label className="text-xs text-muted-foreground flex items-center gap-1 mb-1.5">
                           <Phone className="h-3 w-3" />
-                          Phone
+                          {t("tms.exchangeNew.phone")}
                         </Label>
                         <Input
                           type="tel"
@@ -1001,7 +1003,7 @@ function NewFreightOfferForm() {
                       <div>
                         <Label className="text-xs text-muted-foreground flex items-center gap-1 mb-1.5">
                           <Calendar className="h-3 w-3" />
-                          Date From
+                          {t("tms.exchangeNew.dateFrom")}
                         </Label>
                         <Input
                           type="date"
@@ -1012,7 +1014,7 @@ function NewFreightOfferForm() {
                       </div>
                       <div>
                         <Label className="text-xs text-muted-foreground mb-1.5 block">
-                          Date To
+                          {t("tms.exchangeNew.dateTo")}
                         </Label>
                         <Input
                           type="date"
@@ -1023,7 +1025,7 @@ function NewFreightOfferForm() {
                       </div>
                       <div>
                         <Label className="text-xs text-muted-foreground mb-1.5 block">
-                          Time From
+                          {t("tms.exchangeNew.timeFrom")}
                         </Label>
                         <Input
                           type="time"
@@ -1034,7 +1036,7 @@ function NewFreightOfferForm() {
                       </div>
                       <div>
                         <Label className="text-xs text-muted-foreground mb-1.5 block">
-                          Time To
+                          {t("tms.exchangeNew.timeTo")}
                         </Label>
                         <Input
                           type="time"
@@ -1051,7 +1053,7 @@ function NewFreightOfferForm() {
 
             {/* Quick Add Buttons */}
             <div className="flex items-center gap-2 mt-4 pt-4 border-t border-border/50">
-              <span className="text-xs text-muted-foreground">Quick add:</span>
+              <span className="text-xs text-muted-foreground">{t("tms.exchangeNew.quickAdd")}</span>
               <Button
                 type="button"
                 variant="outline"
@@ -1060,7 +1062,7 @@ function NewFreightOfferForm() {
                 className="h-7 text-xs text-blue-600 border-blue-200 hover:bg-blue-50"
               >
                 <Plus className="h-3 w-3 mr-1" />
-                Loading
+                {t("tms.exchangeNew.stopType.load")}
               </Button>
               <Button
                 type="button"
@@ -1070,7 +1072,7 @@ function NewFreightOfferForm() {
                 className="h-7 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50"
               >
                 <Plus className="h-3 w-3 mr-1" />
-                Unloading
+                {t("tms.exchangeNew.stopType.unload")}
               </Button>
               <Button
                 type="button"
@@ -1080,7 +1082,7 @@ function NewFreightOfferForm() {
                 className="h-7 text-xs text-amber-600 border-amber-200 hover:bg-amber-50"
               >
                 <Plus className="h-3 w-3 mr-1" />
-                Intermediate
+                {t("tms.exchangeNew.stopType.intermediate")}
               </Button>
             </div>
           </div>
@@ -1089,14 +1091,14 @@ function NewFreightOfferForm() {
           <div className="bg-card border border-border/50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-4">
               <Package className="h-4 w-4 text-primary" />
-              <h2 className="font-medium text-foreground">Cargo &amp; Vehicle</h2>
+              <h2 className="font-medium text-foreground">{t("tms.exchangeNew.cargoVehicle")}</h2>
             </div>
             <div className="grid md:grid-cols-3 gap-4">
               <div>
-                <Label className="text-xs text-muted-foreground">Vehicle Type</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeNew.vehicleType")}</Label>
                 <Select value={form.vehicle_type} onValueChange={(v) => updateField("vehicle_type", v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select..." />
+                    <SelectValue placeholder={t("tms.exchangeNew.selectPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
                     {VEHICLE_TYPES.map((t) => (
@@ -1106,10 +1108,10 @@ function NewFreightOfferForm() {
                 </Select>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Body Type</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeNew.bodyType")}</Label>
                 <Select value={form.body_type} onValueChange={(v) => updateField("body_type", v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select..." />
+                    <SelectValue placeholder={t("tms.exchangeNew.selectPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
                     {BODY_TYPES.map((t) => (
@@ -1119,10 +1121,10 @@ function NewFreightOfferForm() {
                 </Select>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">ADR Class</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeNew.adrClass")}</Label>
                 <Select value={form.adr_class} onValueChange={(v) => updateField("adr_class", v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select..." />
+                    <SelectValue placeholder={t("tms.exchangeNew.selectPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
                     {ADR_CLASSES.map((t) => (
@@ -1135,7 +1137,7 @@ function NewFreightOfferForm() {
 
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
               <div>
-                <Label className="text-xs text-muted-foreground">Weight (kg)</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeNew.weight")}</Label>
                 <Input
                   type="number"
                   placeholder="e.g., 24000"
@@ -1144,7 +1146,7 @@ function NewFreightOfferForm() {
                 />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">LDM</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeNew.ldm")}</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -1154,7 +1156,7 @@ function NewFreightOfferForm() {
                 />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Pallets</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeNew.pallets")}</Label>
                 <Input
                   type="number"
                   placeholder="e.g., 33"
@@ -1163,7 +1165,7 @@ function NewFreightOfferForm() {
                 />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Volume (m³)</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeNew.volume")}</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -1173,7 +1175,7 @@ function NewFreightOfferForm() {
                 />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Length (m)</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeNew.length")}</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -1189,7 +1191,7 @@ function NewFreightOfferForm() {
               <div>
                 <Label className="text-xs text-muted-foreground flex items-center gap-1">
                   <Thermometer className="h-3 w-3" />
-                  Temp Min (°C)
+                  {t("tms.exchangeNew.tempMin")}
                 </Label>
                 <Input
                   type="number"
@@ -1201,7 +1203,7 @@ function NewFreightOfferForm() {
               <div>
                 <Label className="text-xs text-muted-foreground flex items-center gap-1">
                   <Thermometer className="h-3 w-3" />
-                  Temp Max (°C)
+                  {t("tms.exchangeNew.tempMax")}
                 </Label>
                 <Input
                   type="number"
@@ -1213,9 +1215,9 @@ function NewFreightOfferForm() {
             </div>
 
             <div className="mt-4">
-              <Label className="text-xs text-muted-foreground">Goods Description</Label>
+              <Label className="text-xs text-muted-foreground">{t("tms.exchangeNew.goodsDescription")}</Label>
               <Textarea
-                placeholder="Description of goods, special requirements..."
+                placeholder={t("tms.exchangeNew.goodsPlaceholder")}
                 value={form.goods_description}
                 onChange={(e) => updateField("goods_description", e.target.value)}
                 rows={2}
@@ -1227,7 +1229,7 @@ function NewFreightOfferForm() {
           <div className="bg-card border border-border/50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-4">
               <DollarSign className="h-4 w-4 text-primary" />
-              <h2 className="font-medium text-foreground">Pricing</h2>
+              <h2 className="font-medium text-foreground">{t("tms.exchangeNew.pricing")}</h2>
             </div>
 
             {/* Distance + source pricing */}
@@ -1236,7 +1238,7 @@ function NewFreightOfferForm() {
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground flex items-center gap-1">
                     <RouteIcon className="h-3 w-3" />
-                    Distance
+                    {t("tms.exchangeNew.distance")}
                   </span>
                   <button
                     type="button"
@@ -1244,7 +1246,7 @@ function NewFreightOfferForm() {
                     disabled={routeLoading}
                     className="text-[11px] text-primary hover:underline disabled:opacity-50"
                   >
-                    {routeLoading ? "…" : routeDistanceKm != null ? "Recalc" : "Calculate"}
+                    {routeLoading ? "…" : routeDistanceKm != null ? t("tms.exchangeNew.recalc") : t("tms.exchangeNew.calculate")}
                   </button>
                 </div>
                 <p className="font-semibold text-sm mt-1">
@@ -1253,13 +1255,13 @@ function NewFreightOfferForm() {
                   ) : routeDistanceKm != null ? (
                     `${routeDistanceKm.toLocaleString()} km`
                   ) : (
-                    <span className="text-muted-foreground">Not set</span>
+                    <span className="text-muted-foreground">{t("tms.exchangeNew.notSet")}</span>
                   )}
                 </p>
               </div>
               {linkedOrder?.customer_price != null && (
                 <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
-                  <span className="text-xs text-muted-foreground">Customer price</span>
+                  <span className="text-xs text-muted-foreground">{t("tms.exchangeNew.customerPrice")}</span>
                   <p className="font-semibold text-sm mt-1">
                     {new Intl.NumberFormat("en-US", {
                       style: "currency",
@@ -1271,7 +1273,7 @@ function NewFreightOfferForm() {
               )}
               {impliedMargin != null && (
                 <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
-                  <span className="text-xs text-muted-foreground">Implied margin</span>
+                  <span className="text-xs text-muted-foreground">{t("tms.exchangeNew.impliedMargin")}</span>
                   <p
                     className={`font-semibold text-sm mt-1 ${
                       impliedMargin < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"
@@ -1289,7 +1291,7 @@ function NewFreightOfferForm() {
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-medium text-foreground flex items-center gap-1.5">
                     <Calculator className="h-3.5 w-3.5 text-primary" />
-                    Suggest carrier price
+                    {t("tms.exchangeNew.suggestCarrierPrice")}
                   </span>
                   <div className="inline-flex rounded-md border border-border overflow-hidden">
                     <button
@@ -1301,7 +1303,7 @@ function NewFreightOfferForm() {
                       }`}
                     >
                       <Percent className="h-3 w-3" />
-                      Margin
+                      {t("tms.exchangeNew.margin")}
                     </button>
                     <button
                       type="button"
@@ -1319,7 +1321,7 @@ function NewFreightOfferForm() {
                 <div className="flex items-end gap-3">
                   {pricingCalcMode === "margin" ? (
                     <div className="flex-1">
-                      <Label className="text-xs text-muted-foreground">Target margin %</Label>
+                      <Label className="text-xs text-muted-foreground">{t("tms.exchangeNew.targetMargin")}</Label>
                       <Input
                         type="number"
                         step="0.5"
@@ -1330,7 +1332,7 @@ function NewFreightOfferForm() {
                     </div>
                   ) : (
                     <div className="flex-1">
-                      <Label className="text-xs text-muted-foreground">Rate per km ({calcCurrency})</Label>
+                      <Label className="text-xs text-muted-foreground">{t("tms.exchangeNew.ratePerKm").replace("{currency}", calcCurrency)}</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -1341,7 +1343,7 @@ function NewFreightOfferForm() {
                     </div>
                   )}
                   <div className="flex-1">
-                    <span className="text-xs text-muted-foreground">Suggested</span>
+                    <span className="text-xs text-muted-foreground">{t("tms.exchangeNew.suggested")}</span>
                     <p className="text-lg font-bold text-foreground leading-9">
                       {suggestedPrice != null
                         ? new Intl.NumberFormat("en-US", {
@@ -1366,7 +1368,7 @@ function NewFreightOfferForm() {
                       }));
                     }}
                   >
-                    Apply
+                    {t("tms.exchangeNew.apply")}
                   </Button>
                 </div>
               </div>
@@ -1374,15 +1376,15 @@ function NewFreightOfferForm() {
 
             <div className="grid md:grid-cols-4 gap-4">
               <div>
-                <Label className="text-xs text-muted-foreground">Pricing Mode</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeNew.pricingMode")}</Label>
                 <Select value={form.pricing_mode} onValueChange={(v) => updateField("pricing_mode", v)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="open">Open (Carriers Propose)</SelectItem>
-                    <SelectItem value="target">Target Price</SelectItem>
-                    <SelectItem value="fixed">Fixed Price</SelectItem>
+                    <SelectItem value="open">{t("tms.exchangeNew.pricingOpen")}</SelectItem>
+                    <SelectItem value="target">{t("tms.exchangeNew.pricingTarget")}</SelectItem>
+                    <SelectItem value="fixed">{t("tms.exchangeNew.pricingFixed")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1390,18 +1392,18 @@ function NewFreightOfferForm() {
                 <>
                   <div>
                     <Label className="text-xs text-muted-foreground">
-                      {form.pricing_mode === "fixed" ? "Fixed Price" : "Target Price"}
+                      {form.pricing_mode === "fixed" ? t("tms.exchangeNew.fixedPrice") : t("tms.exchangeNew.targetPrice")}
                     </Label>
                     <Input
                       type="number"
                       step="0.01"
-                      placeholder="Amount"
+                      placeholder={t("tms.exchangeNew.amount")}
                       value={form.price_amount}
                       onChange={(e) => updateField("price_amount", e.target.value)}
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">Currency</Label>
+                    <Label className="text-xs text-muted-foreground">{t("tms.exchangeNew.currency")}</Label>
                     <Select value={form.currency} onValueChange={(v) => updateField("currency", v)}>
                       <SelectTrigger>
                         <SelectValue />
@@ -1416,7 +1418,7 @@ function NewFreightOfferForm() {
                 </>
               )}
               <div>
-                <Label className="text-xs text-muted-foreground">Payment Terms (days)</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeNew.paymentTerms")}</Label>
                 <Input
                   type="number"
                   placeholder="e.g., 30"
@@ -1431,10 +1433,10 @@ function NewFreightOfferForm() {
           <div className="bg-card border border-border/50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-4">
               <FileText className="h-4 w-4 text-primary" />
-              <h2 className="font-medium text-foreground">Notes</h2>
+              <h2 className="font-medium text-foreground">{t("tms.exchangeNew.notes")}</h2>
             </div>
             <Textarea
-              placeholder="Additional information, requirements, instructions..."
+              placeholder={t("tms.exchangeNew.notesPlaceholder")}
               value={form.notes}
               onChange={(e) => updateField("notes", e.target.value)}
               rows={3}
@@ -1444,7 +1446,7 @@ function NewFreightOfferForm() {
           {/* Bottom Save Buttons */}
           <div className="flex justify-end gap-3 pb-6">
             <Button variant="ghost" onClick={() => router.push("/admin/tms/exchange")}>
-              Cancel
+              {t("tms.exchangeNew.cancel")}
             </Button>
             <Button variant="outline" onClick={() => handleSave(false)} disabled={saving}>
               {saving && saveMode === "draft" ? (
@@ -1452,7 +1454,7 @@ function NewFreightOfferForm() {
               ) : (
                 <Save className="h-4 w-4 mr-2" />
               )}
-              Save as Draft
+              {t("tms.exchangeNew.saveDraft")}
             </Button>
             <Button onClick={() => handleSave(true)} disabled={saving}>
               {saving && saveMode === "publish" ? (
@@ -1460,7 +1462,7 @@ function NewFreightOfferForm() {
               ) : (
                 <Send className="h-4 w-4 mr-2" />
               )}
-              Publish Offer
+              {t("tms.exchangeNew.publishOffer")}
             </Button>
           </div>
         </div>

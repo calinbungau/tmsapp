@@ -48,6 +48,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 
 interface LeaveRequest {
   id: string;
@@ -130,6 +131,7 @@ interface Employee {
 
 export default function HRDashboardPage() {
   const { session: adminSession } = useAdminSession();
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("requests");
   const [loading, setLoading] = useState(true);
 
@@ -602,10 +604,10 @@ export default function HRDashboardPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "pending": return <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/30">Pending</Badge>;
-      case "approved": return <Badge className="bg-green-500/10 text-green-600 border-green-500/30">Approved</Badge>;
-      case "rejected": return <Badge className="bg-red-500/10 text-red-600 border-red-500/30">Rejected</Badge>;
-      case "cancelled": return <Badge className="bg-muted text-muted-foreground">Cancelled</Badge>;
+      case "pending": return <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/30">{t("hr.pending")}</Badge>;
+      case "approved": return <Badge className="bg-green-500/10 text-green-600 border-green-500/30">{t("hr.approved")}</Badge>;
+      case "rejected": return <Badge className="bg-red-500/10 text-red-600 border-red-500/30">{t("hr.rejected")}</Badge>;
+      case "cancelled": return <Badge className="bg-muted text-muted-foreground">{t("hr.cancelled")}</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }
   };
@@ -621,8 +623,8 @@ export default function HRDashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">HR - Leave Management</h1>
-        <p className="text-muted-foreground">Manage employee leave requests, policies, and entitlements</p>
+        <h1 className="text-2xl font-bold">{t("hr.title")}</h1>
+        <p className="text-muted-foreground">{t("hr.subtitle")}</p>
       </div>
 
       {/* Stats Cards */}
@@ -635,7 +637,7 @@ export default function HRDashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.pendingCount}</p>
-                <p className="text-xs text-muted-foreground">Pending Requests</p>
+                <p className="text-xs text-muted-foreground">{t("hr.pendingRequests")}</p>
               </div>
             </div>
           </CardContent>
@@ -648,7 +650,7 @@ export default function HRDashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.approvedThisMonth}</p>
-                <p className="text-xs text-muted-foreground">Approved This Month</p>
+                <p className="text-xs text-muted-foreground">{t("hr.approvedThisMonth")}</p>
               </div>
             </div>
           </CardContent>
@@ -661,7 +663,7 @@ export default function HRDashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.employeesOnLeaveToday}</p>
-                <p className="text-xs text-muted-foreground">On Leave Today</p>
+                <p className="text-xs text-muted-foreground">{t("hr.onLeaveToday")}</p>
               </div>
             </div>
           </CardContent>
@@ -674,7 +676,7 @@ export default function HRDashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.totalEmployees}</p>
-                <p className="text-xs text-muted-foreground">Total Employees</p>
+                <p className="text-xs text-muted-foreground">{t("hr.totalEmployees")}</p>
               </div>
             </div>
           </CardContent>
@@ -684,11 +686,11 @@ export default function HRDashboardPage() {
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid grid-cols-5 w-full max-w-2xl">
-          <TabsTrigger value="requests">Requests</TabsTrigger>
-          <TabsTrigger value="entitlements">Balances</TabsTrigger>
-          <TabsTrigger value="types">Leave Types</TabsTrigger>
-          <TabsTrigger value="policies">Policies</TabsTrigger>
-          <TabsTrigger value="holidays">Holidays</TabsTrigger>
+          <TabsTrigger value="requests">{t("hr.tabRequests")}</TabsTrigger>
+          <TabsTrigger value="entitlements">{t("hr.tabBalances")}</TabsTrigger>
+          <TabsTrigger value="types">{t("hr.tabLeaveTypes")}</TabsTrigger>
+          <TabsTrigger value="policies">{t("hr.tabPolicies")}</TabsTrigger>
+          <TabsTrigger value="holidays">{t("hr.tabHolidays")}</TabsTrigger>
         </TabsList>
 
         {/* REQUESTS TAB */}
@@ -698,7 +700,7 @@ export default function HRDashboardPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search employee or type..."
+                  placeholder={t("hr.searchEmployee")}
                   className="pl-9 w-64"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -709,11 +711,11 @@ export default function HRDashboardPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="approved">Approved</SelectItem>
-                  <SelectItem value="rejected">Rejected</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="all">{t("hr.all")}</SelectItem>
+                  <SelectItem value="pending">{t("hr.pending")}</SelectItem>
+                  <SelectItem value="approved">{t("hr.approved")}</SelectItem>
+                  <SelectItem value="rejected">{t("hr.rejected")}</SelectItem>
+                  <SelectItem value="cancelled">{t("hr.cancelled")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -723,20 +725,20 @@ export default function HRDashboardPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Leave Type</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead>Days</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Requested</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t("hr.employee")}</TableHead>
+                  <TableHead>{t("hr.leaveType")}</TableHead>
+                  <TableHead>{t("hr.period")}</TableHead>
+                  <TableHead>{t("hr.days")}</TableHead>
+                  <TableHead>{t("hr.status")}</TableHead>
+                  <TableHead>{t("hr.requested")}</TableHead>
+                  <TableHead className="text-right">{t("hr.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredRequests.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      No leave requests found
+                      {t("hr.noRequests")}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -763,10 +765,10 @@ export default function HRDashboardPage() {
                         {req.status === "pending" && (
                           <div className="flex gap-1 justify-end">
                             <Button size="sm" variant="outline" className="text-green-600 border-green-500/30 hover:bg-green-500/10 bg-transparent" onClick={() => openReview(req, "approved")}>
-                              <CheckCircle className="h-4 w-4 mr-1" /> Approve
+                              <CheckCircle className="h-4 w-4 mr-1" /> {t("hr.approve")}
                             </Button>
                             <Button size="sm" variant="outline" className="text-red-600 border-red-500/30 hover:bg-red-500/10 bg-transparent" onClick={() => openReview(req, "rejected")}>
-                              <XCircle className="h-4 w-4 mr-1" /> Reject
+                              <XCircle className="h-4 w-4 mr-1" /> {t("hr.reject")}
                             </Button>
                           </div>
                         )}
@@ -786,7 +788,7 @@ export default function HRDashboardPage() {
         <TabsContent value="entitlements" className="space-y-4">
           <div className="flex gap-3 items-center justify-between">
             <div className="flex gap-2 items-center">
-              <Label>Year:</Label>
+              <Label>{t("hr.year")}</Label>
               <Select value={entitlementYear.toString()} onValueChange={(v) => setEntitlementYear(parseInt(v))}>
                 <SelectTrigger className="w-28">
                   <SelectValue />
@@ -799,7 +801,7 @@ export default function HRDashboardPage() {
               </Select>
             </div>
             <Button onClick={generateEntitlements}>
-              <Plus className="h-4 w-4 mr-2" /> Generate Entitlements
+              <Plus className="h-4 w-4 mr-2" /> {t("hr.generateEntitlements")}
             </Button>
           </div>
 
@@ -807,20 +809,20 @@ export default function HRDashboardPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Leave Type</TableHead>
-                  <TableHead className="text-center">Entitled</TableHead>
-                  <TableHead className="text-center">Carry Over</TableHead>
-                  <TableHead className="text-center">Used</TableHead>
-                  <TableHead className="text-center">Pending</TableHead>
-                  <TableHead className="text-center">Available</TableHead>
+                  <TableHead>{t("hr.employee")}</TableHead>
+                  <TableHead>{t("hr.leaveType")}</TableHead>
+                  <TableHead className="text-center">{t("hr.entitled")}</TableHead>
+                  <TableHead className="text-center">{t("hr.carryOver")}</TableHead>
+                  <TableHead className="text-center">{t("hr.used")}</TableHead>
+                  <TableHead className="text-center">{t("hr.pendingCol")}</TableHead>
+                  <TableHead className="text-center">{t("hr.available")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {entitlements.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      No entitlements for {entitlementYear}. Click "Generate Entitlements" to create them.
+                      {t("hr.noEntitlements").replace("{year}", entitlementYear.toString())}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -858,14 +860,14 @@ export default function HRDashboardPage() {
         <TabsContent value="types" className="space-y-4">
           <div className="flex justify-end">
             <Button onClick={() => openTypeDialog()}>
-              <Plus className="h-4 w-4 mr-2" /> Add Leave Type
+              <Plus className="h-4 w-4 mr-2" /> {t("hr.addLeaveType")}
             </Button>
           </div>
           <div className="grid gap-3">
             {leaveTypes.length === 0 ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
-                  No leave types configured. Add your first leave type to get started.
+                  {t("hr.noLeaveTypes")}
                 </CardContent>
               </Card>
             ) : (
@@ -878,9 +880,9 @@ export default function HRDashboardPage() {
                         <div>
                           <p className="font-medium">{type.name} <span className="text-xs text-muted-foreground">({type.code})</span></p>
                           <div className="flex gap-2 mt-1">
-                            <Badge variant="outline" className="text-xs">{type.is_paid ? "Paid" : "Unpaid"}</Badge>
-                            {type.requires_document && <Badge variant="outline" className="text-xs">Doc Required</Badge>}
-                            {type.max_days_per_year && <Badge variant="outline" className="text-xs">Max {type.max_days_per_year}d/year</Badge>}
+                            <Badge variant="outline" className="text-xs">{type.is_paid ? t("hr.paid") : t("hr.unpaid")}</Badge>
+                            {type.requires_document && <Badge variant="outline" className="text-xs">{t("hr.docRequired")}</Badge>}
+                            {type.max_days_per_year && <Badge variant="outline" className="text-xs">{t("hr.maxPerYear").replace("{n}", type.max_days_per_year.toString())}</Badge>}
                           </div>
                         </div>
                       </div>
@@ -904,14 +906,14 @@ export default function HRDashboardPage() {
         <TabsContent value="policies" className="space-y-4">
           <div className="flex justify-end">
             <Button onClick={() => openPolicyDialog()}>
-              <Plus className="h-4 w-4 mr-2" /> Add Policy
+              <Plus className="h-4 w-4 mr-2" /> {t("hr.addPolicy")}
             </Button>
           </div>
           <div className="grid gap-3">
             {policies.length === 0 ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
-                  No policies configured. Create a default leave policy to define entitlement rules.
+                  {t("hr.noPolicies")}
                 </CardContent>
               </Card>
             ) : (
@@ -922,14 +924,14 @@ export default function HRDashboardPage() {
                       <div>
                         <p className="font-medium flex items-center gap-2">
                           {policy.name}
-                          {policy.is_default && <Badge className="text-xs">Default</Badge>}
+                          {policy.is_default && <Badge className="text-xs">{t("hr.default")}</Badge>}
                         </p>
                         <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
-                          <span>{policy.base_annual_days} base days</span>
+                          <span>{policy.base_annual_days} {t("hr.baseDays")}</span>
                           {policy.seniority_bonus_days && <span>+{policy.seniority_bonus_days}d every {policy.seniority_bonus_years}yr</span>}
                           {policy.max_annual_days && <span>Max {policy.max_annual_days}d</span>}
                           {policy.carry_over_max_days && <span>Carry over {policy.carry_over_max_days}d</span>}
-                          <span className="capitalize">{policy.accrual_method} accrual</span>
+                          <span className="capitalize">{policy.accrual_method} {t("hr.accrual")}</span>
                         </div>
                       </div>
                       <Button size="icon" variant="ghost" onClick={() => openPolicyDialog(policy)}>
@@ -947,25 +949,25 @@ export default function HRDashboardPage() {
         <TabsContent value="holidays" className="space-y-4">
           <div className="flex justify-end">
             <Button onClick={() => openHolidayDialog()}>
-              <Plus className="h-4 w-4 mr-2" /> Add Holiday
+              <Plus className="h-4 w-4 mr-2" /> {t("hr.addHoliday")}
             </Button>
           </div>
           <Card>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Holiday</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Day</TableHead>
-                  <TableHead>Recurring</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t("hr.holiday")}</TableHead>
+                  <TableHead>{t("hr.date")}</TableHead>
+                  <TableHead>{t("hr.day")}</TableHead>
+                  <TableHead>{t("hr.recurring")}</TableHead>
+                  <TableHead className="text-right">{t("hr.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {holidays.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                      No public holidays configured.
+                      {t("hr.noHolidays")}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -974,7 +976,7 @@ export default function HRDashboardPage() {
                       <TableCell className="font-medium">{h.name}</TableCell>
                       <TableCell>{new Date(h.date).toLocaleDateString()}</TableCell>
                       <TableCell className="text-muted-foreground">{new Date(h.date).toLocaleDateString("en", { weekday: "long" })}</TableCell>
-                      <TableCell>{h.is_recurring ? <Badge variant="outline" className="text-xs">Yearly</Badge> : "-"}</TableCell>
+                      <TableCell>{h.is_recurring ? <Badge variant="outline" className="text-xs">{t("hr.yearly")}</Badge> : "-"}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
                           <Button size="icon" variant="ghost" onClick={() => openHolidayDialog(h)}>
@@ -998,26 +1000,26 @@ export default function HRDashboardPage() {
       <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{reviewAction === "approved" ? "Approve" : "Reject"} Leave Request</DialogTitle>
+            <DialogTitle>{reviewAction === "approved" ? t("hr.approveLeaveRequest") : t("hr.rejectLeaveRequest")}</DialogTitle>
           </DialogHeader>
           {reviewingRequest && (
             <div className="space-y-4">
               <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                 <p className="font-medium">{reviewingRequest.employee?.first_name} {reviewingRequest.employee?.last_name}</p>
                 <p className="text-sm">{reviewingRequest.leave_type?.name}: {new Date(reviewingRequest.start_date).toLocaleDateString()} - {new Date(reviewingRequest.end_date).toLocaleDateString()}</p>
-                <p className="text-sm font-medium">{reviewingRequest.total_days} day(s)</p>
-                {reviewingRequest.reason && <p className="text-sm text-muted-foreground">Reason: {reviewingRequest.reason}</p>}
+                <p className="text-sm font-medium">{reviewingRequest.total_days} {t("hr.dayCount")}</p>
+                {reviewingRequest.reason && <p className="text-sm text-muted-foreground">{t("hr.reason")} {reviewingRequest.reason}</p>}
               </div>
               <div className="space-y-2">
-                <Label>Notes (optional)</Label>
-                <Textarea value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} placeholder={reviewAction === "rejected" ? "Reason for rejection..." : "Any notes..."} rows={3} />
+                <Label>{t("hr.notesOptional")}</Label>
+                <Textarea value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} placeholder={reviewAction === "rejected" ? t("hr.reasonForRejection") : t("hr.anyNotes")} rows={3} />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setReviewDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setReviewDialogOpen(false)}>{t("hr.cancel")}</Button>
             <Button onClick={handleReview} className={reviewAction === "approved" ? "" : "bg-red-600 hover:bg-red-700 text-white"}>
-              {reviewAction === "approved" ? "Approve" : "Reject"}
+              {reviewAction === "approved" ? t("hr.approve") : t("hr.reject")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1027,30 +1029,30 @@ export default function HRDashboardPage() {
       <Dialog open={typeDialogOpen} onOpenChange={setTypeDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingType ? "Edit" : "Add"} Leave Type</DialogTitle>
+            <DialogTitle>{editingType ? t("hr.editLeaveType") : t("hr.addLeaveTypeTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Name</Label>
+                <Label>{t("hr.name")}</Label>
                 <Input value={typeForm.name} onChange={(e) => setTypeForm(p => ({ ...p, name: e.target.value }))} placeholder="Annual Leave" />
               </div>
               <div className="space-y-2">
-                <Label>Code</Label>
+                <Label>{t("hr.code")}</Label>
                 <Input value={typeForm.code} onChange={(e) => setTypeForm(p => ({ ...p, code: e.target.value }))} placeholder="annual" />
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Description</Label>
-              <Input value={typeForm.description} onChange={(e) => setTypeForm(p => ({ ...p, description: e.target.value }))} placeholder="Optional description" />
+              <Label>{t("hr.description")}</Label>
+              <Input value={typeForm.description} onChange={(e) => setTypeForm(p => ({ ...p, description: e.target.value }))} placeholder={t("hr.optionalDescription")} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Max Days/Year</Label>
-                <Input type="number" value={typeForm.max_days_per_year} onChange={(e) => setTypeForm(p => ({ ...p, max_days_per_year: e.target.value }))} placeholder="Unlimited" />
+                <Label>{t("hr.maxDaysYear")}</Label>
+                <Input type="number" value={typeForm.max_days_per_year} onChange={(e) => setTypeForm(p => ({ ...p, max_days_per_year: e.target.value }))} placeholder={t("hr.unlimited")} />
               </div>
               <div className="space-y-2">
-                <Label>Color</Label>
+                <Label>{t("hr.color")}</Label>
                 <div className="flex gap-2">
                   <Input type="color" value={typeForm.color} onChange={(e) => setTypeForm(p => ({ ...p, color: e.target.value }))} className="w-12 h-9 p-1" />
                   <Input value={typeForm.color} onChange={(e) => setTypeForm(p => ({ ...p, color: e.target.value }))} className="flex-1" />
@@ -1060,21 +1062,21 @@ export default function HRDashboardPage() {
             <div className="grid grid-cols-3 gap-3">
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={typeForm.is_paid} onChange={(e) => setTypeForm(p => ({ ...p, is_paid: e.target.checked }))} className="rounded" />
-                Paid
+                {t("hr.paid")}
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={typeForm.requires_approval} onChange={(e) => setTypeForm(p => ({ ...p, requires_approval: e.target.checked }))} className="rounded" />
-                Approval
+                {t("hr.approval")}
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={typeForm.requires_document} onChange={(e) => setTypeForm(p => ({ ...p, requires_document: e.target.checked }))} className="rounded" />
-                Document
+                {t("hr.document")}
               </label>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setTypeDialogOpen(false)}>Cancel</Button>
-            <Button onClick={saveType} disabled={!typeForm.name || !typeForm.code}>{editingType ? "Save" : "Create"}</Button>
+            <Button variant="outline" onClick={() => setTypeDialogOpen(false)}>{t("hr.cancel")}</Button>
+            <Button onClick={saveType} disabled={!typeForm.name || !typeForm.code}>{editingType ? t("hr.save") : t("hr.create")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1083,62 +1085,62 @@ export default function HRDashboardPage() {
       <Dialog open={policyDialogOpen} onOpenChange={setPolicyDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingPolicy ? "Edit" : "Add"} Leave Policy</DialogTitle>
+            <DialogTitle>{editingPolicy ? t("hr.editLeavePolicy") : t("hr.addLeavePolicy")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-2">
-              <Label>Policy Name</Label>
+              <Label>{t("hr.policyName")}</Label>
               <Input value={policyForm.name} onChange={(e) => setPolicyForm(p => ({ ...p, name: e.target.value }))} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Base Annual Days</Label>
+                <Label>{t("hr.baseAnnualDays")}</Label>
                 <Input type="number" value={policyForm.base_annual_days} onChange={(e) => setPolicyForm(p => ({ ...p, base_annual_days: e.target.value }))} />
               </div>
               <div className="space-y-2">
-                <Label>Max Annual Days</Label>
-                <Input type="number" value={policyForm.max_annual_days} onChange={(e) => setPolicyForm(p => ({ ...p, max_annual_days: e.target.value }))} placeholder="No cap" />
+                <Label>{t("hr.maxAnnualDays")}</Label>
+                <Input type="number" value={policyForm.max_annual_days} onChange={(e) => setPolicyForm(p => ({ ...p, max_annual_days: e.target.value }))} placeholder={t("hr.noCap")} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Seniority Bonus Days</Label>
+                <Label>{t("hr.seniorityBonusDays")}</Label>
                 <Input type="number" value={policyForm.seniority_bonus_days} onChange={(e) => setPolicyForm(p => ({ ...p, seniority_bonus_days: e.target.value }))} />
               </div>
               <div className="space-y-2">
-                <Label>Every X Years</Label>
+                <Label>{t("hr.everyXYears")}</Label>
                 <Input type="number" value={policyForm.seniority_bonus_years} onChange={(e) => setPolicyForm(p => ({ ...p, seniority_bonus_years: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Carry Over Max Days</Label>
+                <Label>{t("hr.carryOverMaxDays")}</Label>
                 <Input type="number" value={policyForm.carry_over_max_days} onChange={(e) => setPolicyForm(p => ({ ...p, carry_over_max_days: e.target.value }))} />
               </div>
               <div className="space-y-2">
-                <Label>Probation Months</Label>
+                <Label>{t("hr.probationMonths")}</Label>
                 <Input type="number" value={policyForm.probation_months} onChange={(e) => setPolicyForm(p => ({ ...p, probation_months: e.target.value }))} />
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Accrual Method</Label>
+              <Label>{t("hr.accrualMethod")}</Label>
               <Select value={policyForm.accrual_method} onValueChange={(v) => setPolicyForm(p => ({ ...p, accrual_method: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="yearly">Yearly (all at once)</SelectItem>
-                  <SelectItem value="monthly">Monthly accrual</SelectItem>
-                  <SelectItem value="from_hire_date">From hire date</SelectItem>
+                  <SelectItem value="yearly">{t("hr.yearlyAllAtOnce")}</SelectItem>
+                  <SelectItem value="monthly">{t("hr.monthlyAccrual")}</SelectItem>
+                  <SelectItem value="from_hire_date">{t("hr.fromHireDate")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={policyForm.is_default} onChange={(e) => setPolicyForm(p => ({ ...p, is_default: e.target.checked }))} className="rounded" />
-              Set as default policy
+              {t("hr.setAsDefault")}
             </label>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPolicyDialogOpen(false)}>Cancel</Button>
-            <Button onClick={savePolicy} disabled={!policyForm.name}>{editingPolicy ? "Save" : "Create"}</Button>
+            <Button variant="outline" onClick={() => setPolicyDialogOpen(false)}>{t("hr.cancel")}</Button>
+            <Button onClick={savePolicy} disabled={!policyForm.name}>{editingPolicy ? t("hr.save") : t("hr.create")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1147,29 +1149,29 @@ export default function HRDashboardPage() {
       <Dialog open={holidayDialogOpen} onOpenChange={setHolidayDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>{editingHoliday ? "Edit" : "Add"} Public Holiday</DialogTitle>
+            <DialogTitle>{editingHoliday ? t("hr.editPublicHoliday") : t("hr.addPublicHoliday")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-2">
-              <Label>Holiday Name</Label>
+              <Label>{t("hr.holidayName")}</Label>
               <Input value={holidayForm.name} onChange={(e) => setHolidayForm(p => ({ ...p, name: e.target.value }))} placeholder="Christmas Day" />
             </div>
             <div className="space-y-2">
-              <Label>Date</Label>
+              <Label>{t("hr.date")}</Label>
               <Input type="date" value={holidayForm.date} onChange={(e) => setHolidayForm(p => ({ ...p, date: e.target.value }))} />
             </div>
             <div className="space-y-2">
-              <Label>Country (optional)</Label>
+              <Label>{t("hr.countryOptional")}</Label>
               <Input value={holidayForm.country} onChange={(e) => setHolidayForm(p => ({ ...p, country: e.target.value }))} placeholder="e.g., RO, DE, US" />
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={holidayForm.is_recurring} onChange={(e) => setHolidayForm(p => ({ ...p, is_recurring: e.target.checked }))} className="rounded" />
-              Recurring every year (same date)
+              {t("hr.recurringEveryYear")}
             </label>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setHolidayDialogOpen(false)}>Cancel</Button>
-            <Button onClick={saveHoliday} disabled={!holidayForm.name || !holidayForm.date}>{editingHoliday ? "Save" : "Create"}</Button>
+            <Button variant="outline" onClick={() => setHolidayDialogOpen(false)}>{t("hr.cancel")}</Button>
+            <Button onClick={saveHoliday} disabled={!holidayForm.name || !holidayForm.date}>{editingHoliday ? t("hr.save") : t("hr.create")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

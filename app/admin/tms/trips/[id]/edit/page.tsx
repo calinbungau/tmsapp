@@ -26,6 +26,7 @@ import { AddOrderToTripDialog } from "@/components/tms/add-order-to-trip-dialog"
 import { TripStatusStepper } from "@/components/tms/trip-editor/trip-status-stepper";
 import { TripPnLPill } from "@/components/tms/trip-editor/trip-pnl-pill";
 import { TripOpsDrawer } from "@/components/tms/trip-editor/trip-ops-drawer";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 
 // ── Helpers ──
 const COUNTRY_MAP: Record<string, string> = {
@@ -93,6 +94,7 @@ export default function TripEditPage() {
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const { session: adminSession } = useAdminSession();
+  const { t } = useTranslation();
   const supabase = createClient();
   const tripId = params.id as string;
   const filterVehicleId = searchParams.get("vehicle") || null;
@@ -349,7 +351,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
           trip_legs(id, leg_number, assignment_type, from_stop_index, to_stop_index, vehicle_id, driver_id, carrier_id, route_strategy)
       `).eq("id", tripId).single();
 
-    if (!tripData) { toast({ title: "Trip not found", variant: "destructive" }); return; }
+    if (!tripData) { toast({ title: t("tms.tripEdit.tripNotFound"), variant: "destructive" }); return; }
 
     setTrip(tripData);
     const sortedAll = (tripData.trip_stops || []).sort((a: any, b: any) => a.sequence_order - b.sequence_order);
@@ -438,7 +440,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   // ── Remove an order from this trip (without deleting the order) ──
   const removeOrderFromTrip = async (orderId: string, ref: string) => {
     if (linkedOrders.length <= 1) {
-      toast({ title: "Can't remove the last order", description: "A trip must carry at least one order.", variant: "destructive" });
+      toast({ title: t("tms.tripEdit.cantRemoveLastOrder"), description: t("tms.tripEdit.cantRemoveLastOrderDesc"), variant: "destructive" });
       return;
     }
     if (!confirm(`Remove ${ref} from this trip? The order itself stays intact.`)) return;
@@ -460,11 +462,11 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
         .eq("order_id", orderId);
       if (stopsErr) throw stopsErr;
 
-      toast({ title: `Removed ${ref}` });
+      toast({ title: t("tms.tripEdit.removed").replace("{ref}", ref) });
       await fetchTrip();
     } catch (err: any) {
       console.log("[v0] removeOrderFromTrip failed", err);
-      toast({ title: "Could not remove order", description: err?.message ?? String(err), variant: "destructive" });
+      toast({ title: t("tms.tripEdit.couldNotRemoveOrder"), description: err?.message ?? String(err), variant: "destructive" });
     } finally {
       setRemovingOrderId(null);
     }
@@ -690,10 +692,10 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
         await supabase.from("trip_legs").insert({ ...legPayload, sequence_order: 1, status: "planned" });
       }
 
-      toast({ title: "Trip saved successfully" });
+      toast({ title: t("tms.tripEdit.tripSaved") });
       fetchTrip(); // Refresh data
     } catch (err: any) {
-      toast({ title: "Error saving trip", description: err.message, variant: "destructive" });
+      toast({ title: t("tms.tripEdit.errorSaving"), description: err.message, variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -801,7 +803,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
             <div className="flex items-center gap-2.5 bg-background/90 backdrop-blur-md rounded-lg border border-border/50 shadow-lg pl-3 pr-2 py-1.5">
               <Truck className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-[11px] font-medium tracking-tight whitespace-nowrap">
-                <span className="text-muted-foreground/70">Trip</span>{" "}
+                <span className="text-muted-foreground/70">{t("tms.tripEdit.tripLabel")}</span>{" "}
                 <span className="font-mono font-semibold text-foreground">
                   {trip?.reference_number || "—"}
                 </span>
@@ -828,7 +830,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
                   {filterVehicleId
                     ? vehicles.find((v) => v.id === filterVehicleId)?.plate_number ||
                       trip?.vehicle?.plate_number
-                    : trip?.vehicle?.plate_number || trip?.carrier?.name || "Resource"}
+                    : trip?.vehicle?.plate_number || trip?.carrier?.name || t("tms.tripEdit.resource")}
                 </Badge>
               )}
             </div>
@@ -839,7 +841,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
           {tripId && <TripPnLPill tripId={tripId} refreshKey={pnlRefreshKey} />}
           <Button size="sm" className="h-8 text-xs gap-1.5 shadow-lg" onClick={saveTrip} disabled={saving}>
             <Save className="h-3 w-3" />
-            {saving ? "Saving..." : "Save Trip"}
+            {saving ? t("tms.tripEdit.saving") : t("tms.tripEdit.saveTrip")}
           </Button>
         </div>
       </div>
@@ -922,7 +924,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
         <Button
           variant="ghost"
           size="icon"
-          title={`Base map: ${TILE_LAYERS[activeTile]?.name ?? activeTile}`}
+          title={t("tms.tripEdit.baseMapTitle").replace("{name}", TILE_LAYERS[activeTile]?.name ?? activeTile)}
           className="h-9 w-9 bg-background/95 backdrop-blur-md border border-border/60 shadow-xl"
           onClick={() => setTileMenuOpen(o => !o)}
         >
@@ -934,7 +936,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
             <div className="fixed inset-0 z-[599]" onClick={() => setTileMenuOpen(false)} />
             <div className="absolute top-full right-0 mt-2 w-48 bg-background/95 backdrop-blur-md border border-border/60 rounded-lg shadow-2xl overflow-hidden z-[600]">
               <div className="px-3 py-2 border-b border-border/40 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                Base Map
+                {t("tms.tripEdit.baseMap")}
               </div>
               <div className="py-1">
                 {TILE_LAYER_ENTRIES.map(([key, cfg]) => (
@@ -977,12 +979,12 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
         <button
           type="button"
           onClick={() => setExecutionCollapsed(false)}
-          title="Expand execution panel"
+          title={t("tms.tripEdit.expandExecutionPanel")}
           className="hidden md:inline-flex absolute top-14 left-3 z-[500] items-center gap-2 h-9 px-3 rounded-full bg-background/95 backdrop-blur-md border border-border/60 shadow-xl hover:border-primary/40 hover:bg-background transition-all group"
         >
           <PanelLeftOpen className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground group-hover:text-foreground transition-colors">
-            Execution
+            {t("tms.tripEdit.execution")}
           </span>
         </button>
       )}
@@ -1008,12 +1010,12 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
             <button
               type="button"
               onClick={() => setExecutionCollapsed(true)}
-              title="Collapse panel"
+              title={t("tms.tripEdit.collapsePanel")}
               className="inline-flex items-center justify-center h-5 w-5 rounded text-muted-foreground/60 hover:text-foreground hover:bg-muted/40 transition-colors"
             >
               <PanelLeftClose className="h-3.5 w-3.5" />
             </button>
-            <span className="text-[9px] uppercase tracking-wider text-muted-foreground/60 font-medium">Execution</span>
+            <span className="text-[9px] uppercase tracking-wider text-muted-foreground/60 font-medium">{t("tms.tripEdit.execution")}</span>
           </div>
           <button
             type="button"
@@ -1024,7 +1026,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
                   : { ...p, assignment_type: "forwarding", driver_id: null, vehicle_id: null, trailer_id: null }
               )
             }
-            title="Click to switch between Own Fleet and Forwarding"
+            title={t("tms.tripEdit.switchFleetForwarding")}
             className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full text-[10px] font-medium ring-1 transition-all hover:scale-[1.02] active:scale-95 ${
               trip?.assignment_type === "forwarding"
                 ? "bg-orange-500/10 text-orange-400 ring-orange-500/25 hover:bg-orange-500/15"
@@ -1032,7 +1034,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
             }`}
           >
             {trip?.assignment_type === "forwarding" ? <Building2 className="h-3 w-3" /> : <Truck className="h-3 w-3" />}
-            <span className="tracking-tight">{trip?.assignment_type === "forwarding" ? "Forwarding" : "Own Fleet"}</span>
+            <span className="tracking-tight">{trip?.assignment_type === "forwarding" ? t("tms.tripEdit.forwarding") : t("tms.tripEdit.ownFleet")}</span>
           </button>
         </div>
 
@@ -1042,13 +1044,13 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
             <div className="space-y-2 pt-1">
               <div className="flex items-center gap-1 text-[10px] text-orange-400">
                 <Building2 className="h-3 w-3" />
-                This trip will be handled by an external carrier
+                {t("tms.tripEdit.handledByExternalCarrier")}
               </div>
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground/70">External Carrier</Label>
+                <Label className="text-[10px] text-muted-foreground/70">{t("tms.tripEdit.externalCarrier")}</Label>
                 <div className="flex gap-1">
                   <Select value={trip?.carrier_id || ""} onValueChange={v => setTrip((p: any) => ({ ...p, carrier_id: v }))}>
-                    <SelectTrigger className="h-8 text-xs flex-1"><SelectValue placeholder="Select carrier..." /></SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs flex-1"><SelectValue placeholder={t("tms.tripEdit.selectCarrier")} /></SelectTrigger>
                     <SelectContent>
                       {carriers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                     </SelectContent>
@@ -1066,7 +1068,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground/70">Carrier Cost</Label>
+                  <Label className="text-[10px] text-muted-foreground/70">{t("tms.tripEdit.carrierCost")}</Label>
                   <Input
                     type="number"
                     value={trip?.carrier_cost || ""}
@@ -1076,7 +1078,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground/70">Currency</Label>
+                  <Label className="text-[10px] text-muted-foreground/70">{t("tms.tripEdit.currency")}</Label>
                   <Select value={trip?.carrier_currency || "EUR"} onValueChange={v => setTrip((p: any) => ({ ...p, carrier_currency: v }))}>
                     <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -1097,14 +1099,14 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
         <div className="px-2.5 py-2 border-b border-border/50 space-y-1">
           {/* Compact icon-led rows. Selects are inline so the row height stays tight. */}
           {[
-            { icon: User, key: "driver", value: trip?.driver_id || "", placeholder: "Driver",
+            { icon: User, key: "driver", value: trip?.driver_id || "", placeholder: t("tms.tripEdit.driver"),
               options: drivers.map(d => ({ value: d.id, label: d.name })),
               onChange: (v: string) => setTrip((p: any) => ({ ...p, driver_id: v })) },
-            { icon: Truck, key: "vehicle", value: trip?.vehicle_id || "", placeholder: "Vehicle",
+            { icon: Truck, key: "vehicle", value: trip?.vehicle_id || "", placeholder: t("tms.tripEdit.vehicle"),
               options: vehicles.map(v => ({ value: v.id, label: v.plate_number })),
               onChange: (v: string) => setTrip((p: any) => ({ ...p, vehicle_id: v })) },
-            { icon: Package, key: "trailer", value: trip?.trailer_id || "_none", placeholder: "No trailer",
-              options: [{ value: "_none", label: "No trailer" }, ...trailers.map(t => ({ value: t.id, label: `${t.plate_number} • ${t.trailer_type}` }))],
+            { icon: Package, key: "trailer", value: trip?.trailer_id || "_none", placeholder: t("tms.tripEdit.noTrailer"),
+              options: [{ value: "_none", label: t("tms.tripEdit.noTrailer") }, ...trailers.map(t => ({ value: t.id, label: `${t.plate_number} • ${t.trailer_type}` }))],
               onChange: (v: string) => setTrip((p: any) => ({ ...p, trailer_id: v === "_none" ? null : v })) },
           ].map(row => {
             const Icon = row.icon;
@@ -1128,7 +1130,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
             <div className="flex items-center gap-2 pt-1.5 mt-1 border-t border-border/30">
               {maxPallets > 0 && (
                 <div className="flex-1 flex items-center gap-1.5">
-                  <span className="text-[9px] uppercase tracking-wider text-muted-foreground/60">Pal</span>
+                  <span className="text-[9px] uppercase tracking-wider text-muted-foreground/60">{t("tms.tripEdit.pal")}</span>
                   <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
                     <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, (totalPallets / maxPallets) * 100)}%`, backgroundColor: totalPallets > maxPallets ? "#ef4444" : totalPallets > maxPallets * 0.85 ? "#f59e0b" : "#22c55e" }} />
                   </div>
@@ -1137,7 +1139,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
               )}
               {maxWeight > 0 && (
                 <div className="flex-1 flex items-center gap-1.5">
-                  <span className="text-[9px] uppercase tracking-wider text-muted-foreground/60">Kg</span>
+                  <span className="text-[9px] uppercase tracking-wider text-muted-foreground/60">{t("tms.tripEdit.kg")}</span>
                   <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
                     <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, (totalWeight / maxWeight) * 100)}%`, backgroundColor: totalWeight > maxWeight ? "#ef4444" : totalWeight > maxWeight * 0.85 ? "#f59e0b" : "#22c55e" }} />
                   </div>
@@ -1154,7 +1156,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
           <div className="flex items-center justify-between">
             <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1">
               <FileText className="h-3 w-3" />
-              Linked Orders ({linkedOrders.length})
+              {t("tms.tripEdit.linkedOrders").replace("{count}", String(linkedOrders.length))}
             </Label>
             <Button
               type="button"
@@ -1164,7 +1166,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
               onClick={() => setShowAddOrder(true)}
             >
               <Plus className="h-3 w-3" />
-              Add order
+              {t("tms.tripEdit.addOrder")}
             </Button>
           </div>
 
@@ -1172,19 +1174,19 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
           {linkedOrders.length > 0 && (
             <div className="grid grid-cols-3 gap-1.5">
               <div className="p-1.5 rounded-md bg-emerald-500/5 border border-emerald-500/15">
-                <div className="text-[8.5px] text-muted-foreground/70 uppercase tracking-wide">Revenue</div>
+                <div className="text-[8.5px] text-muted-foreground/70 uppercase tracking-wide">{t("tms.tripEdit.revenue")}</div>
                 <div className="text-[11px] font-semibold tabular-nums text-emerald-400">
                   {revenueCurrency} {totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </div>
               </div>
               <div className="p-1.5 rounded-md bg-muted/40 border border-border/30">
-                <div className="text-[8.5px] text-muted-foreground/70 uppercase tracking-wide">Pallets</div>
+                <div className="text-[8.5px] text-muted-foreground/70 uppercase tracking-wide">{t("tms.tripEdit.pallets")}</div>
                 <div className={`text-[11px] font-semibold tabular-nums ${overloadedPal ? "text-red-400" : ""}`}>
                   {peakPal}{maxPallets > 0 ? `/${maxPallets}` : ""}
                 </div>
               </div>
               <div className="p-1.5 rounded-md bg-muted/40 border border-border/30">
-                <div className="text-[8.5px] text-muted-foreground/70 uppercase tracking-wide">Weight</div>
+                <div className="text-[8.5px] text-muted-foreground/70 uppercase tracking-wide">{t("tms.tripEdit.weight")}</div>
                 <div className={`text-[11px] font-semibold tabular-nums ${overloadedKg ? "text-red-400" : ""}`}>
                   {(peakKg / 1000).toFixed(1)}t
                 </div>
@@ -1196,7 +1198,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
             <div className="flex items-start gap-1.5 p-1.5 rounded-md bg-red-500/10 border border-red-500/30 text-[10px] text-red-300">
               <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
               <span>
-                Overloaded: peak load exceeds vehicle capacity. Re-sequence stops or split orders to stay legal.
+                {t("tms.tripEdit.overloaded")}
               </span>
             </div>
           )}
@@ -1232,7 +1234,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
                       </Badge>
                       <button
                         type="button"
-                        title={linkedOrders.length <= 1 ? "A trip needs at least one order" : "Remove from trip"}
+                        title={linkedOrders.length <= 1 ? t("tms.tripEdit.tripNeedsOneOrder") : t("tms.tripEdit.removeFromTrip")}
                         disabled={linkedOrders.length <= 1 || removingOrderId === order.id}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1274,7 +1276,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
                       }}
                     >
                       <ArrowRight className="h-2.5 w-2.5" />
-                      <span>Parent:</span>
+                      <span>{t("tms.tripEdit.parent")}</span>
                       <span className="text-primary hover:underline cursor-pointer">{order.parent_order.reference_number}</span>
                     </div>
                   )}
@@ -1283,7 +1285,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-border/40 p-3 text-center text-[10px] text-muted-foreground">
-              No orders linked yet. Click <span className="text-primary font-medium">Add order</span> to attach one.
+              {t("tms.tripEdit.noOrdersLinkedPrefix")} <span className="text-primary font-medium">{t("tms.tripEdit.addOrder")}</span> {t("tms.tripEdit.noOrdersLinkedSuffix")}
             </div>
           )}
         </div>
@@ -1328,12 +1330,12 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
                     <div className="flex items-center gap-1.5">
                       {flagUrl && <img src={flagUrl} alt="" className="w-4 h-3 rounded-[2px] object-cover shrink-0" crossOrigin="anonymous" />}
                       <p className="text-[11px] font-medium truncate leading-tight">
-                        {stop.city || stop.company_name || `Stop ${si + 1}`}
+                        {stop.city || stop.company_name || t("tms.tripEdit.stop").replace("{n}", String(si + 1))}
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <p className="text-[9px] text-muted-foreground truncate leading-tight">
-                        {stop.address ? stop.address.substring(0, 30) : "No address"}
+                        {stop.address ? stop.address.substring(0, 30) : t("tms.tripEdit.noAddress")}
                       </p>
                       {stop.order_ref && (
                         <Badge variant="outline" className="text-[7px] h-3.5 px-1 font-mono shrink-0 border-blue-500/30 text-blue-400">{stop.order_ref}</Badge>
@@ -1356,7 +1358,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
                           className={`inline-flex items-center gap-0.5 text-[9px] tabular-nums ${
                             palCapacityHit ? "text-red-400 font-semibold" : "text-muted-foreground"
                           }`}
-                          title={palCapacityHit ? "Truck overloaded at this stop" : "Load on board after this stop"}
+                          title={palCapacityHit ? t("tms.tripEdit.truckOverloadedAtStop") : t("tms.tripEdit.loadOnBoard")}
                         >
                           <Package className="h-2 w-2" />
                           {load.pallets}{maxPallets > 0 ? `/${maxPallets}` : ""}
@@ -1381,7 +1383,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
             <div className="w-5 h-5 rounded-full border border-dashed border-primary/30 flex items-center justify-center ml-[14px]">
               <Plus className="h-2.5 w-2.5" />
             </div>
-            Add new stop
+            {t("tms.tripEdit.addNewStop")}
           </button>
         </div>
 
@@ -1389,7 +1391,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
         <div className="px-2.5 py-2 border-t border-border/40">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[9px] uppercase tracking-wider text-muted-foreground/60 font-medium">
-              Route
+              {t("tms.tripEdit.route")}
             </span>
             <span className="text-[9px] text-muted-foreground/50 tabular-nums">
               {Math.round(routeInfo.distance_km)} km · {Math.floor(routeInfo.duration_hours)}h{Math.round((routeInfo.duration_hours % 1) * 60)}m
@@ -1397,9 +1399,9 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
           </div>
           <div className="flex items-center gap-1 bg-muted/30 rounded-md p-0.5">
             {[
-              { value: "fastest" as const, label: "Fastest", icon: RouteIcon, color: "text-blue-400" },
-              { value: "avoid_tolls" as const, label: "Avoid Tolls", icon: AlertTriangle, color: "text-amber-400" },
-              { value: "shortest" as const, label: "Shortest", icon: Split, color: "text-emerald-400" },
+              { value: "fastest" as const, label: t("tms.tripEdit.fastest"), icon: RouteIcon, color: "text-blue-400" },
+              { value: "avoid_tolls" as const, label: t("tms.tripEdit.avoidTolls"), icon: AlertTriangle, color: "text-amber-400" },
+              { value: "shortest" as const, label: t("tms.tripEdit.shortest"), icon: Split, color: "text-emerald-400" },
             ].map((opt) => {
               const Icon = opt.icon;
               const active = routeStrategy === opt.value;
@@ -1451,7 +1453,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
                   <img src={getCountryFlagUrl(selectedStop.country)} alt={selectedStop.country} className="w-5 h-3.5 rounded-[2px] object-cover shrink-0" crossOrigin="anonymous" />
                 )}
                 <span className="text-xs font-semibold">
-                  {selectedStop.city || selectedStop.company_name || `Stop ${selectedStopIndex! + 1}`}
+                  {selectedStop.city || selectedStop.company_name || t("tms.tripEdit.stop").replace("{n}", String(selectedStopIndex! + 1))}
                 </span>
                 {selectedStop.order_ref && (
                   <Badge variant="outline" className="text-[8px] font-mono border-blue-500/30 text-blue-400">
@@ -1461,10 +1463,10 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
                 <Select value={selectedStop.stop_type} onValueChange={(v: any) => updateStop(selectedStopIndex!, { stop_type: v })}>
                   <SelectTrigger className="h-5 text-[10px] w-auto min-w-[70px] bg-transparent border-dashed"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="pickup">Pickup</SelectItem>
-                    <SelectItem value="delivery">Delivery</SelectItem>
-                    <SelectItem value="customs">Customs</SelectItem>
-                    <SelectItem value="transit">Transit</SelectItem>
+                    <SelectItem value="pickup">{t("tms.tripEdit.pickup")}</SelectItem>
+                    <SelectItem value="delivery">{t("tms.tripEdit.delivery")}</SelectItem>
+                    <SelectItem value="customs">{t("tms.tripEdit.customs")}</SelectItem>
+                    <SelectItem value="transit">{t("tms.tripEdit.transit")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1476,25 +1478,25 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
             <div className="flex-1 overflow-y-auto p-3 space-y-3" style={{ scrollbarWidth: "thin" }}>
               {/* Company */}
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground/70">Company / Stop Name</Label>
+                <Label className="text-[10px] text-muted-foreground/70">{t("tms.tripEdit.companyStopName")}</Label>
                 <Input
                   value={selectedStop.company_name}
                   onChange={e => updateStop(selectedStopIndex!, { company_name: e.target.value })}
-                  placeholder={`Stop ${selectedStopIndex! + 1}`}
+                  placeholder={t("tms.tripEdit.stop").replace("{n}", String(selectedStopIndex! + 1))}
                   className="h-8 text-xs font-medium bg-background/60"
                 />
               </div>
 
               {/* Address with search */}
               <div className="space-y-1 relative">
-                <Label className="text-[10px] text-muted-foreground/70">Address</Label>
+                <Label className="text-[10px] text-muted-foreground/70">{t("tms.tripEdit.address")}</Label>
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                   <Input
                     className="h-8 text-xs pl-7 bg-background/60"
                     value={selectedStop.address}
                     onChange={e => { updateStop(selectedStopIndex!, { address: e.target.value }); setSearchingStop(selectedStopIndex); searchAddress(e.target.value); }}
-                    placeholder="Search address..."
+                    placeholder={t("tms.tripEdit.searchAddress")}
                   />
                   {searchingStop === selectedStopIndex && searchResults.length > 0 && (
                     <div className="absolute top-full mt-1 left-0 right-0 z-[600] bg-popover border rounded-lg shadow-xl max-h-48 overflow-y-auto">
@@ -1531,33 +1533,33 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
               {/* City / Country / Postal */}
               <div className="grid grid-cols-3 gap-2">
                 <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground/70">City</Label>
+                  <Label className="text-[10px] text-muted-foreground/70">{t("tms.tripEdit.city")}</Label>
                   <Input className="h-7 text-[11px] bg-background/60" value={selectedStop.city} onChange={e => updateStop(selectedStopIndex!, { city: e.target.value })} />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground/70">Country</Label>
+                  <Label className="text-[10px] text-muted-foreground/70">{t("tms.tripEdit.country")}</Label>
                   <Input className="h-7 text-[11px] bg-background/60" value={selectedStop.country} onChange={e => updateStop(selectedStopIndex!, { country: e.target.value })} />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground/70">Postal</Label>
+                  <Label className="text-[10px] text-muted-foreground/70">{t("tms.tripEdit.postal")}</Label>
                   <Input className="h-7 text-[11px] bg-background/60" value={selectedStop.postal_code || ""} onChange={e => updateStop(selectedStopIndex!, { postal_code: e.target.value })} />
                 </div>
               </div>
 
               {/* Time Window */}
               <div className="space-y-1.5">
-                <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1"><Clock className="h-3 w-3" />Time Window</Label>
+                <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1"><Clock className="h-3 w-3" />{t("tms.tripEdit.timeWindow")}</Label>
                 <div className="grid grid-cols-3 gap-1">
                   <div className="space-y-0.5">
-                    <span className="text-[9px] text-muted-foreground/50 uppercase">Date</span>
+                    <span className="text-[9px] text-muted-foreground/50 uppercase">{t("tms.tripEdit.date")}</span>
                     <Input type="date" value={selectedStop.planned_date || ""} onChange={e => updateStop(selectedStopIndex!, { planned_date: e.target.value })} className="h-7 text-[11px] bg-background/60" />
                   </div>
                   <div className="space-y-0.5">
-                    <span className="text-[9px] text-muted-foreground/50 uppercase">From</span>
+                    <span className="text-[9px] text-muted-foreground/50 uppercase">{t("tms.tripEdit.from")}</span>
                     <Input type="time" value={selectedStop.planned_time_from || ""} onChange={e => updateStop(selectedStopIndex!, { planned_time_from: e.target.value })} className="h-7 text-[11px] bg-background/60" />
                   </div>
                   <div className="space-y-0.5">
-                    <span className="text-[9px] text-muted-foreground/50 uppercase">To</span>
+                    <span className="text-[9px] text-muted-foreground/50 uppercase">{t("tms.tripEdit.to")}</span>
                     <Input type="time" value={selectedStop.planned_time_to || ""} onChange={e => updateStop(selectedStopIndex!, { planned_time_to: e.target.value })} className="h-7 text-[11px] bg-background/60" />
                   </div>
                 </div>
@@ -1566,19 +1568,19 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
               {/* Contact */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1"><User className="h-2.5 w-2.5" />Contact</Label>
-                  <Input value={selectedStop.contact_name || ""} onChange={e => updateStop(selectedStopIndex!, { contact_name: e.target.value })} className="h-7 text-[11px] bg-background/60" placeholder="Name" />
+                  <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1"><User className="h-2.5 w-2.5" />{t("tms.tripEdit.contact")}</Label>
+                  <Input value={selectedStop.contact_name || ""} onChange={e => updateStop(selectedStopIndex!, { contact_name: e.target.value })} className="h-7 text-[11px] bg-background/60" placeholder={t("tms.tripEdit.contactNamePlaceholder")} />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1"><Phone className="h-2.5 w-2.5" />Phone</Label>
-                  <Input value={selectedStop.contact_phone || ""} onChange={e => updateStop(selectedStopIndex!, { contact_phone: e.target.value })} className="h-7 text-[11px] bg-background/60" placeholder="+1..." />
+                  <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1"><Phone className="h-2.5 w-2.5" />{t("tms.tripEdit.phone")}</Label>
+                  <Input value={selectedStop.contact_phone || ""} onChange={e => updateStop(selectedStopIndex!, { contact_phone: e.target.value })} className="h-7 text-[11px] bg-background/60" placeholder={t("tms.tripEdit.phonePlaceholder")} />
                 </div>
               </div>
 
               {/* Reference */}
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground/70">Reference Number</Label>
-                <Input value={selectedStop.reference_number || ""} onChange={e => updateStop(selectedStopIndex!, { reference_number: e.target.value })} className="h-7 text-[11px] bg-background/60" placeholder="Stop reference..." />
+                <Label className="text-[10px] text-muted-foreground/70">{t("tms.tripEdit.referenceNumber")}</Label>
+                <Input value={selectedStop.reference_number || ""} onChange={e => updateStop(selectedStopIndex!, { reference_number: e.target.value })} className="h-7 text-[11px] bg-background/60" placeholder={t("tms.tripEdit.stopReferencePlaceholder")} />
               </div>
 
               {/* Capture Form & Geofencing �� shared with FSM. The form
@@ -1589,7 +1591,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
               <div className="space-y-2 rounded-md border border-border/40 bg-background/40 p-2">
                 <div className="space-y-1">
                   <Label className="text-[10px] text-muted-foreground/70 flex items-center gap-1">
-                    <FileText className="h-2.5 w-2.5" />Capture Form
+                    <FileText className="h-2.5 w-2.5" />{t("tms.tripEdit.captureForm")}
                   </Label>
                   <Select
                     value={selectedStop.form_id || "__none__"}
@@ -1598,10 +1600,10 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
                     }
                   >
                     <SelectTrigger className="h-7 text-[11px] bg-background/60">
-                      <SelectValue placeholder="No form" />
+                      <SelectValue placeholder={t("tms.tripEdit.noForm")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__" className="text-[11px]">No form</SelectItem>
+                      <SelectItem value="__none__" className="text-[11px]">{t("tms.tripEdit.noForm")}</SelectItem>
                       {stopForms.map(f => (
                         <SelectItem key={f.id} value={f.id} className="text-[11px]">
                           {f.name}
@@ -1619,7 +1621,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
                       checked={!!selectedStop.auto_checkin}
                       onChange={e => updateStop(selectedStopIndex!, { auto_checkin: e.target.checked })}
                     />
-                    Auto check-in
+                    {t("tms.tripEdit.autoCheckin")}
                   </label>
                   <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground/80 cursor-pointer">
                     <input
@@ -1628,11 +1630,11 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
                       checked={!!selectedStop.auto_checkout}
                       onChange={e => updateStop(selectedStopIndex!, { auto_checkout: e.target.checked })}
                     />
-                    Auto check-out
+                    {t("tms.tripEdit.autoCheckout")}
                   </label>
                 </div>
                 <div className="space-y-0.5">
-                  <span className="text-[9px] text-muted-foreground/50 uppercase">Geofence radius (m)</span>
+                  <span className="text-[9px] text-muted-foreground/50 uppercase">{t("tms.tripEdit.geofenceRadius")}</span>
                   <Input
                     type="number"
                     min={20}
@@ -1652,11 +1654,11 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
 
               {/* Notes */}
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground/70">Notes</Label>
+                <Label className="text-[10px] text-muted-foreground/70">{t("tms.tripEdit.notes")}</Label>
                 <Textarea
                   value={selectedStop.notes || ""}
                   onChange={e => updateStop(selectedStopIndex!, { notes: e.target.value })}
-                  placeholder="Stop instructions..."
+                  placeholder={t("tms.tripEdit.stopInstructions")}
                   rows={2}
                   className="text-[11px] resize-none bg-background/60"
                 />
@@ -1670,7 +1672,7 @@ const [vehicles, setVehicles] = useState<Vehicle[]>([]);
                   onClick={() => removeStop(selectedStopIndex!)}
                 >
                   <Trash2 className="h-3 w-3 mr-1.5" />
-                  Remove Stop
+                  {t("tms.tripEdit.removeStop")}
                 </Button>
               )}
             </div>

@@ -7,6 +7,7 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminSession } from "@/hooks/use-admin-session";
 import { isModuleEnabled } from "@/lib/modules";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -289,33 +290,33 @@ function AnimatedBackground() {
 
 // Module configuration
 const MODULES = [
-  { key: "tms", label: "Transport", icon: Truck, href: "/admin/tms/orders", desc: "Orders & Dispatch" },
-  { key: "maintenance", label: "Maintenance", icon: Wrench, href: "/admin/maintenance", desc: "Service & Repairs" },
-  { key: "documents", label: "Documents", icon: FileText, href: "/admin/documents", desc: "Files & Compliance" },
-  { key: "fsm", label: "Field Service", icon: ClipboardList, href: "/admin/fsm/tasks", desc: "Tasks & Jobs" },
-  { key: "telematic", label: "Telematic", icon: MapPin, href: "/admin/telematic/live", desc: "GPS Tracking" },
-  { key: "hr", label: "HR", icon: Users, href: "/admin/hr", desc: "Human Resources" },
-  { key: "email", label: "Email", icon: Mail, href: "/admin/email", desc: "Communications" },
-  { key: "chat", label: "Chat", icon: MessageSquare, href: "/admin/chat", desc: "Messaging" },
-  { key: "settings", label: "Settings", icon: Settings, href: "/admin/settings", desc: "Configuration" },
-  { key: "logs", label: "Activity", icon: Activity, href: "/admin/logs", desc: "System Logs" },
+  { key: "tms", labelKey: "dashboard.transport", icon: Truck, href: "/admin/tms/orders", descKey: "dashboard.transportDesc" },
+  { key: "maintenance", labelKey: "nav.maintenance", icon: Wrench, href: "/admin/maintenance", descKey: "dashboard.maintenanceDesc" },
+  { key: "documents", labelKey: "nav.documents", icon: FileText, href: "/admin/documents", descKey: "dashboard.documentsDesc" },
+  { key: "fsm", labelKey: "dashboard.fieldService", icon: ClipboardList, href: "/admin/fsm/tasks", descKey: "dashboard.fieldServiceDesc" },
+  { key: "telematic", labelKey: "nav.telematic", icon: MapPin, href: "/admin/telematic/live", descKey: "dashboard.telematicDesc" },
+  { key: "hr", labelKey: "nav.hr", icon: Users, href: "/admin/hr", descKey: "dashboard.hrDesc" },
+  { key: "email", labelKey: "nav.email", icon: Mail, href: "/admin/email", descKey: "dashboard.emailDesc" },
+  { key: "chat", labelKey: "nav.chat", icon: MessageSquare, href: "/admin/chat", descKey: "dashboard.chatDesc" },
+  { key: "settings", labelKey: "nav.settings", icon: Settings, href: "/admin/settings", descKey: "dashboard.settingsDesc" },
+  { key: "logs", labelKey: "dashboard.activity", icon: Activity, href: "/admin/logs", descKey: "dashboard.activityDesc" },
 ];
 
 const MASTER_DATA = [
-  { key: "drivers", label: "Drivers", icon: Users, href: "/admin/drivers" },
-  { key: "vehicles", label: "Vehicles", icon: Car, href: "/admin/vehicles" },
-  { key: "trailers", label: "Trailers", icon: Container, href: "/admin/trailers" },
-  { key: "employees", label: "Employees", icon: Users, href: "/admin/employees" },
-  { key: "partners", label: "Partners", icon: Building2, href: "/admin/business-partners" },
+  { key: "drivers", labelKey: "nav.drivers", icon: Users, href: "/admin/drivers" },
+  { key: "vehicles", labelKey: "nav.vehicles", icon: Car, href: "/admin/vehicles" },
+  { key: "trailers", labelKey: "nav.trailers", icon: Container, href: "/admin/trailers" },
+  { key: "employees", labelKey: "nav.employees", icon: Users, href: "/admin/employees" },
+  { key: "partners", labelKey: "nav.partners", icon: Building2, href: "/admin/business-partners" },
 ];
 
 const CREATE_OPTIONS = [
-  { label: "New Order", icon: Truck, href: "/admin/tms/orders/new", module: "tms" },
-  { label: "New Task", icon: ClipboardList, href: "/admin/fsm/tasks/new", module: "fsm" },
-  { label: "Schedule Maintenance", icon: Wrench, href: "/admin/maintenance?action=new", module: "maintenance" },
-  { label: "Add Driver", icon: Users, href: "/admin/drivers?action=new", module: "masterdata" },
-  { label: "Add Vehicle", icon: Car, href: "/admin/vehicles?action=new", module: "masterdata" },
-  { label: "Add Trailer", icon: Container, href: "/admin/trailers?action=new", module: "masterdata" },
+  { key: "new-order", labelKey: "dashboard.newOrder", icon: Truck, href: "/admin/tms/orders/new", module: "tms" },
+  { key: "new-task", labelKey: "dashboard.newTask", icon: ClipboardList, href: "/admin/fsm/tasks/new", module: "fsm" },
+  { key: "schedule-maintenance", labelKey: "dashboard.scheduleMaintenance", icon: Wrench, href: "/admin/maintenance?action=new", module: "maintenance" },
+  { key: "add-driver", labelKey: "dashboard.addDriver", icon: Users, href: "/admin/drivers?action=new", module: "masterdata" },
+  { key: "add-vehicle", labelKey: "dashboard.addVehicle", icon: Car, href: "/admin/vehicles?action=new", module: "masterdata" },
+  { key: "add-trailer", labelKey: "dashboard.addTrailer", icon: Container, href: "/admin/trailers?action=new", module: "masterdata" },
 ];
 
 interface SearchResult {
@@ -328,6 +329,7 @@ interface SearchResult {
 
 export default function AdminDashboard() {
   const { session: adminSession, loading: sessionLoading } = useAdminSession();
+  const { t } = useTranslation();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -535,9 +537,9 @@ export default function AdminDashboard() {
 
   const greeting = () => {
     const h = new Date().getHours();
-    if (h < 12) return "Good morning";
-    if (h < 18) return "Good afternoon";
-    return "Good evening";
+    if (h < 12) return t("dashboard.goodMorning");
+    if (h < 18) return t("dashboard.goodAfternoon");
+    return t("dashboard.goodEvening");
   };
 
   const getTypeIcon = (type: SearchResult["type"]) => {
@@ -579,14 +581,16 @@ export default function AdminDashboard() {
       <div className="relative z-10 flex flex-col items-center gap-6 px-6">
         {/* Logo */}
         <div className="flex flex-col items-center">
-          <Image
-            src="/images/logo-full-bng.png"
-            alt="BNG Tracking"
-            width={120}
-            height={48}
-            className="opacity-90"
-            priority
-          />
+          <div className="flex items-center justify-center rounded-2xl p-5 bg-[#0E101F] shadow-lg ring-1 ring-white/5 dark:bg-transparent dark:p-0 dark:shadow-none dark:ring-0">
+            <Image
+              src="/images/logo-full-bng.png"
+              alt="BNG Tracking"
+              width={120}
+              height={48}
+              className="block h-12 w-auto object-contain opacity-90"
+              priority
+            />
+          </div>
         </div>
 
         {/* Action Buttons */}
@@ -620,19 +624,18 @@ export default function AdminDashboard() {
             onClick={() => setModulesOpen(true)}
             className="group h-14 w-14 rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95"
             style={{
-              background: "linear-gradient(145deg, rgba(30, 32, 40, 0.95) 0%, rgba(20, 22, 28, 0.95) 100%)",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.3)",
-              border: "1px solid rgba(252, 191, 1, 0.2)",
+              background: "linear-gradient(145deg, #FCBF01 0%, #d9a601 100%)",
+              boxShadow: "0 8px 32px rgba(252, 191, 1, 0.35), 0 4px 12px rgba(0,0,0,0.2), inset 0 2px 0 rgba(255,255,255,0.2)",
             }}
           >
-            <ArrowRight className="h-5 w-5 text-[#FCBF01] transition-transform group-hover:translate-x-0.5" />
+            <ArrowRight className="h-5 w-5 text-black transition-transform group-hover:translate-x-0.5" />
           </button>
         </div>
 
         {/* Greeting */}
         <div className="text-center">
           <p className="text-lg text-foreground/80">
-            {greeting()}, <span className="text-primary font-medium">{adminSession?.company_name || "Admin"}</span>
+            {greeting()}, <span className="text-primary font-medium">{adminSession?.company_name || t("header.admin")}</span>
           </p>
           <p className="text-sm text-muted-foreground mt-2 flex items-center justify-center gap-3">
             <span className="flex items-center gap-1">
@@ -659,7 +662,7 @@ export default function AdminDashboard() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 ref={searchInputRef}
-                placeholder="Search orders, tasks, drivers, vehicles..."
+                placeholder={t("dashboard.searchPlaceholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 h-12 text-base bg-muted/30 border-0 focus-visible:ring-1 focus-visible:ring-primary"
@@ -671,7 +674,7 @@ export default function AdminDashboard() {
           </div>
           <div className="max-h-[400px] overflow-y-auto p-2">
             {searchResults.length === 0 && searchQuery && !searching ? (
-              <p className="text-center text-muted-foreground py-8">No results found</p>
+                <p className="text-center text-muted-foreground py-8">{t("dashboard.noResults")}</p>
             ) : searchResults.length === 0 && !searchQuery ? (
               <p className="text-center text-muted-foreground py-8">Start typing to search...</p>
             ) : (
@@ -724,12 +727,12 @@ export default function AdminDashboard() {
           }}
         >
           <div className="p-4 border-b border-border/50">
-            <h3 className="font-semibold">Quick Create</h3>
-            <p className="text-sm text-muted-foreground">Create a new item</p>
+            <h3 className="font-semibold">{t("dashboard.quickCreate")}</h3>
+            <p className="text-sm text-muted-foreground">{t("dashboard.createNewItem")}</p>
           </div>
           <div className="p-2">
             {enabledCreate.map((opt) => {
-              const shortcut = opt.label === "New Order" ? "o" : opt.label === "New Task" ? "t" : null;
+              const shortcut = opt.key === "new-order" ? "o" : opt.key === "new-task" ? "t" : null;
               return (
                 <Link
                   key={opt.href}
@@ -745,7 +748,7 @@ export default function AdminDashboard() {
                   >
                     <opt.icon className="h-5 w-5 text-primary" />
                   </div>
-                  <span className="font-medium flex-1">{opt.label}</span>
+                  <span className="font-medium flex-1">{t(opt.labelKey)}</span>
                   {shortcut && (
                     <kbd className="px-2 py-1 text-xs bg-muted/50 rounded-md border border-border/50 font-mono text-muted-foreground">{shortcut}</kbd>
                   )}
@@ -760,8 +763,8 @@ export default function AdminDashboard() {
       <Dialog open={modulesOpen} onOpenChange={setModulesOpen}>
         <DialogContent className="p-0 gap-0 max-w-2xl overflow-hidden bg-card/95 backdrop-blur-xl border-border/50">
           <div className="p-4 border-b border-border/50">
-            <h3 className="font-semibold">Modules</h3>
-            <p className="text-sm text-muted-foreground">Navigate to a module</p>
+            <h3 className="font-semibold">{t("dashboard.modules")}</h3>
+            <p className="text-sm text-muted-foreground">{t("dashboard.navigateToModule")}</p>
           </div>
           <div className="p-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -781,15 +784,15 @@ export default function AdminDashboard() {
                     <m.icon className="h-6 w-6 text-primary" />
                   </div>
                   <div className="text-center">
-                    <p className="font-medium text-sm">{m.label}</p>
-                    <p className="text-xs text-muted-foreground">{m.desc}</p>
+                    <p className="font-medium text-sm">{t(m.labelKey)}</p>
+                    <p className="text-xs text-muted-foreground">{t(m.descKey)}</p>
                   </div>
                 </Link>
               ))}
             </div>
 
             <div className="mt-6 pt-4 border-t border-border/50">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Master Data</p>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">{t("dashboard.masterData")}</p>
               <div className="flex flex-wrap gap-2">
                 {MASTER_DATA.map((m) => (
                   <Link
@@ -799,7 +802,7 @@ export default function AdminDashboard() {
                     className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted/50 transition-colors"
                   >
                     <m.icon className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{m.label}</span>
+                    <span className="text-sm">{t(m.labelKey)}</span>
                     <Badge variant="secondary" className="text-xs">{counts[m.key] || 0}</Badge>
                   </Link>
                 ))}

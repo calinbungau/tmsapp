@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import OrderDetailPanel from "@/components/tms/order-detail-panel";
 import {
   Plus, Search, Package, Truck, ChevronLeft, ChevronRight,
@@ -164,17 +165,18 @@ interface Order {
   exchangeState?: "live" | "draft" | null;
 }
 
-const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
+const STATUS_FILTER_OPTIONS: { value: string; label: string; subcontract?: boolean }[] = [
   // Parent lifecycle (rows 1-16, plus sideways)
   ...Object.values(PARENT_STATUSES).map((s) => ({ value: s.value, label: s.label })),
   // Forwarder lifecycle (subcontract child rows visible on consolidated views)
-  ...Object.values(FORWARDER_STATUSES).map((s) => ({ value: s.value, label: `Subcontract: ${s.label}` })),
+  ...Object.values(FORWARDER_STATUSES).map((s) => ({ value: s.value, label: s.label, subcontract: true })),
 ];
 
 const DEFAULT_PAGE_SIZE = 25;
 
 export default function TMSOrdersPage() {
   const { session: adminSession } = useAdminSession();
+  const { t } = useTranslation();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -233,12 +235,12 @@ export default function TMSOrdersPage() {
       // Finally delete the order
       const { error } = await supabase.from("orders").delete().eq("id", deleteOrderId).eq("admin_id", adminSession.id);
       if (error) throw error;
-      toast({ title: "Order deleted", description: "The order has been permanently deleted." });
+      toast({ title: t("tms.orders.toast.deletedTitle"), description: t("tms.orders.toast.deletedDesc") });
       if (selectedOrderId === deleteOrderId) setSelectedOrderId(null);
       fetchOrders();
       fetchStats();
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to delete order", variant: "destructive" });
+      toast({ title: t("tms.orders.toast.errorTitle"), description: err.message || t("tms.orders.toast.deleteFailed"), variant: "destructive" });
     } finally {
       setDeleting(false);
       setDeleteOrderId(null);
@@ -660,8 +662,8 @@ export default function TMSOrdersPage() {
         {/* Header bar */}
         <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-border/50">
           <div>
-            <h1 className="text-lg md:text-xl font-semibold text-foreground tracking-tight">Transport Orders</h1>
-            <p className="text-[10px] md:text-xs text-muted-foreground mt-0.5">{totalCount} orders total</p>
+            <h1 className="text-lg md:text-xl font-semibold text-foreground tracking-tight">{t("tms.orders.title")}</h1>
+            <p className="text-[10px] md:text-xs text-muted-foreground mt-0.5">{t("tms.orders.ordersTotal").replace("{count}", String(totalCount))}</p>
           </div>
           <div className="flex items-center gap-2">
             {/* Quick access to the localized status reference guide so users
@@ -670,26 +672,26 @@ export default function TMSOrdersPage() {
             <Link href="/admin/tms/planning" className="hidden md:inline-flex">
               <Button size="sm" variant="outline" className="gap-1.5 h-8 px-3 text-xs">
                 <Layers className="h-3.5 w-3.5" />
-                Dispatch
+                {t("tms.orders.dispatch")}
               </Button>
             </Link>
             <Link href="/admin/tms/trips" className="hidden md:inline-flex">
               <Button size="sm" variant="outline" className="gap-1.5 h-8 px-3 text-xs">
                 <Route className="h-3.5 w-3.5" />
-                Round Trips
+                {t("tms.orders.roundTrips")}
               </Button>
             </Link>
             <Link href="/admin/tms/carriers/consolidation" className="hidden lg:inline-flex">
               <Button size="sm" variant="outline" className="gap-1.5 h-8 px-3 text-xs">
                 <Building2 className="h-3.5 w-3.5" />
-                Consolidate
+                {t("tms.orders.consolidate")}
               </Button>
             </Link>
             <Link href="/admin/tms/orders/new">
               <Button size="sm" className="gap-1.5 bg-primary hover:bg-primary/90 h-9 md:h-8 px-3 md:px-4 text-xs">
                 <Plus className="h-4 w-4 md:h-3.5 md:w-3.5" />
-                <span className="hidden sm:inline">New Order</span>
-                <span className="sm:hidden">New</span>
+                <span className="hidden sm:inline">{t("tms.orders.newOrder")}</span>
+                <span className="sm:hidden">{t("tms.orders.newShort")}</span>
               </Button>
             </Link>
           </div>
@@ -703,7 +705,7 @@ export default function TMSOrdersPage() {
             </div>
             <div>
               <p className="text-base md:text-lg font-semibold leading-none">{stats.total}</p>
-              <p className="text-[10px] text-muted-foreground">Total</p>
+              <p className="text-[10px] text-muted-foreground">{t("tms.orders.stats.total")}</p>
             </div>
           </div>
           <div className="h-8 w-px bg-border/50 shrink-0" />
@@ -713,7 +715,7 @@ export default function TMSOrdersPage() {
             </div>
             <div>
               <p className="text-base md:text-lg font-semibold leading-none">{stats.active}</p>
-              <p className="text-[10px] text-muted-foreground">Active</p>
+              <p className="text-[10px] text-muted-foreground">{t("tms.orders.stats.active")}</p>
             </div>
           </div>
           <div className="h-8 w-px bg-border/50 shrink-0 hidden sm:block" />
@@ -723,7 +725,7 @@ export default function TMSOrdersPage() {
             </div>
             <div>
               <p className="text-base md:text-lg font-semibold leading-none">{fmtCurrency(stats.revenue, "EUR")}</p>
-              <p className="text-[10px] text-muted-foreground">Revenue</p>
+              <p className="text-[10px] text-muted-foreground">{t("tms.orders.stats.revenue")}</p>
             </div>
           </div>
           <div className="h-8 w-px bg-border/50 shrink-0 hidden lg:block" />
@@ -733,7 +735,7 @@ export default function TMSOrdersPage() {
             </div>
             <div>
               <p className="text-base md:text-lg font-semibold leading-none">{fmtCurrency(stats.margin, "EUR")}</p>
-              <p className="text-[10px] text-muted-foreground">Margin</p>
+              <p className="text-[10px] text-muted-foreground">{t("tms.orders.stats.margin")}</p>
             </div>
           </div>
         </div>
@@ -749,16 +751,16 @@ export default function TMSOrdersPage() {
               <Input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search by reference, customer, carrier, cargo..."
+                placeholder={t("tms.orders.searchPlaceholder")}
                 className="pl-9 h-10 md:h-8 text-sm md:text-xs"
               />
             </div>
             <div className="flex items-center gap-2">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="flex-1 sm:w-[130px] h-10 md:h-8 text-sm md:text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
+                <SelectTrigger className="flex-1 sm:w-[130px] h-10 md:h-8 text-sm md:text-xs"><SelectValue placeholder={t("tms.orders.status")} /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  {STATUS_FILTER_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                  <SelectItem value="all">{t("tms.orders.allStatuses")}</SelectItem>
+                  {STATUS_FILTER_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.subcontract ? t("tms.orders.subcontractPrefix").replace("{label}", opt.label) : opt.label}</SelectItem>)}
                 </SelectContent>
               </Select>
               <OrdersAdvancedFilters
@@ -783,15 +785,15 @@ export default function TMSOrdersPage() {
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-16">
-              <p className="text-muted-foreground text-sm">Loading orders...</p>
+              <p className="text-muted-foreground text-sm">{t("tms.orders.loading")}</p>
             </div>
           ) : orders.length === 0 ? (
             <div className="text-center py-16">
               <Package className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-muted-foreground text-sm">No orders found</p>
+              <p className="text-muted-foreground text-sm">{t("tms.orders.noOrdersFound")}</p>
               {!search && statusFilter === "all" && (
                 <Link href="/admin/tms/orders/new">
-                  <Button size="sm" className="mt-3 gap-1.5"><Plus className="h-3.5 w-3.5" />Create Order</Button>
+                  <Button size="sm" className="mt-3 gap-1.5"><Plus className="h-3.5 w-3.5" />{t("tms.orders.createOrder")}</Button>
                 </Link>
               )}
             </div>
@@ -824,15 +826,15 @@ export default function TMSOrdersPage() {
   <span className="font-mono text-sm font-semibold text-foreground">{order.reference_number}</span>
   {hasMixed ? (
     <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-400 border-amber-500/30 bg-amber-500/10">
-      Mixed
+      {t("tms.assignment.mixed")}
     </Badge>
   ) : hasOwnFleet ? (
     <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-blue-400 border-blue-500/30 bg-blue-500/10">
-      Own Fleet
+      {t("tms.assignment.ownFleet")}
     </Badge>
   ) : hasSubcontract ? (
     <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-indigo-400 border-indigo-500/30 bg-indigo-500/10">
-      Subcontract
+      {t("tms.assignment.subcontract")}
     </Badge>
   ) : null}
   {(order.created_from === "ai_upload" || order.created_from === "ai_email") && (
@@ -845,12 +847,12 @@ export default function TMSOrdersPage() {
                 <OrderStatusBadge status={order.status} scope="parent" size="sm" />
                 {order.exchangeState === "live" && (
                   <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-emerald-400 border-emerald-500/30 bg-emerald-500/10">
-                    On Exchange
+                    {t("tms.exchange.onExchange")}
                   </Badge>
                 )}
                 {order.exchangeState === "draft" && (
                   <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-orange-400 border-orange-500/30 bg-orange-500/10">
-                    Exchange Draft
+                    {t("tms.exchange.draft")}
                   </Badge>
                 )}
   </div>
@@ -923,15 +925,15 @@ export default function TMSOrdersPage() {
               <table className="w-full text-sm hidden md:table">
                 <thead className="sticky top-0 bg-background/95 backdrop-blur-sm z-10">
                   <tr className="border-b border-border/50">
-                    <th className="text-left font-medium text-muted-foreground text-xs px-6 py-2.5">Reference</th>
-                    <th className="text-left font-medium text-muted-foreground text-xs px-3 py-2.5">Cust. Ref</th>
-                    <th className="text-left font-medium text-muted-foreground text-xs px-3 py-2.5">Route</th>
-                    <th className="text-left font-medium text-muted-foreground text-xs px-3 py-2.5">Customer</th>
-                    <th className="text-left font-medium text-muted-foreground text-xs px-3 py-2.5">Status</th>
-                    <th className="text-left font-medium text-muted-foreground text-xs px-3 py-2.5">Assignment</th>
-                    <th className="text-left font-medium text-muted-foreground text-xs px-3 py-2.5">Cargo</th>
-                    <th className="text-left font-medium text-muted-foreground text-xs px-3 py-2.5">Added</th>
-                    {!selectedOrderId && <th className="text-right font-medium text-muted-foreground text-xs px-3 py-2.5">Price</th>}
+                    <th className="text-left font-medium text-muted-foreground text-xs px-6 py-2.5">{t("tms.orders.columns.reference")}</th>
+                    <th className="text-left font-medium text-muted-foreground text-xs px-3 py-2.5">{t("tms.orders.columns.custRef")}</th>
+                    <th className="text-left font-medium text-muted-foreground text-xs px-3 py-2.5">{t("tms.orders.columns.route")}</th>
+                    <th className="text-left font-medium text-muted-foreground text-xs px-3 py-2.5">{t("tms.orders.columns.customer")}</th>
+                    <th className="text-left font-medium text-muted-foreground text-xs px-3 py-2.5">{t("tms.orders.columns.status")}</th>
+                    <th className="text-left font-medium text-muted-foreground text-xs px-3 py-2.5">{t("tms.orders.columns.assignment")}</th>
+                    <th className="text-left font-medium text-muted-foreground text-xs px-3 py-2.5">{t("tms.orders.columns.cargo")}</th>
+                    <th className="text-left font-medium text-muted-foreground text-xs px-3 py-2.5">{t("tms.orders.columns.added")}</th>
+                    {!selectedOrderId && <th className="text-right font-medium text-muted-foreground text-xs px-3 py-2.5">{t("tms.orders.columns.price")}</th>}
                     <th className="text-right font-medium text-muted-foreground text-xs px-4 py-2.5 w-[50px]"></th>
                   </tr>
                 </thead>
@@ -998,12 +1000,12 @@ export default function TMSOrdersPage() {
                   <OrderStatusBadge status={order.status} scope="parent" size="sm" />
                   {order.exchangeState === "live" && (
                     <Badge variant="outline" className="text-[8px] px-1.5 py-0 text-emerald-400 border-emerald-500/30 bg-emerald-500/10">
-                      On Exchange
+                      {t("tms.exchange.onExchange")}
                     </Badge>
                   )}
                   {order.exchangeState === "draft" && (
                     <Badge variant="outline" className="text-[8px] px-1.5 py-0 text-orange-400 border-orange-500/30 bg-orange-500/10">
-                      Exchange Draft
+                      {t("tms.exchange.draft")}
                     </Badge>
                   )}
                         {/* For Mixed orders show BOTH internal and forwarder
@@ -1015,7 +1017,7 @@ export default function TMSOrdersPage() {
                           <div className="flex flex-col gap-0.5">
                             {order.executionInternal && (
                               <div className="flex items-center gap-1">
-                                <span className="text-[8px] uppercase tracking-wider text-blue-400/80 font-semibold w-12">Internal</span>
+                                <span className="text-[8px] uppercase tracking-wider text-blue-400/80 font-semibold w-12">{t("tms.assignment.internal")}</span>
                                 <OrderStatusBadge
                                   status={order.executionInternal.status}
                                   scope="internal"
@@ -1026,7 +1028,7 @@ export default function TMSOrdersPage() {
                             )}
                             {order.executionForwarder && (
                               <div className="flex items-center gap-1">
-                                <span className="text-[8px] uppercase tracking-wider text-indigo-400/80 font-semibold w-12">Forwarder</span>
+                                <span className="text-[8px] uppercase tracking-wider text-indigo-400/80 font-semibold w-12">{t("tms.assignment.forwarder")}</span>
                                 <OrderStatusBadge
                                   status={order.executionForwarder.status}
                                   scope="forwarder"
@@ -1049,26 +1051,26 @@ export default function TMSOrdersPage() {
                     <td className="px-3 py-3">
                       <div className="text-xs">
                         {trips.length === 0 || allLegs.length === 0 ? (
-                          <span className="text-muted-foreground">No execution</span>
+                          <span className="text-muted-foreground">{t("tms.assignment.noExecution")}</span>
                         ) : (
                           <div className="flex flex-col gap-1">
                             {/* Execution type badge */}
                             <div className="flex items-center gap-1">
                               {hasMixed ? (
                                 <Badge variant="outline" className="text-[8px] px-1.5 py-0 text-amber-400 border-amber-500/30 bg-amber-500/10">
-                                  Mixed
+                                  {t("tms.assignment.mixed")}
                                 </Badge>
                               ) : hasOwnFleet ? (
                                 <Badge variant="outline" className="text-[8px] px-1.5 py-0 text-blue-400 border-blue-500/30 bg-blue-500/10">
-                                  Own Fleet
+                                  {t("tms.assignment.ownFleet")}
                                 </Badge>
                               ) : hasSubcontract ? (
                                 <Badge variant="outline" className="text-[8px] px-1.5 py-0 text-indigo-400 border-indigo-500/30 bg-indigo-500/10">
-                                  Subcontract
+                                  {t("tms.assignment.subcontract")}
                                 </Badge>
                               ) : (
                                 <Badge variant="outline" className="text-[8px] px-1.5 py-0 text-muted-foreground border-border bg-muted/40">
-                                  Undecided
+                                  {t("tms.assignment.undecided")}
                                 </Badge>
                               )}
                             </div>
@@ -1082,7 +1084,7 @@ export default function TMSOrdersPage() {
                                     {ownFleetLegs.length > 1 && <span className="text-muted-foreground text-[9px]">+{ownFleetLegs.length - 1}</span>}
                                   </div>
                                 ) : (
-                                  <span className="text-amber-400 text-[10px]">Driver unassigned</span>
+                                  <span className="text-amber-400 text-[10px]">{t("tms.assignment.driverUnassigned")}</span>
                                 )}
                                 {(ownFleetLegs[0]?.vehicle_plate || ownFleetLegs[0]?.trailer_plate) && (
                                   <div className="flex items-center gap-2 text-muted-foreground">
@@ -1111,7 +1113,7 @@ export default function TMSOrdersPage() {
                                   {subcontractLegs.length > 1 && <span className="text-muted-foreground text-[9px]">+{subcontractLegs.length - 1}</span>}
                                 </div>
                               ) : (
-                                <span className="text-amber-400 text-[10px]">Carrier unassigned</span>
+                                <span className="text-amber-400 text-[10px]">{t("tms.assignment.carrierUnassigned")}</span>
                               )
                             )}
                           </div>
@@ -1134,7 +1136,7 @@ export default function TMSOrdersPage() {
                           {new Date(order.created_at).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "2-digit" })}
                         </span>
                         <span className="text-muted-foreground truncate max-w-[140px] block">
-                          {order.created_by ? (adminUsersById.get(order.created_by)?.name ?? "—") : <span className="italic">system</span>}
+                          {order.created_by ? (adminUsersById.get(order.created_by)?.name ?? "—") : <span className="italic">{t("tms.orders.system")}</span>}
                         </span>
                       </div>
                     </td>
@@ -1174,8 +1176,8 @@ export default function TMSOrdersPage() {
         <div className="flex items-center justify-between px-4 md:px-6 py-2 md:py-2.5 border-t border-border/50 shrink-0 bg-background/95">
           <p className="text-[10px] md:text-xs text-muted-foreground">
             {totalCount > 0
-              ? <><span className="hidden sm:inline">{(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalCount)} of </span>{totalCount}<span className="hidden sm:inline"> orders</span></>
-              : "No orders"
+              ? <><span className="hidden sm:inline">{(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalCount)} {t("tms.orders.pagination.of")} </span>{totalCount}<span className="hidden sm:inline"> {t("tms.orders.pagination.orders")}</span></>
+              : t("tms.orders.pagination.noOrders")
             }
           </p>
           {totalPages > 1 && (
@@ -1216,9 +1218,9 @@ export default function TMSOrdersPage() {
           <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
             <SelectTrigger className="w-[70px] md:w-[90px] h-8 md:h-7 text-[10px] md:text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="25">25 / pg</SelectItem>
-              <SelectItem value="50">50 / pg</SelectItem>
-              <SelectItem value="100">100 / pg</SelectItem>
+              <SelectItem value="25">25 {t("tms.orders.pagination.perPage")}</SelectItem>
+              <SelectItem value="50">50 {t("tms.orders.pagination.perPage")}</SelectItem>
+              <SelectItem value="100">100 {t("tms.orders.pagination.perPage")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -1239,19 +1241,19 @@ export default function TMSOrdersPage() {
       <AlertDialog open={!!deleteOrderId} onOpenChange={(open) => !open && setDeleteOrderId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Order</AlertDialogTitle>
+            <AlertDialogTitle>{t("tms.orders.deleteDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this order? This action cannot be undone and will permanently remove the order along with all its stops, documents, and history.
+              {t("tms.orders.deleteDialog.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("tms.orders.deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteOrder}
               disabled={deleting}
               className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
             >
-              {deleting ? "Deleting..." : "Delete Order"}
+              {deleting ? t("tms.orders.deleteDialog.deleting") : t("tms.orders.deleteDialog.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

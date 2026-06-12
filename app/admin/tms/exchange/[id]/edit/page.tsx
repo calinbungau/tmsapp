@@ -29,6 +29,7 @@ import {
   Search,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import { geocodeAddressSmart } from "@/lib/tms/geocode";
 
 // ─── Constants ─────────────────────────────────────────────
@@ -199,6 +200,7 @@ const s = (v: unknown): string => (v == null ? "" : String(v));
 export default function EditFreightOfferPage() {
   const { session: adminSession } = useAdminSession();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useParams();
   const supabase = createClient();
@@ -293,12 +295,12 @@ export default function EditFreightOfferPage() {
       const result = await geocodeAddressSmart(addressParts, form.origin_country);
       if (result) {
         setForm((prev) => ({ ...prev, origin_lat: result.latitude, origin_lng: result.longitude }));
-        toast({ title: "Geocoded", description: "Origin location found" });
+        toast({ title: t("tms.exchangeEdit.toast.geocodedTitle"), description: t("tms.exchangeEdit.toast.originFound") });
       } else {
-        toast({ title: "Not found", description: "Could not geocode origin address", variant: "destructive" });
+        toast({ title: t("tms.exchangeEdit.toast.notFoundTitle"), description: t("tms.exchangeEdit.toast.originGeocodeFailed"), variant: "destructive" });
       }
     } catch {
-      toast({ title: "Error", description: "Geocoding failed", variant: "destructive" });
+      toast({ title: t("tms.exchangeEdit.toast.errorTitle"), description: t("tms.exchangeEdit.toast.geocodingFailed"), variant: "destructive" });
     } finally {
       setGeocodingOrigin(false);
     }
@@ -316,12 +318,12 @@ export default function EditFreightOfferPage() {
       const result = await geocodeAddressSmart(addressParts, form.dest_country);
       if (result) {
         setForm((prev) => ({ ...prev, dest_lat: result.latitude, dest_lng: result.longitude }));
-        toast({ title: "Geocoded", description: "Destination location found" });
+        toast({ title: t("tms.exchangeEdit.toast.geocodedTitle"), description: t("tms.exchangeEdit.toast.destFound") });
       } else {
-        toast({ title: "Not found", description: "Could not geocode destination address", variant: "destructive" });
+        toast({ title: t("tms.exchangeEdit.toast.notFoundTitle"), description: t("tms.exchangeEdit.toast.destGeocodeFailed"), variant: "destructive" });
       }
     } catch {
-      toast({ title: "Error", description: "Geocoding failed", variant: "destructive" });
+      toast({ title: t("tms.exchangeEdit.toast.errorTitle"), description: t("tms.exchangeEdit.toast.geocodingFailed"), variant: "destructive" });
     } finally {
       setGeocodingDest(false);
     }
@@ -330,16 +332,16 @@ export default function EditFreightOfferPage() {
   // Save changes
   const handleSave = async () => {
     if (!adminSession?.id) {
-      toast({ title: "Error", description: "Not authenticated", variant: "destructive" });
+      toast({ title: t("tms.exchangeEdit.toast.errorTitle"), description: t("tms.exchangeEdit.toast.notAuthenticated"), variant: "destructive" });
       return;
     }
 
     if (!form.origin_city && !form.origin_country) {
-      toast({ title: "Missing origin", description: "Please enter at least a city or country for origin", variant: "destructive" });
+      toast({ title: t("tms.exchangeEdit.toast.missingOriginTitle"), description: t("tms.exchangeEdit.toast.missingOriginDesc"), variant: "destructive" });
       return;
     }
     if (!form.dest_city && !form.dest_country) {
-      toast({ title: "Missing destination", description: "Please enter at least a city or country for destination", variant: "destructive" });
+      toast({ title: t("tms.exchangeEdit.toast.missingDestTitle"), description: t("tms.exchangeEdit.toast.missingDestDesc"), variant: "destructive" });
       return;
     }
 
@@ -397,11 +399,11 @@ export default function EditFreightOfferPage() {
         .eq("admin_id", adminSession.id);
       if (error) throw error;
 
-      toast({ title: "Saved", description: `Offer ${reference} updated` });
+      toast({ title: t("tms.exchangeEdit.toast.savedTitle"), description: t("tms.exchangeEdit.toast.savedDesc").replace("{ref}", reference) });
       router.push(`/admin/tms/exchange/${offerId}`);
     } catch (err: any) {
       console.error("Save error:", err);
-      toast({ title: "Error", description: err?.message || "Failed to save offer", variant: "destructive" });
+      toast({ title: t("tms.exchangeEdit.toast.errorTitle"), description: err?.message || t("tms.exchangeEdit.toast.saveFailed"), variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -419,9 +421,9 @@ export default function EditFreightOfferPage() {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center gap-3">
         <Package className="h-12 w-12 text-muted-foreground/50" />
-        <p className="text-muted-foreground">Offer not found</p>
+        <p className="text-muted-foreground">{t("tms.exchangeEdit.offerNotFound")}</p>
         <Button asChild variant="outline">
-          <Link href="/admin/tms/exchange">Back to Exchange</Link>
+          <Link href="/admin/tms/exchange">{t("tms.exchangeEdit.backToExchange")}</Link>
         </Button>
       </div>
     );
@@ -440,13 +442,13 @@ export default function EditFreightOfferPage() {
               <ChevronLeft className="h-5 w-5" />
             </button>
             <div>
-              <h1 className="text-lg font-semibold text-foreground">Edit Freight Offer</h1>
+              <h1 className="text-lg font-semibold text-foreground">{t("tms.exchangeEdit.editOffer")}</h1>
               <p className="text-sm text-muted-foreground font-mono">{reference}</p>
             </div>
           </div>
           <Button onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-            Save Changes
+            {t("tms.exchangeEdit.saveChanges")}
           </Button>
         </div>
       </div>
@@ -458,10 +460,10 @@ export default function EditFreightOfferPage() {
           <div className="bg-card border border-border/50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-4">
               <FileText className="h-4 w-4 text-primary" />
-              <h2 className="font-medium text-foreground">Title (Optional)</h2>
+              <h2 className="font-medium text-foreground">{t("tms.exchangeEdit.titleOptional")}</h2>
             </div>
             <Input
-              placeholder="e.g., FTL Budapest to Munich"
+              placeholder={t("tms.exchangeEdit.titlePlaceholder")}
               value={form.title}
               onChange={(e) => updateField("title", e.target.value)}
             />
@@ -471,14 +473,14 @@ export default function EditFreightOfferPage() {
           <div className="bg-card border border-border/50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-4">
               <MapPin className="h-4 w-4 text-primary" />
-              <h2 className="font-medium text-foreground">Route</h2>
+              <h2 className="font-medium text-foreground">{t("tms.exchangeEdit.route")}</h2>
             </div>
 
             <div className="grid md:grid-cols-2 gap-6">
               {/* Origin */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium text-green-600">Origin (Loading)</Label>
+                  <Label className="text-sm font-medium text-green-600">{t("tms.exchangeEdit.originLoading")}</Label>
                   <Button
                     type="button"
                     variant="ghost"
@@ -488,49 +490,49 @@ export default function EditFreightOfferPage() {
                     className="h-7 text-xs"
                   >
                     {geocodingOrigin ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Search className="h-3 w-3 mr-1" />}
-                    Geocode
+                    {t("tms.exchangeEdit.geocode")}
                   </Button>
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Company</Label>
+                  <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.company")}</Label>
                   <Input
-                    placeholder="Company name"
+                    placeholder={t("tms.exchangeEdit.companyPlaceholder")}
                     value={form.origin_company}
                     onChange={(e) => updateField("origin_company", e.target.value)}
                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Address</Label>
+                  <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.address")}</Label>
                   <Input
-                    placeholder="Street address"
+                    placeholder={t("tms.exchangeEdit.addressPlaceholder")}
                     value={form.origin_address}
                     onChange={(e) => updateField("origin_address", e.target.value)}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <Label className="text-xs text-muted-foreground">City</Label>
+                    <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.city")}</Label>
                     <Input
-                      placeholder="City"
+                      placeholder={t("tms.exchangeEdit.cityPlaceholder")}
                       value={form.origin_city}
                       onChange={(e) => updateField("origin_city", e.target.value)}
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">Postal Code</Label>
+                    <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.postalCode")}</Label>
                     <Input
-                      placeholder="Postal"
+                      placeholder={t("tms.exchangeEdit.postalPlaceholder")}
                       value={form.origin_postal_code}
                       onChange={(e) => updateField("origin_postal_code", e.target.value)}
                     />
                   </div>
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Country</Label>
+                  <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.country")}</Label>
                   <div className="flex items-center gap-2">
                     <CountryFlag country={form.origin_country} />
                     <Input
-                      placeholder="Country"
+                      placeholder={t("tms.exchangeEdit.countryPlaceholder")}
                       value={form.origin_country}
                       onChange={(e) => updateField("origin_country", e.target.value)}
                       className="flex-1"
@@ -539,7 +541,7 @@ export default function EditFreightOfferPage() {
                 </div>
                 {form.origin_lat && form.origin_lng && (
                   <p className="text-xs text-muted-foreground">
-                    Coords: {form.origin_lat.toFixed(4)}, {form.origin_lng.toFixed(4)}
+                    {t("tms.exchangeEdit.coords")}: {form.origin_lat.toFixed(4)}, {form.origin_lng.toFixed(4)}
                   </p>
                 )}
               </div>
@@ -547,7 +549,7 @@ export default function EditFreightOfferPage() {
               {/* Destination */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium text-red-600">Destination (Unloading)</Label>
+                  <Label className="text-sm font-medium text-red-600">{t("tms.exchangeEdit.destUnloading")}</Label>
                   <Button
                     type="button"
                     variant="ghost"
@@ -557,49 +559,49 @@ export default function EditFreightOfferPage() {
                     className="h-7 text-xs"
                   >
                     {geocodingDest ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Search className="h-3 w-3 mr-1" />}
-                    Geocode
+                    {t("tms.exchangeEdit.geocode")}
                   </Button>
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Company</Label>
+                  <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.company")}</Label>
                   <Input
-                    placeholder="Company name"
+                    placeholder={t("tms.exchangeEdit.companyPlaceholder")}
                     value={form.dest_company}
                     onChange={(e) => updateField("dest_company", e.target.value)}
                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Address</Label>
+                  <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.address")}</Label>
                   <Input
-                    placeholder="Street address"
+                    placeholder={t("tms.exchangeEdit.addressPlaceholder")}
                     value={form.dest_address}
                     onChange={(e) => updateField("dest_address", e.target.value)}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <Label className="text-xs text-muted-foreground">City</Label>
+                    <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.city")}</Label>
                     <Input
-                      placeholder="City"
+                      placeholder={t("tms.exchangeEdit.cityPlaceholder")}
                       value={form.dest_city}
                       onChange={(e) => updateField("dest_city", e.target.value)}
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">Postal Code</Label>
+                    <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.postalCode")}</Label>
                     <Input
-                      placeholder="Postal"
+                      placeholder={t("tms.exchangeEdit.postalPlaceholder")}
                       value={form.dest_postal_code}
                       onChange={(e) => updateField("dest_postal_code", e.target.value)}
                     />
                   </div>
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Country</Label>
+                  <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.country")}</Label>
                   <div className="flex items-center gap-2">
                     <CountryFlag country={form.dest_country} />
                     <Input
-                      placeholder="Country"
+                      placeholder={t("tms.exchangeEdit.countryPlaceholder")}
                       value={form.dest_country}
                       onChange={(e) => updateField("dest_country", e.target.value)}
                       className="flex-1"
@@ -608,7 +610,7 @@ export default function EditFreightOfferPage() {
                 </div>
                 {form.dest_lat && form.dest_lng && (
                   <p className="text-xs text-muted-foreground">
-                    Coords: {form.dest_lat.toFixed(4)}, {form.dest_lng.toFixed(4)}
+                    {t("tms.exchangeEdit.coords")}: {form.dest_lat.toFixed(4)}, {form.dest_lng.toFixed(4)}
                   </p>
                 )}
               </div>
@@ -619,14 +621,14 @@ export default function EditFreightOfferPage() {
           <div className="bg-card border border-border/50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-4">
               <Calendar className="h-4 w-4 text-primary" />
-              <h2 className="font-medium text-foreground">Schedule</h2>
+              <h2 className="font-medium text-foreground">{t("tms.exchangeEdit.schedule")}</h2>
             </div>
             <div className="grid md:grid-cols-2 gap-6">
               <div className="space-y-3">
-                <Label className="text-sm font-medium text-green-600">Loading Dates</Label>
+                <Label className="text-sm font-medium text-green-600">{t("tms.exchangeEdit.loadingDates")}</Label>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <Label className="text-xs text-muted-foreground">From</Label>
+                    <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.from")}</Label>
                     <Input
                       type="date"
                       value={form.load_date_from}
@@ -634,7 +636,7 @@ export default function EditFreightOfferPage() {
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">To</Label>
+                    <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.to")}</Label>
                     <Input
                       type="date"
                       value={form.load_date_to}
@@ -644,10 +646,10 @@ export default function EditFreightOfferPage() {
                 </div>
               </div>
               <div className="space-y-3">
-                <Label className="text-sm font-medium text-red-600">Unloading Dates</Label>
+                <Label className="text-sm font-medium text-red-600">{t("tms.exchangeEdit.unloadingDates")}</Label>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <Label className="text-xs text-muted-foreground">From</Label>
+                    <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.from")}</Label>
                     <Input
                       type="date"
                       value={form.unload_date_from}
@@ -655,7 +657,7 @@ export default function EditFreightOfferPage() {
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">To</Label>
+                    <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.to")}</Label>
                     <Input
                       type="date"
                       value={form.unload_date_to}
@@ -671,14 +673,14 @@ export default function EditFreightOfferPage() {
           <div className="bg-card border border-border/50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-4">
               <Package className="h-4 w-4 text-primary" />
-              <h2 className="font-medium text-foreground">Cargo &amp; Vehicle</h2>
+              <h2 className="font-medium text-foreground">{t("tms.exchangeEdit.cargoVehicle")}</h2>
             </div>
             <div className="grid md:grid-cols-3 gap-4">
               <div>
-                <Label className="text-xs text-muted-foreground">Vehicle Type</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.vehicleType")}</Label>
                 <Select value={form.vehicle_type} onValueChange={(v) => updateField("vehicle_type", v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select..." />
+                    <SelectValue placeholder={t("tms.exchangeEdit.selectPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
                     {VEHICLE_TYPES.map((t) => (
@@ -688,10 +690,10 @@ export default function EditFreightOfferPage() {
                 </Select>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Body Type</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.bodyType")}</Label>
                 <Select value={form.body_type} onValueChange={(v) => updateField("body_type", v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select..." />
+                    <SelectValue placeholder={t("tms.exchangeEdit.selectPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
                     {BODY_TYPES.map((t) => (
@@ -701,10 +703,10 @@ export default function EditFreightOfferPage() {
                 </Select>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">ADR Class</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.adrClass")}</Label>
                 <Select value={form.adr_class} onValueChange={(v) => updateField("adr_class", v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select..." />
+                    <SelectValue placeholder={t("tms.exchangeEdit.selectPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
                     {ADR_CLASSES.map((t) => (
@@ -717,7 +719,7 @@ export default function EditFreightOfferPage() {
 
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
               <div>
-                <Label className="text-xs text-muted-foreground">Weight (kg)</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.weight")}</Label>
                 <Input
                   type="number"
                   placeholder="e.g., 24000"
@@ -726,7 +728,7 @@ export default function EditFreightOfferPage() {
                 />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">LDM</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.ldm")}</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -736,7 +738,7 @@ export default function EditFreightOfferPage() {
                 />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Pallets</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.pallets")}</Label>
                 <Input
                   type="number"
                   placeholder="e.g., 33"
@@ -745,7 +747,7 @@ export default function EditFreightOfferPage() {
                 />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Volume (m3)</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.volume")}</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -755,7 +757,7 @@ export default function EditFreightOfferPage() {
                 />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Length (m)</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.length")}</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -771,7 +773,7 @@ export default function EditFreightOfferPage() {
               <div>
                 <Label className="text-xs text-muted-foreground flex items-center gap-1">
                   <Thermometer className="h-3 w-3" />
-                  Temp Min (C)
+                  {t("tms.exchangeEdit.tempMin")}
                 </Label>
                 <Input
                   type="number"
@@ -783,7 +785,7 @@ export default function EditFreightOfferPage() {
               <div>
                 <Label className="text-xs text-muted-foreground flex items-center gap-1">
                   <Thermometer className="h-3 w-3" />
-                  Temp Max (C)
+                  {t("tms.exchangeEdit.tempMax")}
                 </Label>
                 <Input
                   type="number"
@@ -795,9 +797,9 @@ export default function EditFreightOfferPage() {
             </div>
 
             <div className="mt-4">
-              <Label className="text-xs text-muted-foreground">Goods Description</Label>
+              <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.goodsDescription")}</Label>
               <Textarea
-                placeholder="Description of goods, special requirements..."
+                placeholder={t("tms.exchangeEdit.goodsPlaceholder")}
                 value={form.goods_description}
                 onChange={(e) => updateField("goods_description", e.target.value)}
                 rows={2}
@@ -809,19 +811,19 @@ export default function EditFreightOfferPage() {
           <div className="bg-card border border-border/50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-4">
               <DollarSign className="h-4 w-4 text-primary" />
-              <h2 className="font-medium text-foreground">Pricing</h2>
+              <h2 className="font-medium text-foreground">{t("tms.exchangeEdit.pricing")}</h2>
             </div>
             <div className="grid md:grid-cols-4 gap-4">
               <div>
-                <Label className="text-xs text-muted-foreground">Pricing Mode</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.pricingMode")}</Label>
                 <Select value={form.pricing_mode} onValueChange={(v) => updateField("pricing_mode", v)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="open">Open (Carriers Propose)</SelectItem>
-                    <SelectItem value="target">Target Price</SelectItem>
-                    <SelectItem value="fixed">Fixed Price</SelectItem>
+                    <SelectItem value="open">{t("tms.exchangeEdit.pricingOpen")}</SelectItem>
+                    <SelectItem value="target">{t("tms.exchangeEdit.pricingTarget")}</SelectItem>
+                    <SelectItem value="fixed">{t("tms.exchangeEdit.pricingFixed")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -829,18 +831,18 @@ export default function EditFreightOfferPage() {
                 <>
                   <div>
                     <Label className="text-xs text-muted-foreground">
-                      {form.pricing_mode === "fixed" ? "Fixed Price" : "Target Price"}
+                      {form.pricing_mode === "fixed" ? t("tms.exchangeEdit.fixedPrice") : t("tms.exchangeEdit.targetPrice")}
                     </Label>
                     <Input
                       type="number"
                       step="0.01"
-                      placeholder="Amount"
+                      placeholder={t("tms.exchangeEdit.amount")}
                       value={form.price_amount}
                       onChange={(e) => updateField("price_amount", e.target.value)}
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">Currency</Label>
+                    <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.currency")}</Label>
                     <Select value={form.currency} onValueChange={(v) => updateField("currency", v)}>
                       <SelectTrigger>
                         <SelectValue />
@@ -855,7 +857,7 @@ export default function EditFreightOfferPage() {
                 </>
               )}
               <div>
-                <Label className="text-xs text-muted-foreground">Payment Terms (days)</Label>
+                <Label className="text-xs text-muted-foreground">{t("tms.exchangeEdit.paymentTerms")}</Label>
                 <Input
                   type="number"
                   placeholder="e.g., 30"
@@ -870,10 +872,10 @@ export default function EditFreightOfferPage() {
           <div className="bg-card border border-border/50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-4">
               <FileText className="h-4 w-4 text-primary" />
-              <h2 className="font-medium text-foreground">Notes</h2>
+              <h2 className="font-medium text-foreground">{t("tms.exchangeEdit.notes")}</h2>
             </div>
             <Textarea
-              placeholder="Additional information, requirements, instructions..."
+              placeholder={t("tms.exchangeEdit.notesPlaceholder")}
               value={form.notes}
               onChange={(e) => updateField("notes", e.target.value)}
               rows={3}
@@ -883,11 +885,11 @@ export default function EditFreightOfferPage() {
           {/* Bottom Save Button */}
           <div className="flex justify-end gap-3 pb-6">
             <Button variant="outline" onClick={() => router.push(`/admin/tms/exchange/${offerId}`)}>
-              Cancel
+              {t("tms.exchangeEdit.cancel")}
             </Button>
             <Button onClick={handleSave} disabled={saving}>
               {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-              Save Changes
+              {t("tms.exchangeEdit.saveChanges")}
             </Button>
           </div>
         </div>

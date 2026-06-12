@@ -36,6 +36,7 @@ import {
   FolderTree,
 } from "lucide-react";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 
 interface Employee {
   id: string;
@@ -59,6 +60,7 @@ interface Department {
 
 export default function DepartmentsPage() {
   const { session: adminSession, loading: sessionLoading } = useAdminSession();
+  const { t } = useTranslation();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -183,10 +185,10 @@ export default function DepartmentsPage() {
 
   const handleDelete = async (dept: Department) => {
     if (dept.employee_count && dept.employee_count > 0) {
-      alert("Cannot delete a department that has employees. Please reassign employees first.");
+      alert(t("departments.cannotDelete"));
       return;
     }
-    if (!confirm(`Are you sure you want to delete "${dept.name}"?`)) return;
+    if (!confirm(t("departments.confirmDelete").replace("{name}", dept.name))) return;
     
     const supabase = createClient();
     await supabase.from("departments").delete().eq("id", dept.id);
@@ -232,16 +234,16 @@ export default function DepartmentsPage() {
             <div className="font-medium flex items-center gap-2">
               {dept.name}
               {!dept.is_active && (
-                <Badge variant="secondary" className="text-xs">Inactive</Badge>
+                <Badge variant="secondary" className="text-xs">{t("departments.inactive")}</Badge>
               )}
             </div>
             <div className="text-sm text-muted-foreground flex items-center gap-3">
               {dept.manager && (
-                <span>Manager: {dept.manager.first_name} {dept.manager.last_name}</span>
+                <span>{t("departments.manager")} {dept.manager.first_name} {dept.manager.last_name}</span>
               )}
               <span className="flex items-center gap-1">
                 <Users className="h-3 w-3" />
-                {dept.employee_count || 0} employees
+                {t("departments.employeesCount").replace("{n}", String(dept.employee_count || 0))}
               </span>
             </div>
           </div>
@@ -298,9 +300,9 @@ export default function DepartmentsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Departments</h1>
+          <h1 className="text-2xl font-bold">{t("departments.title")}</h1>
           <p className="text-muted-foreground">
-            Organize your company structure with departments
+            {t("departments.subtitle")}
           </p>
         </div>
         {(adminSession?.isOwner || !adminSession?.user_id || adminSession?.permissions?.["employees:create"]) && (
@@ -308,44 +310,44 @@ export default function DepartmentsPage() {
             <DialogTrigger asChild>
               <Button onClick={openCreateDialog}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Department
+                {t("departments.addDepartment")}
               </Button>
             </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{editingDepartment ? "Edit Department" : "Add New Department"}</DialogTitle>
+              <DialogTitle>{editingDepartment ? t("departments.editDepartment") : t("departments.addNewDepartment")}</DialogTitle>
               <DialogDescription>
-                {editingDepartment ? "Update department details" : "Create a new department in your organization"}
+                {editingDepartment ? t("departments.updateDetails") : t("departments.createDesc")}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Department Name *</Label>
+                <Label htmlFor="name">{t("departments.departmentName")} *</Label>
                 <Input
                   id="name"
-                  placeholder="e.g., Operations"
+                  placeholder={t("departments.namePlaceholder")}
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description">{t("departments.description")}</Label>
                 <Textarea
                   id="description"
-                  placeholder="Describe the department's function..."
+                  placeholder={t("departments.descriptionPlaceholder")}
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
                   rows={2}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="parent">Parent Department</Label>
+                <Label htmlFor="parent">{t("departments.parentDepartment")}</Label>
                 <Select value={formParentId} onValueChange={setFormParentId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="None (Top-level department)" />
+                    <SelectValue placeholder={t("departments.noneTopLevelPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">None (Top-level)</SelectItem>
+                    <SelectItem value="none">{t("departments.noneTopLevel")}</SelectItem>
                     {getAvailableParents().map((dept) => (
                       <SelectItem key={dept.id} value={dept.id}>
                         {dept.name}
@@ -355,13 +357,13 @@ export default function DepartmentsPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="manager">Department Manager</Label>
+                <Label htmlFor="manager">{t("departments.departmentManager")}</Label>
                 <Select value={formManagerId} onValueChange={setFormManagerId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a manager (optional)" />
+                    <SelectValue placeholder={t("departments.selectManager")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No Manager</SelectItem>
+                    <SelectItem value="none">{t("departments.noManager")}</SelectItem>
                     {employees.map((emp) => (
                       <SelectItem key={emp.id} value={emp.id}>
                         {emp.first_name} {emp.last_name}
@@ -373,11 +375,11 @@ export default function DepartmentsPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogOpen(false)} className="bg-transparent">
-                Cancel
+                {t("departments.cancel")}
               </Button>
               <Button onClick={handleSave} disabled={saving || !formName}>
                 {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                {editingDepartment ? "Save Changes" : "Create Department"}
+                {editingDepartment ? t("departments.saveChanges") : t("departments.createDepartment")}
               </Button>
             </DialogFooter>
             </DialogContent>
@@ -390,23 +392,23 @@ export default function DepartmentsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FolderTree className="h-5 w-5" />
-            Organization Structure
+            {t("departments.orgStructure")}
           </CardTitle>
           <CardDescription>
-            Departments are shown in a hierarchical structure
+            {t("departments.orgStructureDesc")}
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {departmentTree.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Building className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <h3 className="font-medium text-lg mb-1">No Departments</h3>
+              <h3 className="font-medium text-lg mb-1">{t("departments.noDepartments")}</h3>
               <p className="text-muted-foreground mb-4">
-                Create departments to organize your employees
+                {t("departments.noDepartmentsDesc")}
               </p>
               <Button onClick={openCreateDialog}>
                 <Plus className="h-4 w-4 mr-2" />
-                Create First Department
+                {t("departments.createFirst")}
               </Button>
             </div>
           ) : (

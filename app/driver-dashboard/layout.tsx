@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { LogOut, Bell, ClipboardList, FileText, User, Wrench, FolderOpen, Car, LogIn, CalendarDays, Route, Radio, Package, MoreHorizontal } from "lucide-react";
 import { DriverChatFab } from "@/components/chat/driver-chat-fab";
+import { ThemeSync } from "@/components/theme-sync";
 import { isModuleEnabled } from "@/lib/modules";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -546,6 +547,7 @@ export default function DriverDashboardLayout({
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <ThemeSync />
       {/* Header */}
       <header className="sticky top-0 z-50 bg-card border-b px-4 py-3">
         <div className="flex items-center justify-between">

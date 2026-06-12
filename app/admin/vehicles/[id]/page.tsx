@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -79,6 +80,7 @@ export default function VehicleDetailsPage() {
   const params = useParams();
   const id = params.id as string;
   const { session: adminSession, loading: sessionLoading } = useAdminSession();
+  const { t } = useTranslation();
   const [vehicle, setVehicle] = useState<(Vehicle & { assigned_driver?: Driver }) | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [documentTypes, setDocumentTypes] = useState<DocumentType[]>([]);
@@ -258,7 +260,7 @@ export default function VehicleDetailsPage() {
 
   const getDocumentStatus = (doc: Document) => {
     if (!doc.document_type?.requires_expiry || !doc.expiry_date) {
-      return { status: "valid", label: "Valid", color: "bg-green-500/20 text-green-400" };
+      return { status: "valid", label: t("vehicleDetail.valid"), color: "bg-green-500/20 text-green-400" };
     }
 
     const today = new Date();
@@ -266,11 +268,11 @@ export default function VehicleDetailsPage() {
     const daysUntilExpiry = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
     if (daysUntilExpiry < 0) {
-      return { status: "expired", label: "Expired", color: "bg-red-500/20 text-red-400" };
+      return { status: "expired", label: t("vehicleDetail.expired"), color: "bg-red-500/20 text-red-400" };
     } else if (daysUntilExpiry <= 30) {
-      return { status: "expiring", label: `Expires in ${daysUntilExpiry} days`, color: "bg-yellow-500/20 text-yellow-400" };
+      return { status: "expiring", label: t("vehicleDetail.expiresInDays").replace("{days}", String(daysUntilExpiry)), color: "bg-yellow-500/20 text-yellow-400" };
     }
-    return { status: "valid", label: "Valid", color: "bg-green-500/20 text-green-400" };
+    return { status: "valid", label: t("vehicleDetail.valid"), color: "bg-green-500/20 text-green-400" };
   };
 
   if (sessionLoading || loading) {
@@ -292,11 +294,11 @@ export default function VehicleDetailsPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Car className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Vehicle not found</h3>
+            <h3 className="text-lg font-medium mb-2">{t("vehicleDetail.vehicleNotFound")}</h3>
             <Link href="/admin/vehicles">
               <Button variant="outline">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Vehicles
+                {t("vehicleDetail.backToVehicles")}
               </Button>
             </Link>
           </CardContent>
@@ -342,7 +344,7 @@ export default function VehicleDetailsPage() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Car className="h-4 w-4" />
-              Vehicle Info
+              {t("vehicleDetail.vehicleInfo")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -372,7 +374,7 @@ export default function VehicleDetailsPage() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <User className="h-4 w-4" />
-              Assigned Driver
+              {t("vehicleDetail.assignedDriver")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -392,7 +394,7 @@ export default function VehicleDetailsPage() {
                 </div>
               </Link>
             ) : (
-              <p className="text-sm text-muted-foreground">No driver assigned</p>
+              <p className="text-sm text-muted-foreground">{t("vehicleDetail.noDriverAssigned")}</p>
             )}
           </CardContent>
         </Card>
@@ -402,15 +404,15 @@ export default function VehicleDetailsPage() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Wrench className="h-4 w-4" />
-              Maintenance
+              {t("vehicleDetail.maintenance")}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{maintenanceCount}</div>
-            <p className="text-sm text-muted-foreground">Total records</p>
+            <p className="text-sm text-muted-foreground">{t("vehicleDetail.totalRecords")}</p>
             <Link href={`/admin/maintenance?vehicle=${vehicle.id}`} className="mt-2 block">
               <Button variant="outline" size="sm" className="w-full bg-transparent">
-                View Maintenance
+                {t("vehicleDetail.viewMaintenance")}
               </Button>
             </Link>
           </CardContent>
@@ -421,29 +423,29 @@ export default function VehicleDetailsPage() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              Documents
+              {t("vehicleDetail.documents")}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Total</span>
+                <span className="text-muted-foreground">{t("vehicleDetail.total")}</span>
                 <span className="font-medium">{documents.length}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-green-400">Valid</span>
+                <span className="text-green-400">{t("vehicleDetail.valid")}</span>
                 <span className="font-medium">
                   {documents.filter((d) => getDocumentStatus(d).status === "valid").length}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-yellow-400">Expiring</span>
+                <span className="text-yellow-400">{t("vehicleDetail.expiring")}</span>
                 <span className="font-medium">
                   {documents.filter((d) => getDocumentStatus(d).status === "expiring").length}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-red-400">Expired</span>
+                <span className="text-red-400">{t("vehicleDetail.expired")}</span>
                 <span className="font-medium">
                   {documents.filter((d) => getDocumentStatus(d).status === "expired").length}
                 </span>
@@ -458,21 +460,21 @@ export default function VehicleDetailsPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Documents
+            {t("vehicleDetail.documents")}
           </CardTitle>
           <Button onClick={() => setUploadDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Upload Document
+            {t("vehicleDetail.uploadDocument")}
           </Button>
         </CardHeader>
         <CardContent>
           {documents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8">
               <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground mb-4">No documents uploaded yet</p>
+              <p className="text-muted-foreground mb-4">{t("vehicleDetail.noDocuments")}</p>
               <Button onClick={() => setUploadDialogOpen(true)}>
                 <Upload className="h-4 w-4 mr-2" />
-                Upload First Document
+                {t("vehicleDetail.uploadFirstDocument")}
               </Button>
             </div>
           ) : (
@@ -491,7 +493,7 @@ export default function VehicleDetailsPage() {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-medium">
-                            {doc.document_type?.name || "Unknown Type"}
+                            {doc.document_type?.name || t("vehicleDetail.unknownType")}
                           </span>
                           <Badge className={docStatus.color}>{docStatus.label}</Badge>
                         </div>
@@ -502,7 +504,7 @@ export default function VehicleDetailsPage() {
                         {doc.expiry_date && (
                           <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                             <Calendar className="h-3 w-3" />
-                            Expires: {new Date(doc.expiry_date).toLocaleDateString()}
+                            {t("vehicleDetail.expires")}: {new Date(doc.expiry_date).toLocaleDateString()}
                           </div>
                         )}
                       </div>
@@ -565,11 +567,11 @@ export default function VehicleDetailsPage() {
       <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Upload Document</DialogTitle>
+            <DialogTitle>{t("vehicleDetail.uploadDocument")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Document Type *</Label>
+              <Label>{t("vehicleDetail.documentType")}</Label>
               <Select
                 value={uploadData.document_type_id}
                 onValueChange={(v) =>
@@ -577,7 +579,7 @@ export default function VehicleDetailsPage() {
                 }
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select type..." />
+                  <SelectValue placeholder={t("vehicleDetail.selectType")} />
                 </SelectTrigger>
                 <SelectContent>
                   {documentTypes.map((type) => (
@@ -590,7 +592,7 @@ export default function VehicleDetailsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>File *</Label>
+              <Label>{t("vehicleDetail.file")}</Label>
               <Input
                 type="file"
                 accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
@@ -602,13 +604,13 @@ export default function VehicleDetailsPage() {
                 }
               />
               <p className="text-xs text-muted-foreground">
-                Supported: PDF, JPG, PNG, DOC, DOCX
+                {t("vehicleDetail.supportedFormats")}
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Issued Date</Label>
+                <Label>{t("vehicleDetail.issuedDate")}</Label>
                 <Input
                   type="date"
                   value={uploadData.issued_date}
@@ -618,7 +620,7 @@ export default function VehicleDetailsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Expiry Date</Label>
+                <Label>{t("vehicleDetail.expiryDate")}</Label>
                 <Input
                   type="date"
                   value={uploadData.expiry_date}
@@ -630,36 +632,36 @@ export default function VehicleDetailsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Document Number</Label>
+              <Label>{t("vehicleDetail.documentNumber")}</Label>
               <Input
                 value={uploadData.document_number}
                 onChange={(e) =>
                   setUploadData({ ...uploadData, document_number: e.target.value })
                 }
-                placeholder="e.g., Registration number, policy number"
+                placeholder={t("vehicleDetail.documentNumberPlaceholder")}
               />
             </div>
 
             <div className="space-y-2">
-              <Label>Notes</Label>
+              <Label>{t("vehicleDetail.notes")}</Label>
               <Input
                 value={uploadData.notes}
                 onChange={(e) =>
                   setUploadData({ ...uploadData, notes: e.target.value })
                 }
-                placeholder="Optional notes..."
+                placeholder={t("vehicleDetail.notesPlaceholder")}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>
-              Cancel
+              {t("vehicleDetail.cancel")}
             </Button>
             <Button
               onClick={handleUpload}
               disabled={!uploadData.document_type_id || !uploadData.file || uploading}
             >
-              {uploading ? "Uploading..." : "Upload"}
+              {uploading ? t("vehicleDetail.uploading") : t("vehicleDetail.upload")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -669,11 +671,11 @@ export default function VehicleDetailsPage() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Document</DialogTitle>
+            <DialogTitle>{t("vehicleDetail.editDocument")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Expiry Date</Label>
+              <Label>{t("vehicleDetail.expiryDate")}</Label>
               <Input
                 type="date"
                 value={uploadData.expiry_date}
@@ -684,7 +686,7 @@ export default function VehicleDetailsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Document Number</Label>
+              <Label>{t("vehicleDetail.documentNumber")}</Label>
               <Input
                 value={uploadData.document_number}
                 onChange={(e) =>
@@ -694,7 +696,7 @@ export default function VehicleDetailsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Notes</Label>
+              <Label>{t("vehicleDetail.notes")}</Label>
               <Input
                 value={uploadData.notes}
                 onChange={(e) =>
@@ -705,9 +707,9 @@ export default function VehicleDetailsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              Cancel
+              {t("vehicleDetail.cancel")}
             </Button>
-            <Button onClick={handleUpdateExpiry}>Save Changes</Button>
+            <Button onClick={handleUpdateExpiry}>{t("vehicleDetail.saveChanges")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -736,12 +738,12 @@ export default function VehicleDetailsPage() {
                 <div className="flex flex-col items-center justify-center py-12">
                   <FileText className="h-16 w-16 text-muted-foreground mb-4" />
                   <p className="text-muted-foreground mb-4">
-                    Preview not available for this file type
+                    {t("vehicleDetail.previewNotAvailable")}
                   </p>
                   <a href={selectedDocument.file_url} target="_blank" rel="noopener noreferrer">
                     <Button>
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      Open in New Tab
+                      {t("vehicleDetail.openInNewTab")}
                     </Button>
                   </a>
                 </div>
@@ -750,7 +752,7 @@ export default function VehicleDetailsPage() {
                 <a href={selectedDocument.file_url} download={selectedDocument.file_name}>
                   <Button variant="outline">
                     <Download className="h-4 w-4 mr-2" />
-                    Download
+                    {t("vehicleDetail.download")}
                   </Button>
                 </a>
               </div>
@@ -765,20 +767,19 @@ export default function VehicleDetailsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-destructive" />
-              Delete Document
+              {t("vehicleDetail.deleteDocument")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this document? This action cannot be
-              undone.
+              {t("vehicleDetail.deleteConfirm")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("vehicleDetail.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("vehicleDetail.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

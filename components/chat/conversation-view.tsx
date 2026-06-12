@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Send, Paperclip, ArrowDown, Loader2, Reply, CornerDownRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useTranslation, type TranslateFn } from "@/components/i18n/i18n-provider";
 
 interface Message {
   id: string;
@@ -34,7 +35,7 @@ interface ConversationViewProps {
   compact?: boolean; // For embedding in task detail panel
 }
 
-function formatMessageTime(dateStr: string) {
+function formatMessageTime(dateStr: string, t: TranslateFn) {
   const d = new Date(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
@@ -43,7 +44,7 @@ function formatMessageTime(dateStr: string) {
 
   const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   if (isToday) return time;
-  if (isYesterday) return `Yesterday ${time}`;
+  if (isYesterday) return `${t("chat.yesterday")} ${time}`;
   if (diffMs < 7 * 86400000) return `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
   return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
 }
@@ -53,11 +54,11 @@ function shouldShowDateSeparator(current: Message, previous: Message | null) {
   return new Date(current.created_at).toDateString() !== new Date(previous.created_at).toDateString();
 }
 
-function formatDateSeparator(dateStr: string) {
+function formatDateSeparator(dateStr: string, t: TranslateFn) {
   const d = new Date(dateStr);
   const now = new Date();
-  if (d.toDateString() === now.toDateString()) return "Today";
-  if (new Date(now.getTime() - 86400000).toDateString() === d.toDateString()) return "Yesterday";
+  if (d.toDateString() === now.toDateString()) return t("chat.today");
+  if (new Date(now.getTime() - 86400000).toDateString() === d.toDateString()) return t("chat.yesterday");
   return d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
 }
 
@@ -69,6 +70,7 @@ export function ConversationView({
   participants,
   compact = false,
 }: ConversationViewProps) {
+  const { t } = useTranslation();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -331,14 +333,14 @@ export function ConversationView({
             }}
             className="w-full text-center py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
-            Load earlier messages
+            {t("chat.loadEarlier")}
           </button>
         )}
 
         {!loading && messages.length === 0 && (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-            <p className="text-sm">No messages yet</p>
-            <p className="text-xs mt-1">Send a message to start the conversation</p>
+            <p className="text-sm">{t("chat.noMessagesYet")}</p>
+            <p className="text-xs mt-1">{t("chat.sendToStart")}</p>
           </div>
         )}
 
@@ -360,7 +362,7 @@ export function ConversationView({
                 <div className="flex items-center gap-3 py-3">
                   <div className="flex-1 h-px bg-border/50" />
                   <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                    {formatDateSeparator(msg.created_at)}
+                    {formatDateSeparator(msg.created_at, t)}
                   </span>
                   <div className="flex-1 h-px bg-border/50" />
                 </div>
@@ -377,7 +379,7 @@ export function ConversationView({
                   <div className="max-w-[75%] flex flex-col items-end">
                     {!isConsecutive && (
                       <span className="text-[9px] text-muted-foreground mb-0.5 mr-1">
-                        {formatMessageTime(msg.created_at)}
+                        {formatMessageTime(msg.created_at, t)}
                       </span>
                     )}
                     <div className={`rounded-2xl rounded-br-md px-3.5 py-2 text-sm bg-primary text-primary-foreground ${
@@ -398,9 +400,9 @@ export function ConversationView({
                     {!isConsecutive && (
                       <div className="flex items-center gap-2 mb-0.5 ml-1">
                         <span className="text-[10px] font-semibold text-foreground">{getSenderName(msg)}</span>
-                        <span className="text-[9px] text-muted-foreground">{formatMessageTime(msg.created_at)}</span>
+                        <span className="text-[9px] text-muted-foreground">{formatMessageTime(msg.created_at, t)}</span>
                         {msg.sender_type === "driver" && (
-                          <span className="text-[8px] bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded-full font-medium">Driver</span>
+                          <span className="text-[8px] bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded-full font-medium">{t("chat.driver")}</span>
                         )}
                       </div>
                     )}
@@ -445,7 +447,7 @@ export function ConversationView({
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message..."
+              placeholder={t("chat.typeMessage")}
               rows={1}
               className="w-full resize-none rounded-xl border border-border/50 bg-muted/30 px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 max-h-32 overflow-y-auto"
               style={{ minHeight: "40px" }}
@@ -470,7 +472,7 @@ export function ConversationView({
           </Button>
         </div>
         <p className="text-[9px] text-muted-foreground/50 mt-1 ml-1">
-          Press Enter to send, Shift+Enter for new line
+          {t("chat.enterToSend")}
         </p>
       </div>
     </div>

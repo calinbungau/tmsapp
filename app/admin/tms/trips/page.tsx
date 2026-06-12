@@ -452,8 +452,8 @@ export default function TripsIndexPage() {
           <Link href="/admin/tms/carriers/consolidation">
             <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs">
               <Building2 className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Carrier Consolidation</span>
-              <span className="sm:hidden">Carriers</span>
+              <span className="hidden sm:inline">{t("tms.tripsList.carrierConsolidation")}</span>
+              <span className="sm:hidden">{t("tms.tripsList.carriers")}</span>
             </Button>
           </Link>
         </div>
@@ -511,42 +511,42 @@ export default function TripsIndexPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by trip ref, plate, driver, carrier or order…"
+            placeholder={t("tms.tripsList.searchPlaceholder")}
             className="pl-9 h-10 md:h-8 text-sm md:text-xs"
           />
         </div>
         <div className="flex items-center gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="flex-1 sm:w-[130px] h-10 md:h-8 text-sm md:text-xs">
-              <SelectValue placeholder="Status" />
+              <SelectValue placeholder={t("tms.tripsList.statusPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="active">{t("tms.tripsList.activeFilter")}</SelectItem>
+              <SelectItem value="all">{t("tms.tripsList.allStatuses")}</SelectItem>
               {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
-                <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
+                <SelectItem key={key} value={key}>{t(`tms.tripsList.status.${key}`, cfg.label)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Select value={assignmentFilter} onValueChange={setAssignmentFilter}>
             <SelectTrigger className="flex-1 sm:w-[140px] h-10 md:h-8 text-sm md:text-xs">
-              <SelectValue placeholder="Assignment" />
+              <SelectValue placeholder={t("tms.tripsList.assignmentPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Own + Subcontract</SelectItem>
-              <SelectItem value="own_fleet">Own fleet</SelectItem>
-              <SelectItem value="forwarding">Subcontracted</SelectItem>
+              <SelectItem value="all">{t("tms.tripsList.ownPlusSub")}</SelectItem>
+              <SelectItem value="own_fleet">{t("tms.tripsList.ownFleet")}</SelectItem>
+              <SelectItem value="forwarding">{t("tms.tripsList.subcontracted")}</SelectItem>
             </SelectContent>
           </Select>
           <Select value={dateRange} onValueChange={setDateRange}>
             <SelectTrigger className="flex-1 sm:w-[120px] h-10 md:h-8 text-sm md:text-xs">
-              <SelectValue placeholder="Range" />
+              <SelectValue placeholder={t("tms.tripsList.rangePlaceholder")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="7d">Last 7 days</SelectItem>
-              <SelectItem value="30d">Last 30 days</SelectItem>
-              <SelectItem value="90d">Last 90 days</SelectItem>
-              <SelectItem value="all">All time</SelectItem>
+              <SelectItem value="7d">{t("tms.tripsList.last7")}</SelectItem>
+              <SelectItem value="30d">{t("tms.tripsList.last30")}</SelectItem>
+              <SelectItem value="90d">{t("tms.tripsList.last90")}</SelectItem>
+              <SelectItem value="all">{t("tms.tripsList.allTime")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -557,7 +557,7 @@ export default function TripsIndexPage() {
         <div className="flex flex-wrap items-center gap-3 px-4 md:px-6 py-2 border-b border-border/50 bg-primary/5">
           <div className="flex items-center gap-2 text-xs">
             <CheckSquare className="h-3.5 w-3.5 text-primary" />
-            <span className="font-medium">{selectedIds.size} selected</span>
+            <span className="font-medium">{t("tms.tripsList.selected").replace("{count}", String(selectedIds.size))}</span>
           </div>
           {!mergeEligibility.ok && selectedTrips.length >= 2 && (
             <span className="flex items-center gap-1 text-[11px] text-amber-400">
@@ -577,11 +577,11 @@ export default function TripsIndexPage() {
               onClick={mergeSelected}
             >
               {merging ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitMerge className="h-3.5 w-3.5" />}
-              Merge into round trip
+              {t("tms.tripsList.mergeIntoRoundTrip")}
             </Button>
             <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={clearSelection}>
               <X className="h-3 w-3" />
-              Clear
+              {t("tms.tripsList.clear")}
             </Button>
           </div>
         </div>
@@ -591,7 +591,7 @@ export default function TripsIndexPage() {
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-16">
-            <p className="text-muted-foreground text-sm">Loading trips…</p>
+            <p className="text-muted-foreground text-sm">{t("tms.tripsList.loadingTrips")}</p>
           </div>
         ) : trips.length === 0 ? (
           <EmptyState />
@@ -636,8 +636,8 @@ export default function TripsIndexPage() {
                         className="text-muted-foreground hover:text-foreground"
                         title={
                           visibleTrips.every((t) => selectedIds.has(t.id))
-                            ? "Clear page selection"
-                            : "Select all on page"
+                            ? t("tms.tripsList.clearPageSelection")
+                            : t("tms.tripsList.selectAllOnPage")
                         }
                       >
                         {visibleTrips.length > 0 && visibleTrips.every((t) => selectedIds.has(t.id)) ? (
@@ -647,16 +647,16 @@ export default function TripsIndexPage() {
                         )}
                       </button>
                     </th>
-                    <th className="px-4 py-2 font-medium">Round Trip</th>
-                    <th className="px-2 py-2 font-medium">Status</th>
-                    <th className="px-2 py-2 font-medium">Resource</th>
-                    <th className="px-2 py-2 font-medium">Route</th>
-                    <th className="px-2 py-2 font-medium">Period</th>
-                    <th className="px-2 py-2 font-medium text-right">Distance</th>
-                    <th className="px-2 py-2 font-medium text-right">Orders</th>
-                    <th className="px-2 py-2 font-medium text-right">Revenue</th>
-                    <th className="px-2 py-2 font-medium text-right">Cost</th>
-                    <th className="px-2 py-2 font-medium text-right">Margin</th>
+                    <th className="px-4 py-2 font-medium">{t("tms.tripsList.columns.roundTrip")}</th>
+                    <th className="px-2 py-2 font-medium">{t("tms.tripsList.columns.status")}</th>
+                    <th className="px-2 py-2 font-medium">{t("tms.tripsList.columns.resource")}</th>
+                    <th className="px-2 py-2 font-medium">{t("tms.tripsList.columns.route")}</th>
+                    <th className="px-2 py-2 font-medium">{t("tms.tripsList.columns.period")}</th>
+                    <th className="px-2 py-2 font-medium text-right">{t("tms.tripsList.columns.distance")}</th>
+                    <th className="px-2 py-2 font-medium text-right">{t("tms.tripsList.columns.orders")}</th>
+                    <th className="px-2 py-2 font-medium text-right">{t("tms.tripsList.columns.revenue")}</th>
+                    <th className="px-2 py-2 font-medium text-right">{t("tms.tripsList.columns.cost")}</th>
+                    <th className="px-2 py-2 font-medium text-right">{t("tms.tripsList.columns.margin")}</th>
                     <th className="px-2 py-2 font-medium" />
                   </tr>
                 </thead>
@@ -679,14 +679,14 @@ export default function TripsIndexPage() {
             {trips.length > 0 && (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-4 md:px-6 py-3 border-t border-border/30 bg-background/40 text-xs">
                 <div className="text-muted-foreground">
-                  Showing <span className="text-foreground font-medium">{pageStart + 1}</span>
+                  {t("tms.tripsList.showing")} <span className="text-foreground font-medium">{pageStart + 1}</span>
                   {"–"}
-                  <span className="text-foreground font-medium">{pageEnd}</span> of{" "}
-                  <span className="text-foreground font-medium">{trips.length}</span> round trips
+                  <span className="text-foreground font-medium">{pageEnd}</span>{" / "}
+                  <span className="text-foreground font-medium">{trips.length}</span> {t("tms.tripsList.ofRoundTrips")}
                 </div>
                 <div className="flex items-center gap-3">
                   <label className="flex items-center gap-1.5 text-muted-foreground">
-                    Rows per page
+                    {t("tms.tripsList.rowsPerPage")}
                     <select
                       value={pageSize}
                       onChange={(e) => {
@@ -722,7 +722,7 @@ export default function TripsIndexPage() {
                       ‹
                     </Button>
                     <span className="px-2 text-muted-foreground">
-                      Page <span className="text-foreground font-medium">{safePage}</span> /{" "}
+                      {t("tms.tripsList.page")} <span className="text-foreground font-medium">{safePage}</span> /{" "}
                       {pageCount}
                     </span>
                     <Button
@@ -793,18 +793,18 @@ function Divider({ hideBelow }: { hideBelow?: "sm" | "md" | "lg" }) {
 
 // ─── Empty state ────────────────────────���──────────────────
 function EmptyState() {
+  const { t } = useTranslation();
   return (
     <div className="text-center py-16 px-6">
       <RouteIcon className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-      <p className="text-sm text-foreground font-medium">No round trips match your filters</p>
+      <p className="text-sm text-foreground font-medium">{t("tms.tripsList.empty.title")}</p>
       <p className="text-xs text-muted-foreground mt-1">
-        Round trips are created automatically when an order is dispatched.
-        Open the Dispatch Board to assign vehicles and drivers.
+        {t("tms.tripsList.empty.desc")}
       </p>
       <Link href="/admin/tms/planning">
         <Button size="sm" variant="outline" className="mt-4 gap-1.5">
           <Layers className="h-3.5 w-3.5" />
-          Open Dispatch Board
+          {t("tms.tripsList.empty.openDispatch")}
         </Button>
       </Link>
     </div>
@@ -896,6 +896,7 @@ function TripCard({
   selected: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useTranslation();
   const fin = tripFinancials(trip);
   const routeStops = getRouteStopsForTrip(trip);
   const first = pickFirstStop(routeStops);
@@ -920,7 +921,7 @@ function TripCard({
         </div>
         <Badge variant="outline" className={`${statusCfg.color} border text-[10px] h-5 px-1.5 shrink-0`}>
           <span className={`h-1.5 w-1.5 rounded-full ${statusCfg.dot} mr-1`} />
-          {statusCfg.label}
+          {t(`tms.tripsList.status.${trip.status}`, statusCfg.label)}
         </Badge>
       </div>
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5 min-w-0">
@@ -934,12 +935,12 @@ function TripCard({
         {isSubcontract ? (
           <>
             <Building2 className="h-3 w-3" />
-            <span className="truncate">{trip.carrier?.name || "Subcontract"}</span>
+            <span className="truncate">{trip.carrier?.name || t("tms.tripsList.subcontract")}</span>
           </>
         ) : (
           <>
             <Truck className="h-3 w-3" />
-            <span className="truncate">{trip.vehicle?.plate_number || "Unassigned"}</span>
+            <span className="truncate">{trip.vehicle?.plate_number || t("tms.tripsList.unassigned")}</span>
             {trip.driver?.name && (
               <>
                 <User className="h-3 w-3 ml-1" />
@@ -979,6 +980,7 @@ function TripDesktopRow({
   selected: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useTranslation();
   const fin = tripFinancials(trip);
   const routeStops = getRouteStopsForTrip(trip);
   const first = pickFirstStop(routeStops);
@@ -997,7 +999,7 @@ function TripDesktopRow({
           type="button"
           onClick={(e) => { e.stopPropagation(); onToggle(); }}
           className="text-muted-foreground hover:text-foreground"
-          title={selected ? "Unselect" : "Select for merge"}
+          title={selected ? t("tms.tripsList.unselect") : t("tms.tripsList.selectForMerge")}
         >
           {selected ? (
             <CheckSquare className="h-3.5 w-3.5 text-primary" />
@@ -1021,11 +1023,11 @@ function TripDesktopRow({
       <td className="px-2 py-3 align-top">
         <Badge variant="outline" className={`${statusCfg.color} border text-[10px] h-5 px-1.5`}>
           <span className={`h-1.5 w-1.5 rounded-full ${statusCfg.dot} mr-1`} />
-          {statusCfg.label}
+          {t(`tms.tripsList.status.${trip.status}`, statusCfg.label)}
         </Badge>
         {isSubcontract && (
           <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
-            <Building2 className="h-2.5 w-2.5" /> Subcontract
+            <Building2 className="h-2.5 w-2.5" /> {t("tms.tripsList.subcontract")}
           </p>
         )}
       </td>
@@ -1033,13 +1035,13 @@ function TripDesktopRow({
         {isSubcontract ? (
           <div className="flex items-center gap-1.5 text-xs text-foreground">
             <Building2 className="h-3 w-3 text-muted-foreground" />
-            <span className="truncate max-w-[140px]">{trip.carrier?.name || "Carrier?"}</span>
+            <span className="truncate max-w-[140px]">{trip.carrier?.name || t("tms.tripsList.carrierUnknown")}</span>
           </div>
         ) : (
           <div className="space-y-0.5">
             <div className="flex items-center gap-1.5 text-xs text-foreground">
               <Truck className="h-3 w-3 text-muted-foreground" />
-              <span className="truncate max-w-[120px]">{trip.vehicle?.plate_number || "Unassigned"}</span>
+              <span className="truncate max-w-[120px]">{trip.vehicle?.plate_number || t("tms.tripsList.unassigned")}</span>
               {trip.trailer?.plate_number && (
                 <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                   <Container className="h-2.5 w-2.5" />{trip.trailer.plate_number}
@@ -1064,7 +1066,7 @@ function TripDesktopRow({
           <span className="truncate max-w-[80px]">{last?.city || "—"}</span>
         </div>
         <p className="text-[10px] text-muted-foreground mt-0.5">
-          {stopsCount} stops · {legsCount} leg{legsCount === 1 ? "" : "s"}
+          {stopsCount} {t("tms.tripsList.stops")} · {legsCount} {legsCount === 1 ? t("tms.tripsList.leg") : t("tms.tripsList.legs")}
         </p>
       </td>
       <td className="px-2 py-3 align-top">
@@ -1072,7 +1074,7 @@ function TripDesktopRow({
         <p className="text-[10px] text-muted-foreground">→ {fmtDate(trip.planned_end)}</p>
         {trip.actual_start && (
           <p className="text-[10px] text-emerald-400 mt-0.5 flex items-center gap-1">
-            <Clock className="h-2.5 w-2.5" />Started {fmtDateTime(trip.actual_start)}
+            <Clock className="h-2.5 w-2.5" />{t("tms.tripsList.started")} {fmtDateTime(trip.actual_start)}
           </p>
         )}
       </td>
@@ -1091,7 +1093,7 @@ function TripDesktopRow({
       <td className="px-2 py-3 align-top text-right">
         <p className="text-xs font-medium text-orange-400 tabular-nums">{fmtCurrency(fin.cost, fin.currency)}</p>
         {fin.expenses > 0 && (
-          <p className="text-[10px] text-muted-foreground tabular-nums">+ {fmtCurrency(fin.expenses, fin.currency)} exp.</p>
+          <p className="text-[10px] text-muted-foreground tabular-nums">+ {fmtCurrency(fin.expenses, fin.currency)} {t("tms.tripsList.exp")}</p>
         )}
       </td>
       <td className="px-2 py-3 align-top text-right">

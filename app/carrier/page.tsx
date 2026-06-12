@@ -83,14 +83,14 @@ function CarrierAuth() {
 
   if (checking) {
     return (
-      <div className="min-h-screen bg-muted/30 flex items-center justify-center p-4">
+      <div className="dark min-h-screen bg-muted/30 flex items-center justify-center p-4">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-muted/30 flex items-center justify-center p-4">
+    <div className="dark min-h-screen bg-muted/30 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <Card>
           <CardHeader className="text-center">
@@ -241,7 +241,7 @@ export default function CarrierLoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-muted/30 flex items-center justify-center p-4">
+        <div className="dark min-h-screen bg-muted/30 flex items-center justify-center p-4">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       }

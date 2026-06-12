@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { QuickCreatePartnerDialog } from "@/components/tms/quick-create-partner-dialog";
 import { toast } from "@/hooks/use-toast";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 import { useAdminUsers, type AdminUser } from "@/hooks/use-admin-users";
 import {
   OrdersAdvancedFilters,
@@ -258,6 +259,7 @@ function formatCurrency(amount: number | null, currency: string): string {
 
 // ─── Main Component ───────────────────────────────────────
 export default function ForwarderBoardPage() {
+  const { t } = useTranslation();
   const { session: adminSession } = useAdminSession();
   const [orders, setOrders] = useState<FwdOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -429,7 +431,7 @@ export default function ForwarderBoardPage() {
     });
   }, [orders, search]);
 
-  // ─── Table sort ──────────────────────────────────────────
+  // ─── Table sort ─────���────────────────────────────────────
   const sortedOrders = useMemo(() => {
     const sorted = [...visibleOrders];
     sorted.sort((a, b) => {
@@ -513,7 +515,7 @@ export default function ForwarderBoardPage() {
   // Delete FWD order
   const handleDeleteOrder = async (orderId: string, refNum: string) => {
     console.log("[v0] handleDeleteOrder: invoked", { orderId, refNum });
-    const ok = confirm(`Are you sure you want to delete ${refNum}? This action cannot be undone.`);
+    const ok = confirm(t("tms.forwarding.deleteConfirm").replace("{ref}", refNum));
     console.log("[v0] handleDeleteOrder: confirm result", ok);
     if (!ok) return;
     const supabase = createClient();
@@ -568,11 +570,11 @@ export default function ForwarderBoardPage() {
       }
 
       setOrders(prev => prev.filter(o => o.id !== orderId));
-      toast({ title: `Deleted ${refNum}` });
+      toast({ title: t("tms.forwarding.deleted").replace("{ref}", refNum) });
       console.log("[v0] handleDeleteOrder: success");
     } catch (err: any) {
       console.log("[v0] handleDeleteOrder: FAILED", err);
-      toast({ title: "Delete failed", description: err?.message ?? String(err), variant: "destructive" });
+      toast({ title: t("tms.forwarding.deleteFailed"), description: err?.message ?? String(err), variant: "destructive" });
     }
   };
 
@@ -591,9 +593,9 @@ export default function ForwarderBoardPage() {
               <div>
                 <h1 className="text-lg md:text-xl font-bold tracking-tight flex items-center gap-2">
                   <ArrowLeftRight className="h-5 w-5 text-primary" />
-                  Forwarder Board
+                  {t("tms.forwarding.boardTitle")}
                 </h1>
-                <p className="text-xs text-muted-foreground mt-0.5 hidden md:block">Manage forwarding orders, carriers &amp; profit tracking</p>
+                <p className="text-xs text-muted-foreground mt-0.5 hidden md:block">{t("tms.forwarding.boardSubtitle")}</p>
               </div>
               {/* Mobile actions */}
               <div className="flex items-center gap-2 md:hidden">
@@ -610,39 +612,39 @@ export default function ForwarderBoardPage() {
                   onClick={() => setView("kanban")}
                   className={`flex items-center gap-1.5 px-3 py-2 md:py-1.5 rounded-md text-xs font-medium transition-all ${view === "kanban" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
                 >
-                  <Kanban className="h-4 w-4 md:h-3.5 md:w-3.5" /><span className="hidden sm:inline">Pipeline</span>
+                  <Kanban className="h-4 w-4 md:h-3.5 md:w-3.5" /><span className="hidden sm:inline">{t("tms.forwarding.pipeline")}</span>
                 </button>
                 <button
                   onClick={() => setView("table")}
                   className={`flex items-center gap-1.5 px-3 py-2 md:py-1.5 rounded-md text-xs font-medium transition-all ${view === "table" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
                 >
-                  <LayoutList className="h-4 w-4 md:h-3.5 md:w-3.5" /><span className="hidden sm:inline">Table</span>
+                  <LayoutList className="h-4 w-4 md:h-3.5 md:w-3.5" /><span className="hidden sm:inline">{t("tms.forwarding.table")}</span>
                 </button>
               </div>
               <Link href="/admin/tms/carriers/consolidation" className="hidden md:block">
                 <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5">
                   <Building2 className="h-3.5 w-3.5" />
-                  Consolidate
+                  {t("tms.forwarding.consolidate")}
                 </Button>
               </Link>
               <Link href="/admin/settings/forwarding" className="hidden md:block">
-                <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground"><Settings className="h-3.5 w-3.5 mr-1" />Config</Button>
+                <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground"><Settings className="h-3.5 w-3.5 mr-1" />{t("tms.forwarding.config")}</Button>
               </Link>
               <Button onClick={fetchOrders} variant="ghost" size="icon" className="h-8 w-8 hidden md:flex"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /></Button>
               <Link href="/admin/tms/orders/new?type=forwarding" className="hidden md:block">
-                <Button size="sm" className="h-8 gap-1.5 text-xs"><Plus className="h-3.5 w-3.5" />New Forwarding Order</Button>
+                <Button size="sm" className="h-8 gap-1.5 text-xs"><Plus className="h-3.5 w-3.5" />{t("tms.forwarding.newOrder")}</Button>
               </Link>
             </div>
           </div>
 
           {/* KPI Row - Horizontal scroll on mobile */}
           <div className="flex md:grid md:grid-cols-6 gap-2 md:gap-3 mb-3 md:mb-4 overflow-x-auto scrollbar-hide pb-1 md:pb-0 -mx-3 px-3 md:mx-0 md:px-0">
-            <KpiCard label="Active Orders" value={kpis.activeCount.toString()} icon={<Package className="h-4 w-4" />} accent="text-blue-400" />
-            <KpiCard label="Total Revenue" value={formatCurrency(kpis.totalRevenue, cur)} icon={<DollarSign className="h-4 w-4" />} accent="text-emerald-400" />
-            <KpiCard label="Total Costs" value={formatCurrency(kpis.totalCost, cur)} icon={<TrendingDown className="h-4 w-4" />} accent="text-orange-400" />
-            <KpiCard label="Net Profit" value={formatCurrency(kpis.netProfit, cur)} icon={<TrendingUp className="h-4 w-4" />} accent={kpis.netProfit >= 0 ? "text-emerald-400" : "text-red-400"} highlight={kpis.netProfit >= 0 ? "ring-emerald-500/20 bg-emerald-500/5" : "ring-red-500/20 bg-red-500/5"} />
-            <KpiCard label="Avg Margin" value={`${kpis.avgMargin.toFixed(1)}%`} icon={<Percent className="h-4 w-4" />} accent={marginClass(kpis.avgMargin, settings)} />
-            <KpiCard label="In Transit" value={kpis.inTransit.toString()} sub={kpis.unassigned > 0 ? `${kpis.unassigned} unassigned` : undefined} icon={<Truck className="h-4 w-4" />} accent="text-amber-400" />
+            <KpiCard label={t("tms.forwarding.kpiActiveOrders")} value={kpis.activeCount.toString()} icon={<Package className="h-4 w-4" />} accent="text-blue-400" />
+            <KpiCard label={t("tms.forwarding.kpiTotalRevenue")} value={formatCurrency(kpis.totalRevenue, cur)} icon={<DollarSign className="h-4 w-4" />} accent="text-emerald-400" />
+            <KpiCard label={t("tms.forwarding.kpiTotalCosts")} value={formatCurrency(kpis.totalCost, cur)} icon={<TrendingDown className="h-4 w-4" />} accent="text-orange-400" />
+            <KpiCard label={t("tms.forwarding.kpiNetProfit")} value={formatCurrency(kpis.netProfit, cur)} icon={<TrendingUp className="h-4 w-4" />} accent={kpis.netProfit >= 0 ? "text-emerald-400" : "text-red-400"} highlight={kpis.netProfit >= 0 ? "ring-emerald-500/20 bg-emerald-500/5" : "ring-red-500/20 bg-red-500/5"} />
+            <KpiCard label={t("tms.forwarding.kpiAvgMargin")} value={`${kpis.avgMargin.toFixed(1)}%`} icon={<Percent className="h-4 w-4" />} accent={marginClass(kpis.avgMargin, settings)} />
+            <KpiCard label={t("tms.forwarding.kpiInTransit")} value={kpis.inTransit.toString()} sub={kpis.unassigned > 0 ? t("tms.forwarding.unassignedCount").replace("{count}", String(kpis.unassigned)) : undefined} icon={<Truck className="h-4 w-4" />} accent="text-amber-400" />
           </div>
 
           {/* Filters - Stacked on mobile */}
@@ -650,7 +652,7 @@ export default function ForwarderBoardPage() {
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 md:h-3.5 md:w-3.5 text-muted-foreground" />
               <Input
-                placeholder="Search orders..."
+                placeholder={t("tms.forwarding.searchPlaceholder")}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="h-10 md:h-8 pl-9 md:pl-8 text-sm md:text-xs bg-card/50 border-border/50"
@@ -659,12 +661,12 @@ export default function ForwarderBoardPage() {
             <div className="flex items-center gap-2">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="h-10 md:h-8 flex-1 sm:w-[140px] text-sm md:text-xs bg-card/50 border-border/50">
-                  <SelectValue placeholder="All Statuses" />
+                  <SelectValue placeholder={t("tms.forwarding.allStatuses")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="all">{t("tms.forwarding.allStatuses")}</SelectItem>
                   {PIPELINE_COLUMNS.map(c => (
-                    <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>
+                    <SelectItem key={c.key} value={c.key}>{t(`tms.forwarding.pipelineLabels.${c.key}`)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -673,10 +675,10 @@ export default function ForwarderBoardPage() {
                 onValueChange={(v) => setFilters(f => ({ ...f, carrierId: v }))}
               >
                 <SelectTrigger className="h-10 md:h-8 flex-1 sm:w-[160px] text-sm md:text-xs bg-card/50 border-border/50">
-                  <SelectValue placeholder="All Carriers" />
+                  <SelectValue placeholder={t("tms.forwarding.allCarriers")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Carriers</SelectItem>
+                  <SelectItem value="all">{t("tms.forwarding.allCarriers")}</SelectItem>
                   {carriers.map(c => (
                     <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
@@ -698,9 +700,9 @@ export default function ForwarderBoardPage() {
             </div>
             <div className="hidden md:block ml-auto text-[10px] text-muted-foreground/60">
               {visibleOrders.length === orders.length
-                ? `${orders.length} orders`
-                : `${visibleOrders.length} of ${orders.length} orders`}
-              {" "}&middot; Profit in {cur}
+                ? t("tms.forwarding.ordersCount").replace("{count}", String(orders.length))
+                : t("tms.forwarding.ordersFiltered").replace("{shown}", String(visibleOrders.length)).replace("{total}", String(orders.length))}
+              {" "}&middot; {t("tms.forwarding.profitIn").replace("{currency}", cur)}
             </div>
           </div>
           {/* Active-filters chip strip — one chip per non-default filter
@@ -752,7 +754,7 @@ export default function ForwarderBoardPage() {
             {pageCount > 1 && (
               <div className="shrink-0 flex items-center justify-between gap-2 px-3 md:px-5 py-2 border-t border-border/30 bg-card/20">
                 <div className="text-[10px] text-muted-foreground">
-                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, sortedOrders.length)} of {sortedOrders.length}
+                  {t("tms.forwarding.showingRange").replace("{from}", String((page - 1) * PAGE_SIZE + 1)).replace("{to}", String(Math.min(page * PAGE_SIZE, sortedOrders.length))).replace("{total}", String(sortedOrders.length))}
                 </div>
                 <div className="flex items-center gap-1">
                   <Button
@@ -761,12 +763,12 @@ export default function ForwarderBoardPage() {
                     className="h-7 w-7 p-0"
                     onClick={() => setPage(p => Math.max(1, p - 1))}
                     disabled={page === 1}
-                    aria-label="Previous page"
+                    aria-label={t("tms.forwarding.previousPage")}
                   >
                     <ChevronLeft className="h-3.5 w-3.5" />
                   </Button>
                   <div className="px-2 text-[11px] tabular-nums">
-                    Page <span className="font-semibold text-foreground">{page}</span> / {pageCount}
+                    {t("tms.forwarding.page")} <span className="font-semibold text-foreground">{page}</span> / {pageCount}
                   </div>
                   <Button
                     variant="outline"
@@ -774,7 +776,7 @@ export default function ForwarderBoardPage() {
                     className="h-7 w-7 p-0"
                     onClick={() => setPage(p => Math.min(pageCount, p + 1))}
                     disabled={page === pageCount}
-                    aria-label="Next page"
+                    aria-label={t("tms.forwarding.nextPage")}
                   >
                     <ChevronRight className="h-3.5 w-3.5" />
                   </Button>
@@ -850,6 +852,7 @@ function KanbanView({ grouped, settings, selectedOrderId, onSelect, dragOrderId,
   onSelect: (id: string | null) => void; dragOrderId: string | null; onDragStart: (id: string | null) => void;
   onDrop: (status: string) => void; cur: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="h-full overflow-x-auto px-2 md:px-4 py-2 md:py-4">
       <div className="flex gap-2 md:gap-3 h-full min-w-max">
@@ -870,7 +873,7 @@ function KanbanView({ grouped, settings, selectedOrderId, onSelect, dragOrderId,
               <div className="px-3 py-2.5 border-b border-border/20 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${col.dotColor}`} />
-                  <span className={`text-xs font-semibold ${col.textColor}`}>{col.label}</span>
+                  <span className={`text-xs font-semibold ${col.textColor}`}>{t(`tms.forwarding.pipelineLabels.${col.key}`)}</span>
                   <span className="text-[10px] text-muted-foreground/50 bg-muted-foreground/10 rounded-full px-1.5">{colOrders.length}</span>
                 </div>
                 <span className={`text-[10px] font-medium ${colRevenue >= 0 ? "text-emerald-400/60" : "text-red-400/60"}`}>
@@ -880,7 +883,7 @@ function KanbanView({ grouped, settings, selectedOrderId, onSelect, dragOrderId,
               {/* Cards */}
               <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2 scrollbar-none">
                 {colOrders.length === 0 && (
-                  <div className="text-center py-8 text-[10px] text-muted-foreground/30">No orders</div>
+                  <div className="text-center py-8 text-[10px] text-muted-foreground/30">{t("tms.forwarding.noOrders")}</div>
                 )}
                 {colOrders.map(order => (
                   <KanbanCard
@@ -907,6 +910,7 @@ function KanbanCard({ order, settings, isSelected, onSelect, onDragStart, cur }:
   order: FwdOrder; settings: ForwarderSettings; isSelected: boolean;
   onSelect: () => void; onDragStart: () => void; cur: string;
 }) {
+  const { t } = useTranslation();
   const route = getRoute(order);
   const profit = calcProfit(order);
   const margin = calcMargin(order);
@@ -981,7 +985,7 @@ function KanbanCard({ order, settings, isSelected, onSelect, onDragStart, cur }:
           {order.carrier ? (
             <span className="text-indigo-400 truncate max-w-[70px]">{order.carrier.name}</span>
           ) : (
-            <span className="text-red-400/70">No carrier</span>
+            <span className="text-red-400/70">{t("tms.forwarding.noCarrier")}</span>
           )}
         </div>
       </div>
@@ -1007,6 +1011,7 @@ function TableView({ orders, settings, selectedOrderId, onSelect, sortCol, sortD
   // page level so each row render is just a Map.get().
   usersById: Map<string, AdminUser>;
 }) {
+  const { t } = useTranslation();
   function SortHeader({ col, label, className = "" }: { col: string; label: string; className?: string }) {
     return (
       <th className={`px-3 py-2 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors select-none ${className}`} onClick={() => onSort(col)}>
@@ -1024,19 +1029,19 @@ function TableView({ orders, settings, selectedOrderId, onSelect, sortCol, sortD
         <table className="w-full min-w-[1140px]">
           <thead>
             <tr className="border-b border-border/30">
-              <SortHeader col="reference_number" label="Reference" />
-              <th className="px-3 py-2 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
-              <SortHeader col="customer" label="Customer" />
-              <SortHeader col="customer_reference" label="Cust. Ref" />
-              <th className="px-3 py-2 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Route</th>
-              <SortHeader col="carrier" label="Carrier" />
-              <SortHeader col="customer_price" label="Revenue" className="text-right" />
-              <SortHeader col="carrier_cost" label="Cost" className="text-right" />
-              <SortHeader col="profit" label="Profit" className="text-right" />
-              <SortHeader col="margin" label="Margin" className="text-right" />
-              <th className="px-3 py-2 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Cargo</th>
-              <th className="px-3 py-2 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Dates</th>
-              <th className="px-3 py-2 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Added</th>
+              <SortHeader col="reference_number" label={t("tms.forwarding.colReference")} />
+              <th className="px-3 py-2 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{t("tms.forwarding.colStatus")}</th>
+              <SortHeader col="customer" label={t("tms.forwarding.colCustomer")} />
+              <SortHeader col="customer_reference" label={t("tms.forwarding.colCustRef")} />
+              <th className="px-3 py-2 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{t("tms.forwarding.colRoute")}</th>
+              <SortHeader col="carrier" label={t("tms.forwarding.colCarrier")} />
+              <SortHeader col="customer_price" label={t("tms.forwarding.colRevenue")} className="text-right" />
+              <SortHeader col="carrier_cost" label={t("tms.forwarding.colCost")} className="text-right" />
+              <SortHeader col="profit" label={t("tms.forwarding.colProfit")} className="text-right" />
+              <SortHeader col="margin" label={t("tms.forwarding.colMargin")} className="text-right" />
+              <th className="px-3 py-2 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{t("tms.forwarding.colCargo")}</th>
+              <th className="px-3 py-2 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{t("tms.forwarding.colDates")}</th>
+              <th className="px-3 py-2 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{t("tms.forwarding.colAdded")}</th>
               <th className="px-3 py-2 w-10"></th>
             </tr>
           </thead>
@@ -1063,13 +1068,13 @@ function TableView({ orders, settings, selectedOrderId, onSelect, sortCol, sortD
                   </div>
                   {order.parent_order && (
                     <span className="text-[9px] text-muted-foreground">
-                      Parent: {order.parent_order.reference_number}
+                      {t("tms.forwarding.parent").replace("{ref}", order.parent_order.reference_number)}
                     </span>
                   )}
                 </div>
               </td>
                   <td className="px-3 py-2.5">
-                    <Badge variant="outline" className={`text-[9px] ${sc.color}`}>{sc.label}</Badge>
+                    <Badge variant="outline" className={`text-[9px] ${sc.color}`}>{t(`tms.forwarding.statusLabels.${order.status}`)}</Badge>
                   </td>
                   <td className="px-3 py-2.5 text-xs text-muted-foreground truncate max-w-[120px]">{order.customer?.name || "-"}</td>
                   <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground truncate max-w-[120px]">
@@ -1090,7 +1095,7 @@ function TableView({ orders, settings, selectedOrderId, onSelect, sortCol, sortD
                     {order.carrier ? (
                       <span className="text-xs text-indigo-400">{order.carrier.name}</span>
                     ) : (
-                      <span className="text-xs text-red-400/60">Unassigned</span>
+                      <span className="text-xs text-red-400/60">{t("tms.forwarding.unassigned")}</span>
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-right text-xs font-medium">{formatCurrency(order.customer_price, order.customer_currency || cur)}</td>
@@ -1116,7 +1121,7 @@ function TableView({ orders, settings, selectedOrderId, onSelect, sortCol, sortD
                       </span>
                       <div className="flex items-center gap-1">
                         <span className="text-muted-foreground truncate max-w-[100px]">
-                          {order.created_by ? (usersById.get(order.created_by)?.name ?? "—") : <span className="italic">system</span>}
+                          {order.created_by ? (usersById.get(order.created_by)?.name ?? "—") : <span className="italic">{t("tms.forwarding.system")}</span>}
                         </span>
                         <SourceBadge source={order.created_from} />
                       </div>
@@ -1132,10 +1137,10 @@ function TableView({ orders, settings, selectedOrderId, onSelect, sortCol, sortD
                       </DropdownMenuTrigger>
 <DropdownMenuContent align="end" className="w-[160px]">
 <DropdownMenuItem onClick={() => window.open(`/admin/tms/orders/${order.id}`, "_blank")} className="text-xs">
-<ExternalLink className="h-3 w-3 mr-2" />Open in new tab
+<ExternalLink className="h-3 w-3 mr-2" />{t("tms.forwarding.openInNewTab")}
 </DropdownMenuItem>
 <DropdownMenuItem className="text-xs" onClick={() => navigator.clipboard.writeText(order.reference_number)}>
-<Copy className="h-3 w-3 mr-2" />Copy Ref
+<Copy className="h-3 w-3 mr-2" />{t("tms.forwarding.copyRef")}
 </DropdownMenuItem>
 <DropdownMenuSeparator />
 <DropdownMenuItem 
@@ -1146,7 +1151,7 @@ function TableView({ orders, settings, selectedOrderId, onSelect, sortCol, sortD
     onDelete(order.id, order.reference_number);
   }}
 >
-<Trash2 className="h-3 w-3 mr-2" />Delete
+<Trash2 className="h-3 w-3 mr-2" />{t("tms.forwarding.delete")}
 </DropdownMenuItem>
 </DropdownMenuContent>
                     </DropdownMenu>
@@ -1155,7 +1160,7 @@ function TableView({ orders, settings, selectedOrderId, onSelect, sortCol, sortD
               );
             })}
             {orders.length === 0 && !false && (
-              <tr><td colSpan={14} className="px-4 py-12 text-center text-sm text-muted-foreground/50">No forwarding orders found</td></tr>
+              <tr><td colSpan={14} className="px-4 py-12 text-center text-sm text-muted-foreground/50">{t("tms.forwarding.noOrdersFound")}</td></tr>
             )}
           </tbody>
         </table>
@@ -1173,6 +1178,7 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
   onOrderUpdate: (orderId: string, updates: Partial<FwdOrder>) => void;
   onCarrierCreated: (carrier: { id: string; name: string }) => void;
 }) {
+  const { t } = useTranslation();
   const route = getRoute(order);
   const profit = calcProfit(order);
   const margin = calcMargin(order);
@@ -1235,11 +1241,11 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 md:gap-2 mb-1 flex-wrap">
             <span className="text-sm font-bold font-mono">{order.reference_number}</span>
-            <Badge variant="outline" className={`text-[9px] ${sc.color}`}>{sc.label}</Badge>
-            <span className="text-[10px] md:text-xs text-muted-foreground truncate max-w-[120px] md:max-w-none">by {order.customer?.name || "-"}</span>
+            <Badge variant="outline" className={`text-[9px] ${sc.color}`}>{t(`tms.forwarding.statusLabels.${order.status}`)}</Badge>
+            <span className="text-[10px] md:text-xs text-muted-foreground truncate max-w-[120px] md:max-w-none">{t("tms.forwarding.by").replace("{name}", order.customer?.name || "-")}</span>
             {showChecklist && (
               <Badge variant="outline" className={`text-[9px] ${checkedCount === totalCount ? "bg-green-500/10 text-green-400 border-green-500/20" : "bg-amber-500/10 text-amber-400 border-amber-500/20"}`}>
-                {checkedCount}/{totalCount} steps
+                {t("tms.forwarding.stepsCount").replace("{checked}", String(checkedCount)).replace("{total}", String(totalCount))}
               </Badge>
             )}
           </div>
@@ -1261,25 +1267,25 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
         {/* Mobile: Financials grid */}
         <div className="flex md:hidden flex-wrap gap-x-4 gap-y-1 pt-1 border-t border-border/20">
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] text-muted-foreground uppercase">Carrier:</span>
+            <span className="text-[9px] text-muted-foreground uppercase">{t("tms.forwarding.carrier")}:</span>
             <button onClick={() => setEditingCarrier(true)} className="text-[10px] font-medium text-indigo-400 hover:underline">
-              {order.carrier?.name || <span className="text-red-400">Unassigned</span>}
+              {order.carrier?.name || <span className="text-red-400">{t("tms.forwarding.unassigned")}</span>}
             </button>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] text-muted-foreground uppercase">Revenue:</span>
+            <span className="text-[9px] text-muted-foreground uppercase">{t("tms.forwarding.revenue")}:</span>
             <span className="text-[10px] font-medium text-emerald-400">{formatCurrency(order.customer_price, order.customer_currency || cur)}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] text-muted-foreground uppercase">Cost:</span>
+            <span className="text-[9px] text-muted-foreground uppercase">{t("tms.forwarding.cost")}:</span>
             <span className="text-[10px] font-medium">{formatCurrency(order.carrier_cost, order.carrier_currency || cur)}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] text-muted-foreground uppercase">Profit:</span>
+            <span className="text-[9px] text-muted-foreground uppercase">{t("tms.forwarding.profit")}:</span>
             <span className={`text-[10px] font-bold ${marginClass(margin, settings)}`}>{profit != null ? formatCurrency(profit, cur) : "-"}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] text-muted-foreground uppercase">Margin:</span>
+            <span className="text-[9px] text-muted-foreground uppercase">{t("tms.forwarding.margin")}:</span>
             <span className={`text-[10px] font-bold ${marginClass(margin, settings)}`}>{margin != null ? `${margin.toFixed(1)}%` : "-"}</span>
           </div>
         </div>
@@ -1289,14 +1295,14 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
           {editingCarrier ? (
             <div className="flex items-end gap-2">
               <div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Carrier</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{t("tms.forwarding.carrier")}</div>
                 <div className="flex items-center gap-1">
                   <Select value={selectedCarrierId} onValueChange={setSelectedCarrierId}>
                     <SelectTrigger className="h-8 w-[160px] text-xs bg-card/50 border-border/50">
-                      <SelectValue placeholder="Select carrier..." />
+                      <SelectValue placeholder={t("tms.forwarding.selectCarrier")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__">No carrier</SelectItem>
+                      <SelectItem value="__none__">{t("tms.forwarding.noCarrierOption")}</SelectItem>
                       {carriers.map(c => (
                         <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                       ))}
@@ -1307,7 +1313,7 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
                     variant="outline"
                     size="sm"
                     className="h-8 w-8 p-0 bg-card/50 border-border/50 hover:bg-primary/20 hover:border-primary/50"
-                    title="Create new carrier"
+                    title={t("tms.forwarding.createNewCarrier")}
                     onClick={() => setShowQuickCreate(true)}
                   >
                     <UserPlus className="h-3.5 w-3.5" />
@@ -1315,7 +1321,7 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
                 </div>
               </div>
               <div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Carrier Cost</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{t("tms.forwarding.carrierCost")}</div>
                 <Input
                   type="number"
                   value={carrierCost}
@@ -1325,7 +1331,7 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
                 />
               </div>
               <div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Currency</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{t("tms.forwarding.currency")}</div>
                 <Select value={carrierCurrency} onValueChange={setCarrierCurrency}>
                   <SelectTrigger className="h-8 w-[80px] text-xs bg-card/50 border-border/50">
                     <SelectValue />
@@ -1342,10 +1348,10 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
                 </Select>
               </div>
               <Button size="sm" className="h-8 text-xs" onClick={saveCarrier} disabled={saving}>
-                {saving ? "Saving..." : "Save"}
+                {saving ? t("tms.forwarding.saving") : t("tms.forwarding.save")}
               </Button>
               <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setEditingCarrier(false)}>
-                Cancel
+                {t("tms.forwarding.cancel")}
               </Button>
             </div>
           ) : (
@@ -1354,14 +1360,14 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
               className="text-left hover:bg-card/30 rounded-md px-2 py-1 -mx-2 -my-1 transition-colors group"
             >
               <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5 flex items-center gap-1">
-                Carrier
-                <span className="opacity-0 group-hover:opacity-100 text-primary text-[8px] font-normal normal-case">(click to edit)</span>
+                {t("tms.forwarding.carrier")}
+                <span className="opacity-0 group-hover:opacity-100 text-primary text-[8px] font-normal normal-case">{t("tms.forwarding.clickToEdit")}</span>
               </div>
               <div className="text-xs font-medium">
                 {order.carrier ? (
                   <span className="text-indigo-400">{order.carrier.name}</span>
                 ) : (
-                  <span className="text-red-400">Unassigned</span>
+                  <span className="text-red-400">{t("tms.forwarding.unassigned")}</span>
                 )}
               </div>
             </button>
@@ -1371,19 +1377,19 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
         {/* Desktop: Financials */}
         <div className="hidden md:flex shrink-0 items-center gap-4">
           <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Revenue</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">{t("tms.forwarding.revenue")}</div>
             <div className="text-xs font-medium">{formatCurrency(order.customer_price, order.customer_currency || cur)}</div>
           </div>
           <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Cost</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">{t("tms.forwarding.cost")}</div>
             <div className="text-xs font-medium text-muted-foreground">{formatCurrency(order.carrier_cost, order.carrier_currency || cur)}</div>
           </div>
           <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Profit</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">{t("tms.forwarding.profit")}</div>
             <div className={`text-sm font-bold ${marginClass(margin, settings)}`}>{profit != null ? formatCurrency(profit, cur) : "-"}</div>
           </div>
           <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Margin</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">{t("tms.forwarding.margin")}</div>
             <div className={`text-sm font-bold ${marginClass(margin, settings)}`}>{margin != null ? `${margin.toFixed(1)}%` : "-"}</div>
           </div>
         </div>
@@ -1391,7 +1397,7 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
         {/* Actions */}
         <div className="shrink-0 flex items-center gap-1.5 md:gap-2 ml-auto md:ml-0">
           <Button variant="outline" size="sm" className="h-8 md:h-7 text-xs px-2 md:px-3" onClick={() => window.open(`/admin/tms/orders/${order.id}`, "_blank")}>
-            <ExternalLink className="h-3 w-3 md:mr-1" /><span className="hidden md:inline">Open</span>
+            <ExternalLink className="h-3 w-3 md:mr-1" /><span className="hidden md:inline">{t("tms.forwarding.open")}</span>
           </Button>
           <Button variant="ghost" size="icon" className="h-8 w-8 md:h-7 md:w-7" onClick={onClose}>
             <XCircle className="h-4 w-4 md:h-3.5 md:w-3.5" />
@@ -1407,10 +1413,10 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
               <div className="flex-1">
                 <Select value={selectedCarrierId} onValueChange={setSelectedCarrierId}>
                   <SelectTrigger className="h-10 text-xs bg-card/50 border-border/50">
-                    <SelectValue placeholder="Select carrier..." />
+                    <SelectValue placeholder={t("tms.forwarding.selectCarrier")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none__">No carrier</SelectItem>
+                    <SelectItem value="__none__">{t("tms.forwarding.noCarrierOption")}</SelectItem>
                     {carriers.map(c => (<SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>))}
                   </SelectContent>
                 </Select>
@@ -1420,15 +1426,15 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
               </Button>
             </div>
             <div className="flex gap-2">
-              <Input type="number" value={carrierCost} onChange={(e) => setCarrierCost(e.target.value)} className="h-10 flex-1 text-xs" placeholder="Cost" />
+              <Input type="number" value={carrierCost} onChange={(e) => setCarrierCost(e.target.value)} className="h-10 flex-1 text-xs" placeholder={t("tms.forwarding.costPlaceholder")} />
               <Select value={carrierCurrency} onValueChange={setCarrierCurrency}>
                 <SelectTrigger className="h-10 w-20 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>{["EUR", "USD", "GBP", "RON", "HUF", "PLN", "CZK"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" className="h-10 flex-1 text-xs" onClick={saveCarrier} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
-              <Button variant="ghost" size="sm" className="h-10 text-xs" onClick={() => setEditingCarrier(false)}>Cancel</Button>
+              <Button size="sm" className="h-10 flex-1 text-xs" onClick={saveCarrier} disabled={saving}>{saving ? t("tms.forwarding.saving") : t("tms.forwarding.save")}</Button>
+              <Button variant="ghost" size="sm" className="h-10 text-xs" onClick={() => setEditingCarrier(false)}>{t("tms.forwarding.cancel")}</Button>
             </div>
           </div>
         </div>
@@ -1461,7 +1467,7 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
       {showChecklist && (
         <div className="border-t border-border/30 px-3 md:px-6 py-2 md:py-3">
           <div className="flex items-center gap-2 md:gap-3 mb-2">
-            <span className="text-[9px] md:text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Post-Delivery Checklist</span>
+            <span className="text-[9px] md:text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t("tms.forwarding.postDeliveryChecklist")}</span>
             <div className="flex-1 h-1.5 rounded-full bg-muted-foreground/10 overflow-hidden max-w-[120px] md:max-w-[200px]">
               <div className={`h-full rounded-full transition-all ${checkedCount === totalCount ? "bg-green-500" : "bg-amber-500"}`} style={{ width: `${(checkedCount / totalCount) * 100}%` }} />
             </div>
@@ -1469,7 +1475,6 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 md:gap-2">
             {checklistEntries.map(([key, item]) => {
-              const meta = CHECKLIST_LABELS[key];
               return (
                 <button
                   key={key}
@@ -1486,7 +1491,7 @@ function OrderBottomPanel({ order, settings, cur, onClose, onChecklistUpdate, ca
                     {item.checked && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                   </div>
                   <div className="min-w-0">
-                    <div className={`text-[10px] font-medium ${item.checked ? "text-green-400" : "text-foreground"}`}>{meta.label}</div>
+                    <div className={`text-[10px] font-medium ${item.checked ? "text-green-400" : "text-foreground"}`}>{t(`tms.forwarding.checklistLabels.${key}`)}</div>
                     {item.checked && item.date && <div className="text-[8px] text-muted-foreground/50">{item.date}</div>}
                   </div>
                 </button>

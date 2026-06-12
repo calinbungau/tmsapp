@@ -406,7 +406,7 @@ function AdminLoginForm() {
 
   if (ssoLoading || redirectingCarrier) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="dark min-h-screen bg-background flex items-center justify-center p-4">
         <div className="flex flex-col items-center gap-4">
           <div className="relative">
             <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
@@ -426,7 +426,7 @@ function AdminLoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="dark min-h-screen flex bg-background text-foreground">
       {/* Left panel - Branding */}
       <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden bg-[#060811]">
         {/* Base gradient layer */}

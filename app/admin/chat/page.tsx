@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ChatInbox } from "@/components/chat/chat-inbox";
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 
 export default function AdminChatPage() {
   const searchParams = useSearchParams();
   const initialConvId = searchParams.get("c");
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const { t } = useTranslation();
 
   useEffect(() => {
     const stored = localStorage.getItem("admin_session");
@@ -30,7 +32,7 @@ export default function AdminChatPage() {
   if (!session) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-        <p className="text-muted-foreground">Please log in to access chat.</p>
+        <p className="text-muted-foreground">{t("chat.pleaseLogin")}</p>
       </div>
     );
   }

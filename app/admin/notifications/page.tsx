@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDistanceToNow } from "date-fns";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 
 interface Notification {
   id: string;
@@ -71,6 +72,7 @@ const typeIcons: Record<string, React.ReactNode> = {
 
 export default function NotificationsPage() {
   const { session: adminSession, loading: sessionLoading } = useAdminSession();
+  const { t } = useTranslation();
   const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -201,24 +203,24 @@ export default function NotificationsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Notifications</h1>
+          <h1 className="text-2xl font-bold">{t("notifications.title")}</h1>
           <p className="text-muted-foreground">
-            Stay updated on important events and alerts
+            {t("notifications.subtitle")}
           </p>
         </div>
         {unreadCount > 0 && (
           <Button variant="outline" className="bg-transparent" onClick={markAllAsRead}>
             <CheckCheck className="h-4 w-4 mr-2" />
-            Mark all as read
+            {t("notifications.markAllRead")}
           </Button>
         )}
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "all" | "unread")}>
         <TabsList>
-          <TabsTrigger value="all">All</TabsTrigger>
+          <TabsTrigger value="all">{t("notifications.all")}</TabsTrigger>
           <TabsTrigger value="unread" className="flex items-center gap-2">
-            Unread
+            {t("notifications.unread")}
             {unreadCount > 0 && (
               <Badge variant="destructive" className="h-5 min-w-5 px-1.5">
                 {unreadCount}
@@ -233,12 +235,12 @@ export default function NotificationsPage() {
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <Bell className="h-12 w-12 text-muted-foreground/50 mb-4" />
                 <p className="text-muted-foreground font-medium">
-                  {activeTab === "unread" ? "No unread notifications" : "No notifications yet"}
+                  {activeTab === "unread" ? t("notifications.noUnread") : t("notifications.noneYet")}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {activeTab === "unread"
-                    ? "You're all caught up!"
-                    : "Notifications will appear here when there are important updates"}
+                    ? t("notifications.allCaughtUp")
+                    : t("notifications.appearHere")}
                 </p>
               </CardContent>
             </Card>
@@ -271,7 +273,7 @@ export default function NotificationsPage() {
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <Badge className={priorityColors[notification.priority]}>
-                              {notification.priority}
+                              {t(`notifications.priority${notification.priority.charAt(0).toUpperCase()}${notification.priority.slice(1)}`)}
                             </Badge>
                             {notification.action_url && (
                               <ExternalLink className="h-4 w-4 text-muted-foreground" />
@@ -293,7 +295,7 @@ export default function NotificationsPage() {
                                 markAsRead(notification.id);
                               }}
                             >
-                              Mark as read
+                              {t("notifications.markAsRead")}
                             </Button>
                           )}
                           <Button
@@ -305,7 +307,7 @@ export default function NotificationsPage() {
                               dismissNotification(notification.id);
                             }}
                           >
-                            Dismiss
+                            {t("notifications.dismiss")}
                           </Button>
                         </div>
                       </div>

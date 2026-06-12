@@ -67,6 +67,7 @@ import {
 import type { Driver, Language } from "@/lib/types";
 import { LANGUAGE_OPTIONS } from "@/lib/types";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useTranslation } from "@/components/i18n/i18n-provider";
 
 interface Department {
   id: string;
@@ -88,6 +89,7 @@ interface FleetGroup {
 export default function AdminDriversPage() {
   const router = useRouter();
   const { session: adminSession, loading: sessionLoading } = useAdminSession();
+  const { t } = useTranslation();
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -254,7 +256,7 @@ export default function AdminDriversPage() {
         .eq("id", editingDriver.id);
 
       if (error) {
-        alert("Failed to update driver: " + error.message);
+        alert(t("drivers.failUpdate") + error.message);
         setSaving(false);
         return;
       }
@@ -300,7 +302,7 @@ export default function AdminDriversPage() {
           .single();
 
         if (empError) {
-          alert("Failed to create employee record: " + empError.message);
+          alert(t("drivers.failCreateEmployee") + empError.message);
           setSaving(false);
           return;
         }
@@ -321,7 +323,7 @@ export default function AdminDriversPage() {
       });
 
       if (error) {
-        alert("Failed to create driver: " + error.message);
+        alert(t("drivers.failCreate") + error.message);
         if (employeeId) {
           await supabase.from("employees").delete().eq("id", employeeId);
         }
@@ -337,11 +339,11 @@ export default function AdminDriversPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this driver?")) return;
+    if (!confirm(t("drivers.confirmDelete"))) return;
     const supabase = createClient();
     const { error } = await supabase.from("drivers").delete().eq("id", id);
     if (error) {
-      alert("Failed to delete driver: " + error.message);
+      alert(t("drivers.failDelete") + error.message);
       return;
     }
     fetchDrivers();
@@ -384,13 +386,13 @@ export default function AdminDriversPage() {
       });
       const result = await response.json();
       if (response.ok && result.success) {
-        alert(`Notification sent successfully to ${notificationDriver.name}!`);
+        alert(t("drivers.notifSent").replace("{name}", notificationDriver.name));
         setNotificationDialogOpen(false);
       } else {
-        alert(`Failed to send notification: ${result.error || "Unknown error"}`);
+        alert(t("drivers.failSendNotif") + (result.error || "Unknown error"));
       }
     } catch {
-      alert("Failed to send notification. Please try again.");
+      alert(t("drivers.failSendNotifRetry"));
     } finally {
       setSendingNotification(false);
     }
@@ -398,7 +400,7 @@ export default function AdminDriversPage() {
 
   const handleExportExcel = async () => {
     if (!exportStartDate || !exportEndDate) {
-      alert("Please select both start and end dates");
+      alert(t("drivers.selectDates"));
       return;
     }
     setExporting(true);
@@ -433,7 +435,7 @@ export default function AdminDriversPage() {
         inspectionMap.get(driverId)!.add(date);
       });
 
-      const headers = ["Driver Name", "PIN", ...dates.map((d) => {
+      const headers = [t("drivers.csvDriverName"), t("drivers.pin"), ...dates.map((d) => {
         const date = new Date(d);
         return `${date.getDate()}/${date.getMonth() + 1}`;
       })];
@@ -459,7 +461,7 @@ export default function AdminDriversPage() {
       URL.revokeObjectURL(link.href);
     } catch (error) {
       console.error("Export failed:", error);
-      alert("Failed to export. Please try again.");
+      alert(t("drivers.failExport"));
     } finally {
       setExporting(false);
     }
@@ -515,9 +517,9 @@ export default function AdminDriversPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Drivers</h1>
+          <h1 className="text-2xl font-bold">{t("drivers.title")}</h1>
           <p className="text-muted-foreground">
-            Manage driver accounts, PIN codes, and view inspections
+            {t("drivers.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -525,17 +527,17 @@ export default function AdminDriversPage() {
             <PopoverTrigger asChild>
               <Button variant="outline" className="bg-transparent">
                 <Download className="h-4 w-4 mr-2" />
-                Export
+                {t("drivers.export")}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80" align="end">
               <div className="space-y-4">
-                <h4 className="font-medium">Export Inspection Report</h4>
+                <h4 className="font-medium">{t("drivers.exportInspectionReport")}</h4>
                 <p className="text-sm text-muted-foreground">
-                  Generate a CSV report showing daily inspection status for all drivers.
+                  {t("drivers.exportDesc")}
                 </p>
                 <div className="space-y-2">
-                  <Label htmlFor="startDate">Start Date</Label>
+                  <Label htmlFor="startDate">{t("drivers.startDate")}</Label>
                   <Input
                     id="startDate"
                     type="date"
@@ -544,7 +546,7 @@ export default function AdminDriversPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="endDate">End Date</Label>
+                  <Label htmlFor="endDate">{t("drivers.endDate")}</Label>
                   <Input
                     id="endDate"
                     type="date"
@@ -558,7 +560,7 @@ export default function AdminDriversPage() {
                   disabled={!exportStartDate || !exportEndDate || exporting}
                 >
                   <Calendar className="h-4 w-4 mr-2" />
-                  {exporting ? "Exporting..." : "Download CSV"}
+                  {exporting ? t("drivers.exporting") : t("drivers.downloadCsv")}
                 </Button>
               </div>
             </PopoverContent>
@@ -566,7 +568,7 @@ export default function AdminDriversPage() {
           {(adminSession?.isOwner || !adminSession?.user_id || adminSession?.permissions?.["drivers:create"]) && (
             <Button onClick={() => handleOpenDialog()}>
               <Plus className="h-4 w-4 mr-2" />
-              Add Driver
+              {t("drivers.addDriver")}
             </Button>
           )}
         </div>
@@ -582,7 +584,7 @@ export default function AdminDriversPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.total}</p>
-                <p className="text-xs text-muted-foreground">Total</p>
+                <p className="text-xs text-muted-foreground">{t("drivers.total")}</p>
               </div>
             </div>
           </CardContent>
@@ -595,7 +597,7 @@ export default function AdminDriversPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.active}</p>
-                <p className="text-xs text-muted-foreground">Active</p>
+                <p className="text-xs text-muted-foreground">{t("drivers.active")}</p>
               </div>
             </div>
           </CardContent>
@@ -608,7 +610,7 @@ export default function AdminDriversPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.employees}</p>
-                <p className="text-xs text-muted-foreground">Employees</p>
+                <p className="text-xs text-muted-foreground">{t("drivers.employees")}</p>
               </div>
             </div>
           </CardContent>
@@ -621,7 +623,7 @@ export default function AdminDriversPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.subcontractors}</p>
-                <p className="text-xs text-muted-foreground">Subcontractors</p>
+                <p className="text-xs text-muted-foreground">{t("drivers.subcontractors")}</p>
               </div>
             </div>
           </CardContent>
@@ -635,7 +637,7 @@ export default function AdminDriversPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, PIN, email, phone..."
+                placeholder={t("drivers.searchPlaceholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -643,22 +645,22 @@ export default function AdminDriversPage() {
             </div>
             <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as typeof filterStatus)}>
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder={t("drivers.status")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="all">{t("drivers.allStatus")}</SelectItem>
+                <SelectItem value="active">{t("drivers.active")}</SelectItem>
+                <SelectItem value="inactive">{t("drivers.inactive")}</SelectItem>
               </SelectContent>
             </Select>
             <Select value={filterType} onValueChange={(v) => setFilterType(v as typeof filterType)}>
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Type" />
+                <SelectValue placeholder={t("drivers.type")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="employee">Employees</SelectItem>
-                <SelectItem value="subcontractor">Subcontractors</SelectItem>
+                <SelectItem value="all">{t("drivers.allTypes")}</SelectItem>
+                <SelectItem value="employee">{t("drivers.employees")}</SelectItem>
+                <SelectItem value="subcontractor">{t("drivers.subcontractors")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -670,14 +672,14 @@ export default function AdminDriversPage() {
         <Table>
 <TableHeader>
   <TableRow>
-  <TableHead>Driver</TableHead>
-  <TableHead>PIN</TableHead>
-  <TableHead>Contact</TableHead>
-  <TableHead>Business Partner</TableHead>
-  <TableHead>Fleet Group</TableHead>
-  <TableHead>Type</TableHead>
-  <TableHead>Status</TableHead>
-  <TableHead className="text-right">Actions</TableHead>
+  <TableHead>{t("drivers.driver")}</TableHead>
+  <TableHead>{t("drivers.pin")}</TableHead>
+  <TableHead>{t("drivers.contact")}</TableHead>
+  <TableHead>{t("drivers.businessPartner")}</TableHead>
+  <TableHead>{t("drivers.fleetGroup")}</TableHead>
+  <TableHead>{t("drivers.type")}</TableHead>
+  <TableHead>{t("drivers.status")}</TableHead>
+  <TableHead className="text-right">{t("drivers.actions")}</TableHead>
   </TableRow>
   </TableHeader>
           <TableBody>
@@ -685,8 +687,8 @@ export default function AdminDriversPage() {
   <TableRow>
   <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
   {searchQuery || filterStatus !== "all" || filterType !== "all"
-  ? "No drivers match your filters"
-  : "No drivers yet. Add your first driver."}
+  ? t("drivers.noMatch")
+  : t("drivers.noDriversYet")}
   </TableCell>
   </TableRow>
   ) : (
@@ -752,19 +754,19 @@ paginatedDrivers.map((driver) => {
   <TableCell>
   {driverExtras.is_subcontractor ? (
   <Badge variant="outline" className="text-xs bg-orange-500/10 text-orange-600 border-orange-500/30">
-  Subcontractor
+  {t("drivers.subcontractor")}
   </Badge>
   ) : driverExtras.employee_id ? (
   <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-600 border-blue-500/30">
-  Employee
+  {t("drivers.employee")}
   </Badge>
   ) : (
-  <Badge variant="outline" className="text-xs">Driver</Badge>
+  <Badge variant="outline" className="text-xs">{t("drivers.driver")}</Badge>
   )}
   </TableCell>
   <TableCell>
   <Badge variant={driver.is_active ? "default" : "secondary"}>
-  {driver.is_active ? "Active" : "Inactive"}
+  {driver.is_active ? t("drivers.active") : t("drivers.inactive")}
   </Badge>
   </TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
@@ -777,31 +779,31 @@ paginatedDrivers.map((driver) => {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => router.push(`/admin/drivers/${driver.id}`)}>
                             <Eye className="h-4 w-4 mr-2" />
-                            View Details
+                            {t("drivers.viewDetails")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => router.push(`/admin/forms?driver=${driver.id}`)}>
                             <FileText className="h-4 w-4 mr-2" />
-                            Forms
+                            {t("drivers.forms")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openNotificationDialog(driver)}>
                             <Bell className="h-4 w-4 mr-2" />
-                            Send Notification
+                            {t("drivers.sendNotification")}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => handleOpenDialog(driver)}>
                             <Edit className="h-4 w-4 mr-2" />
-                            Edit
+                            {t("drivers.edit")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => toggleActive(driver)}>
                             {driver.is_active ? (
                               <>
                                 <XCircle className="h-4 w-4 mr-2" />
-                                Deactivate
+                                {t("drivers.deactivate")}
                               </>
                             ) : (
                               <>
                                 <CheckCircle className="h-4 w-4 mr-2" />
-                                Activate
+                                {t("drivers.activate")}
                               </>
                             )}
                           </DropdownMenuItem>
@@ -811,7 +813,7 @@ paginatedDrivers.map((driver) => {
                             className="text-destructive focus:text-destructive"
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
+                            {t("drivers.delete")}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -826,7 +828,7 @@ paginatedDrivers.map((driver) => {
         {/* Pagination */}
         <div className="flex items-center justify-between px-6 py-3 border-t">
           <p className="text-sm text-muted-foreground">
-            {totalCount > 0 ? `${startIndex + 1}-${endIndex} of ${totalCount} drivers` : "No drivers"}
+            {totalCount > 0 ? t("drivers.paginationLabel").replace("{start}", String(startIndex + 1)).replace("{end}", String(endIndex)).replace("{total}", String(totalCount)) : t("drivers.noDrivers")}
           </p>
           <div className="flex items-center gap-4">
             {totalPages > 1 && (
@@ -859,7 +861,7 @@ paginatedDrivers.map((driver) => {
               </SelectTrigger>
               <SelectContent>
                 {PAGE_SIZE_OPTIONS.map((size) => (
-                  <SelectItem key={size} value={String(size)}>{size} / page</SelectItem>
+                  <SelectItem key={size} value={String(size)}>{size} {t("drivers.perPage")}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -871,39 +873,39 @@ paginatedDrivers.map((driver) => {
       <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingDriver ? "Edit Driver" : "Add New Driver"}</DialogTitle>
+            <DialogTitle>{editingDriver ? t("drivers.editDriver") : t("drivers.addNewDriver")}</DialogTitle>
             <DialogDescription>
-              {editingDriver ? "Update driver information" : "Add a new driver to your team"}
+              {editingDriver ? t("drivers.updateInfo") : t("drivers.addToTeam")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Name *</Label>
+              <Label htmlFor="name">{t("drivers.name")} *</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
-                placeholder="Driver name"
+                placeholder={t("drivers.driverNamePlaceholder")}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="pin">PIN Code *</Label>
+              <Label htmlFor="pin">{t("drivers.pinCode")} *</Label>
               <Input
                 id="pin"
                 value={formData.pin_code}
                 onChange={(e) => setFormData((p) => ({ ...p, pin_code: e.target.value }))}
-                placeholder="4-6 digit PIN"
+                placeholder={t("drivers.pinPlaceholder")}
                 maxLength={6}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="language">Language</Label>
+              <Label htmlFor="language">{t("drivers.language")}</Label>
               <Select
                 value={formData.language}
                 onValueChange={(value) => setFormData((p) => ({ ...p, language: value as Language }))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select language" />
+                  <SelectValue placeholder={t("drivers.selectLanguage")} />
                 </SelectTrigger>
                 <SelectContent>
                   {LANGUAGE_OPTIONS.map((lang) => (
@@ -916,7 +918,7 @@ paginatedDrivers.map((driver) => {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t("drivers.email")}</Label>
                 <Input
                   id="email"
                   type="email"
@@ -926,7 +928,7 @@ paginatedDrivers.map((driver) => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
+                <Label htmlFor="phone">{t("drivers.phone")}</Label>
                 <Input
                   id="phone"
                   value={formData.phone}
@@ -947,19 +949,19 @@ paginatedDrivers.map((driver) => {
                     }
                   />
                   <Label htmlFor="isSubcontractor" className="text-sm font-normal cursor-pointer">
-                    This is a subcontractor (external driver)
+                    {t("drivers.isSubcontractorLabel")}
                   </Label>
                 </div>
 
                 {formData.isSubcontractor && (
                   <div className="space-y-2">
-                    <Label>Carrier / Partner Company</Label>
+                    <Label>{t("drivers.carrierPartner")}</Label>
                     <Select
                       value={formData.business_partner_id}
                       onValueChange={(v) => setFormData((p) => ({ ...p, business_partner_id: v }))}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select carrier partner" />
+                        <SelectValue placeholder={t("drivers.selectCarrier")} />
                       </SelectTrigger>
                       <SelectContent>
                         {carrierPartners.map((partner) => (
@@ -973,14 +975,14 @@ paginatedDrivers.map((driver) => {
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      Link to a carrier partner from Business Partners
+                      {t("drivers.linkCarrier")}
                     </p>
                   </div>
                 )}
 
                 {!formData.isSubcontractor && (
                   <div className="space-y-2">
-                    <Label>Hire Date</Label>
+                    <Label>{t("drivers.hireDate")}</Label>
                     <Input
                       type="date"
                       value={formData.hire_date}
@@ -994,16 +996,16 @@ paginatedDrivers.map((driver) => {
             {/* Fleet Group */}
             {fleetGroups.length > 0 && (
               <div className="space-y-2 border-t pt-4">
-                <Label>Fleet Group</Label>
+                <Label>{t("drivers.fleetGroup")}</Label>
                 <Select
                   value={formData.fleet_group_id}
                   onValueChange={(value) => setFormData((p) => ({ ...p, fleet_group_id: value === "none" ? "" : value }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select fleet group (optional)" />
+                    <SelectValue placeholder={t("drivers.selectFleetGroup")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No group</SelectItem>
+                    <SelectItem value="none">{t("drivers.noGroup")}</SelectItem>
                     {fleetGroups.map((group) => (
                       <SelectItem key={group.id} value={group.id}>
                         <div className="flex items-center gap-2">
@@ -1014,17 +1016,17 @@ paginatedDrivers.map((driver) => {
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">Organize drivers into groups for easier management</p>
+                <p className="text-xs text-muted-foreground">{t("drivers.organizeGroups")}</p>
               </div>
             )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }} className="bg-transparent">
-              Cancel
+              {t("drivers.cancel")}
             </Button>
             <Button onClick={handleSave} disabled={saving || !formData.name.trim() || !formData.pin_code.trim()}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {editingDriver ? "Save Changes" : "Add Driver"}
+              {editingDriver ? t("drivers.saveChanges") : t("drivers.addDriver")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1034,40 +1036,40 @@ paginatedDrivers.map((driver) => {
       <Dialog open={notificationDialogOpen} onOpenChange={setNotificationDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Send Notification to {notificationDriver?.name}</DialogTitle>
-            <DialogDescription>Send a push notification to this driver&apos;s mobile device</DialogDescription>
+            <DialogTitle>{t("drivers.sendNotifTo").replace("{name}", notificationDriver?.name || "")}</DialogTitle>
+            <DialogDescription>{t("drivers.notifDesc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="notifTitle">Title</Label>
+              <Label htmlFor="notifTitle">{t("drivers.notifTitle")}</Label>
               <Input
                 id="notifTitle"
                 value={notificationTitle}
                 onChange={(e) => setNotificationTitle(e.target.value)}
-                placeholder="Notification title"
+                placeholder={t("drivers.notifTitlePlaceholder")}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="notifBody">Message</Label>
+              <Label htmlFor="notifBody">{t("drivers.message")}</Label>
               <Textarea
                 id="notifBody"
                 value={notificationBody}
                 onChange={(e) => setNotificationBody(e.target.value)}
-                placeholder="Enter your message here..."
+                placeholder={t("drivers.messagePlaceholder")}
                 rows={4}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNotificationDialogOpen(false)} className="bg-transparent">
-              Cancel
+              {t("drivers.cancel")}
             </Button>
             <Button
               onClick={handleSendNotification}
               disabled={!notificationTitle || !notificationBody || sendingNotification}
             >
               <Send className="h-4 w-4 mr-2" />
-              {sendingNotification ? "Sending..." : "Send Notification"}
+              {sendingNotification ? t("drivers.sending") : t("drivers.sendNotification")}
             </Button>
           </DialogFooter>
         </DialogContent>

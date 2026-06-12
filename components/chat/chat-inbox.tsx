@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConversationView } from "./conversation-view";
+import { useTranslation, type TranslateFn } from "@/components/i18n/i18n-provider";
 
 interface Conversation {
   id: string;
@@ -43,11 +44,11 @@ interface ChatInboxProps {
   initialConversationId?: string | null;
 }
 
-function timeAgo(dateStr: string | null) {
+function timeAgo(dateStr: string | null, t: TranslateFn) {
   if (!dateStr) return "";
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "now";
+  if (mins < 1) return t("chat.now", "now");
   if (mins < 60) return `${mins}m`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h`;
@@ -63,16 +64,16 @@ function getConversationIcon(conv: Conversation) {
   return User;
 }
 
-function getConversationTitle(conv: Conversation, currentUserId: string) {
+function getConversationTitle(conv: Conversation, currentUserId: string, t: TranslateFn) {
   if (conv.title) return conv.title;
   if (conv.type === "direct") {
     const other = conv.participants.find(
       (p) => p.user_id !== currentUserId
     );
-    return other?.display_name || "Direct Message";
+    return other?.display_name || t("chat.directMessage");
   }
-  if (conv.context_type === "task") return `Task Chat`;
-  return "Conversation";
+  if (conv.context_type === "task") return t("chat.taskChat");
+  return t("chat.conversation");
 }
 
 export function ChatInbox({
@@ -82,6 +83,7 @@ export function ChatInbox({
   adminId,
   initialConversationId,
 }: ChatInboxProps) {
+  const { t } = useTranslation();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConvId, setSelectedConvId] = useState<string | null>(initialConversationId || null);
   const [loading, setLoading] = useState(true);
@@ -231,7 +233,7 @@ export function ChatInbox({
   const selectedConv = conversations.find((c) => c.id === selectedConvId);
   const filteredConversations = searchQuery
     ? conversations.filter((c) => {
-        const title = getConversationTitle(c, currentUserId).toLowerCase();
+        const title = getConversationTitle(c, currentUserId, t).toLowerCase();
         const preview = (c.last_message_preview || "").toLowerCase();
         const q = searchQuery.toLowerCase();
         return title.includes(q) || preview.includes(q);
@@ -262,7 +264,7 @@ export function ChatInbox({
         {/* Header */}
         <div className="p-4 border-b border-border/50">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold text-foreground">Messages</h2>
+            <h2 className="text-lg font-bold text-foreground">{t("chat.messages")}</h2>
             <Button
               size="sm"
               variant="outline"
@@ -270,14 +272,14 @@ export function ChatInbox({
               className="h-8 gap-1.5 text-xs bg-transparent"
             >
               <Plus className="h-3.5 w-3.5" />
-              New Chat
+              {t("chat.newChat")}
             </Button>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Search conversations..."
+              placeholder={t("chat.searchConversations")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-3 py-2 rounded-lg border border-border/50 bg-muted/30 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
@@ -302,11 +304,11 @@ export function ChatInbox({
                   onClick={() => setShowNewChat(false)}
                   className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mb-2"
                 >
-                  <ArrowLeft className="h-3 w-3" /> Back to conversations
+                  <ArrowLeft className="h-3 w-3" /> {t("chat.backToConversations")}
                 </button>
                 <input
                   type="text"
-                  placeholder="Search contacts..."
+                  placeholder={t("chat.searchContacts")}
                   value={contactSearch}
                   onChange={(e) => setContactSearch(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-border/50 bg-muted/30 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
@@ -346,14 +348,14 @@ export function ChatInbox({
                     <p className="text-xs text-muted-foreground truncate">
                       {contact.subtitle}
                       {contact.user_type === "driver" && (
-                        <span className="ml-1 text-blue-400">Driver</span>
+                        <span className="ml-1 text-blue-400">{t("chat.driver")}</span>
                       )}
                     </p>
                   </div>
                 </button>
               ))}
               {!loadingContacts && availableContacts.length === 0 && (
-                <p className="text-center py-8 text-sm text-muted-foreground">No contacts found</p>
+                <p className="text-center py-8 text-sm text-muted-foreground">{t("chat.noContacts")}</p>
               )}
             </div>
           )}
@@ -363,7 +365,7 @@ export function ChatInbox({
             !loading &&
             filteredConversations.map((conv) => {
               const Icon = getConversationIcon(conv);
-              const title = getConversationTitle(conv, currentUserId);
+              const title = getConversationTitle(conv, currentUserId, t);
               const isSelected = conv.id === selectedConvId;
 
               return (
@@ -400,7 +402,7 @@ export function ChatInbox({
                         {title}
                       </p>
                       <span className="text-[10px] text-muted-foreground flex-shrink-0">
-                        {timeAgo(conv.last_message_at)}
+                        {timeAgo(conv.last_message_at, t)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2 mt-0.5">
@@ -411,7 +413,7 @@ export function ChatInbox({
                             : "text-muted-foreground"
                         }`}
                       >
-                        {conv.last_message_preview || "No messages yet"}
+                        {conv.last_message_preview || t("chat.noMessagesYet")}
                       </p>
                       {conv.unread_count > 0 && (
                         <span className="h-5 min-w-[20px] rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center px-1.5 flex-shrink-0">
@@ -427,9 +429,9 @@ export function ChatInbox({
           {!showNewChat && !loading && filteredConversations.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground px-4">
               <MessageSquare className="h-10 w-10 mb-3 opacity-30" />
-              <p className="text-sm font-medium">No conversations yet</p>
+              <p className="text-sm font-medium">{t("chat.noConversations")}</p>
               <p className="text-xs mt-1 text-center">
-                Start a new chat with a driver or team member
+                {t("chat.startNewChat")}
               </p>
               <Button
                 size="sm"
@@ -437,7 +439,7 @@ export function ChatInbox({
                 onClick={openNewChat}
                 className="mt-4 gap-1.5 bg-transparent"
               >
-                <Plus className="h-3.5 w-3.5" /> New Chat
+                <Plus className="h-3.5 w-3.5" /> {t("chat.newChat")}
               </Button>
             </div>
           )}
@@ -477,14 +479,16 @@ export function ChatInbox({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-foreground truncate">
-                  {getConversationTitle(selectedConv, currentUserId)}
+                  {getConversationTitle(selectedConv, currentUserId, t)}
                 </p>
                 <p className="text-[10px] text-muted-foreground">
-                  {selectedConv.participants.length} participant
-                  {selectedConv.participants.length !== 1 ? "s" : ""}
+                  {selectedConv.participants.length}{" "}
+                  {selectedConv.participants.length !== 1
+                    ? t("chat.participants")
+                    : t("chat.participant")}
                   {selectedConv.context_type && (
                     <span className="ml-1 capitalize">
-                      - {selectedConv.context_type} chat
+                      - {selectedConv.context_type} {t("chat.chatSuffix")}
                     </span>
                   )}
                 </p>
@@ -504,9 +508,9 @@ export function ChatInbox({
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
             <MessageSquare className="h-12 w-12 mb-4 opacity-20" />
-            <p className="text-sm font-medium">Select a conversation</p>
+            <p className="text-sm font-medium">{t("chat.selectConversation")}</p>
             <p className="text-xs mt-1">
-              Choose from the list or start a new chat
+              {t("chat.chooseOrStart")}
             </p>
           </div>
         )}
