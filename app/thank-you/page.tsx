@@ -29,8 +29,8 @@ function ThankYouContent() {
       </header>
 
       <main className="flex flex-1 items-center justify-center px-4 py-16 sm:px-6 lg:px-8">
-        <div className="w-full max-w-lg text-center">
-          <span className="mx-auto inline-flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <div className="mx-auto flex w-full max-w-lg flex-col items-center text-center">
+          <span className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary">
             <CheckCircle2 className="h-10 w-10" />
           </span>
 

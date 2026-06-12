@@ -62,7 +62,7 @@ export function LandingTelematics() {
               <div className="rounded-xl border border-border bg-card p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Fuel className="h-4 w-4 text-chart-2" />
+                    <Fuel className="h-4 w-4 text-primary" />
                     <h3 className="text-sm font-semibold text-foreground">{tel.fuel.consumptionTitle}</h3>
                   </div>
                   <span className="text-[11px] text-muted-foreground">
@@ -78,7 +78,7 @@ export function LandingTelematics() {
                         axisLine={false}
                         tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                       />
-                      <Bar dataKey="v" radius={[3, 3, 0, 0]} fill="var(--chart-2)" />
+                      <Bar dataKey="v" radius={[3, 3, 0, 0]} fill="var(--primary)" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
